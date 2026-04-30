@@ -1,0 +1,35 @@
+{
+	"name": "starsync",
+	"version": "1.0.0",
+	"type": "module",
+	"description": "Automatically synchronize all your starred GitHub repositories on your local drive. If a repository already exists, it will be pulled to the newest commit, otherwise it will be cloned.",
+	"main": "index.ts",
+	"scripts": {
+		"start": "bun index.ts",
+		"format": "bunx prettier --write .",
+		"format:check": "bunx prettier --check .",
+		"typecheck": "tsc --noEmit"
+	},
+	"keywords": [
+		"github",
+		"sync",
+		"starred",
+		"repositories",
+		"clone",
+		"pull"
+	],
+	"author": "",
+	"license": "MIT",
+	"dependencies": {
+		"@octokit/rest": "^22.0.1",
+		"dotenv": "^17.4.2"
+	},
+	"devDependencies": {
+		"@types/node": "^25.6.0",
+		"typescript": "^6.0.3",
+		"prettier": "3.8.3",
+		"prettier-plugin-organize-attributes": "1.0.0",
+		"prettier-plugin-sort-json": "4.2.0",
+		"prettier-plugin-tailwindcss": "0.8.0"
+	}
+}
