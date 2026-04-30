@@ -40,3 +40,13 @@ bun run start
 ```
 
 This will clone or pull every starred repository from your GitHub account directly into your `TARGET_PATH` (or a `starred_repos` directory in the current working directory if `TARGET_PATH` is not set).
+
+## Folder dates
+
+After syncing, update each top-level repository folder's modified time to match that repo's latest commit:
+
+```powershell
+bun run set-folder-dates -- -RootPath D:\packages\github
+```
+
+If `-RootPath` is omitted, the script uses `TARGET_PATH` from `.env`, then falls back to `starred_repos`.

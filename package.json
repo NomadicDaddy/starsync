@@ -6,6 +6,7 @@
 	"main": "index.ts",
 	"scripts": {
 		"start": "bun index.ts",
+		"set-folder-dates": "pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/set-folder-dates.ps1",
 		"format": "bunx prettier --write .",
 		"format:check": "bunx prettier --check .",
 		"typecheck": "tsc --noEmit"
