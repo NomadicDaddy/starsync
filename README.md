@@ -1,6 +1,6 @@
 # starsync
 
-A simple script written in TypeScript to automatically synchronize (clone or pull) all your **starred repositories** from GitHub to your local machine.
+A simple set of scripts to automatically backup/synchronize (clone or pull) all your **starred repositories** from GitHub to your local machine.
 
 ## Prerequisites
 
@@ -50,3 +50,7 @@ bun run set-folder-dates -- -RootPath D:\packages\github
 ```
 
 If `-RootPath` is omitted, the script uses `TARGET_PATH` from `.env`, then falls back to `starred_repos`.
+
+## Scheduling
+
+You can schedule the sync to run automatically using Windows Task Scheduler, cron, or another task scheduler.
