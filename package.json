@@ -19,7 +19,7 @@
 		"clone",
 		"pull"
 	],
-	"author": "",
+	"author": "NomadicDaddy",
 	"license": "MIT",
 	"dependencies": {
 		"@octokit/rest": "^22.0.1",
