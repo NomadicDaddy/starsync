@@ -1,57 +1,19 @@
-starred_repos/
-.env
-
-# tooling/caches
-.worktrees/
-bun.lock
-bun.lockb
 node_modules/
-package-lock.json
-ps_modules/
-
-# generated
-.aidd/_common/
-.aidd/.completion_state_cache
-.aidd/audit-prompt.md
-.aidd/audits/
-.aidd/filtered-prompt.md
-.claude/
-.docker-prod-test/
-.windsurf/
-artifacts/
-backend/drizzle/meta/
-CLAUDE.md
-coverage/
-devdocs/
-dist/
-screenshots/
-scripts/smoke-cache.json
-test-html-report/
-test-results/
-testResults.xml
+.env
+bun.lock
+starred_repos/
 
 # logs/temp
 *.log
-/tmp/
 logs/
+/tmp/
 
-# local config
-
-# database
-data/.seeded
-data/*.db
-data/*.db-journal
-data/*.db-shm
-data/*.db-wal
-data/exports/
-data/uploads/
-
-# backups
-backups/
-
-# mock/test data
+# build/cache
+dist/
 *.tsbuildinfo
-api/**/delete.json
-api/**/get.json
-api/**/post.json
-api/**/put.json
+
+# tooling
+.aidd/
+.claude/
+.windsurf/
+opencode.json
