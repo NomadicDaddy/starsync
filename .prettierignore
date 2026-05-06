@@ -1,19 +1,34 @@
+# Dependencies
 node_modules/
-.env
-bun.lock
+
+# generated
+.claude/
+CLAUDE.md
+.aidd/
+.claude/
+.windsurf/
+opencode.json
+dist/
 starred_repos/
 
 # logs/temp
 *.log
-logs/
 /tmp/
+logs/
+*.tmp
+*.bak
+.tmp/
+nul/
 
 # build/cache
 dist/
 *.tsbuildinfo
 
-# tooling
-.aidd/
-.claude/
-.windsurf/
-opencode.json
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db

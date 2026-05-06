@@ -1,16 +1,58 @@
 {
 	"name": "starsync",
 	"version": "1.0.0",
-	"type": "module",
+	"author": "NomadicDaddy",
 	"description": "Automatically synchronize all your starred GitHub repositories on your local drive. If a repository already exists, it will be pulled to the newest commit, otherwise it will be cloned.",
-	"main": "index.ts",
+	"dependencies": {
+		"@octokit/rest": "^22.0.1",
+		"dotenv": "^17.4.2"
+	},
+	"devDependencies": {
+		"@eslint/js": "10.0.1",
+		"@types/bun": "latest",
+		"@typescript-eslint/eslint-plugin": "^8.20.0",
+		"@typescript-eslint/parser": "^8.20.0",
+		"eslint": "^10.3.0",
+		"eslint-plugin-perfectionist": "5.9.0",
+		"eslint-plugin-unused-imports": "4.4.1",
+		"globals": "17.6.0",
+		"prettier": "3.8.3",
+		"prettier-plugin-organize-attributes": "1.0.0",
+		"prettier-plugin-sort-json": "4.2.0",
+		"prettier-plugin-tailwindcss": "0.8.0",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "8.59.2"
+	},
+	"engines": {
+		"bun": ">=1.0.0"
+	},
 	"scripts": {
-		"start": "bun index.ts",
+		"build": "bun build ./src/cli.ts --target=bun --outdir=dist",
+		"compile": "bun build ./src/cli.ts --compile --outfile=dist/starsync",
+		"format": "prettier --write \"src/**/*.ts\"",
+		"format:check": "prettier --check \"src/**/*.ts\"",
+		"lint": "eslint \"src/**/*.ts\"",
+		"lint:fix": "eslint --fix \"src/**/*.ts\"",
 		"set-folder-dates": "bun ./scripts/set-folder-dates.ts",
-		"format": "bunx prettier --write .",
-		"format:check": "bunx prettier --check .",
+		"smoke:qc": "bun run typecheck && bun run lint && bun run format:check",
+		"start": "bun src/cli.ts",
+		"sync": "bun ./src/cli.ts",
+		"test": "bun test",
 		"typecheck": "tsc --noEmit"
 	},
+	"type": "module",
+	"bin": {
+		"starsync": "./src/cli.ts"
+	},
+	"main": "./src/index.ts",
+	"module": "./src/index.ts",
+	"types": "./src/index.ts",
+	"files": [
+		"src",
+		"scripts",
+		"README.md",
+		"LICENSE"
+	],
 	"keywords": [
 		"github",
 		"sync",
@@ -19,18 +61,5 @@
 		"clone",
 		"pull"
 	],
-	"author": "NomadicDaddy",
-	"license": "MIT",
-	"dependencies": {
-		"@octokit/rest": "^22.0.1",
-		"dotenv": "^17.4.2"
-	},
-	"devDependencies": {
-		"@types/node": "^25.6.0",
-		"typescript": "^6.0.3",
-		"prettier": "3.8.3",
-		"prettier-plugin-organize-attributes": "1.0.0",
-		"prettier-plugin-sort-json": "4.2.0",
-		"prettier-plugin-tailwindcss": "0.8.0"
-	}
+	"license": "MIT"
 }
