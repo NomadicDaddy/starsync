@@ -1,8 +1,10 @@
+#!/usr/bin/env bun
+
+import { config as loadDotenv } from 'dotenv';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { config as loadDotenv } from 'dotenv';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..');
@@ -22,13 +24,13 @@ Environment:
 Default target: <repo>/starred_repos.`;
 
 interface ParsedArgs {
-	help: boolean;
 	dryRun: boolean;
-	targetPath: string | null;
+	help: boolean;
+	targetPath: null | string;
 }
 
 const parseArgs = (): ParsedArgs => {
-	const parsed: ParsedArgs = { help: false, dryRun: false, targetPath: null };
+	const parsed: ParsedArgs = { dryRun: false, help: false, targetPath: null };
 	for (const arg of process.argv.slice(2)) {
 		if (arg === '--help' || arg === '-h') {
 			parsed.help = true;
@@ -52,7 +54,7 @@ const parseArgs = (): ParsedArgs => {
 
 const stripQuotes = (value: string): string => value.trim().replace(/^['"]|['"]$/g, '');
 
-const resolveTargetPath = (positional: string | null): string => {
+const resolveTargetPath = (positional: null | string): string => {
 	if (positional) return path.resolve(positional);
 	loadDotenv({ path: path.join(repoDir, '.env') });
 	const envValue = process.env.TARGET_PATH ? stripQuotes(process.env.TARGET_PATH) : '';
@@ -60,13 +62,13 @@ const resolveTargetPath = (positional: string | null): string => {
 	return path.resolve(repoDir, 'starred_repos');
 };
 
-type Status = 'updated' | 'would-update' | 'skipped:not-git' | 'skipped:no-commit';
+type Status = 'skipped:no-commit' | 'skipped:not-git' | 'updated' | 'would-update';
 
 interface Result {
 	name: string;
-	status: Status;
-	oldTime: Date;
 	newTime: Date;
+	oldTime: Date;
+	status: Status;
 }
 
 const args = parseArgs();
@@ -87,8 +89,8 @@ const results: Result[] = [];
 let entries: fs.Dirent[];
 try {
 	entries = fs.readdirSync(root, { withFileTypes: true });
-} catch (error) {
-	console.error(`Cannot read ${root}: ${(error as Error).message}`);
+} catch (err) {
+	console.error(`Cannot read ${root}: ${(err as Error).message}`);
 	process.exit(1);
 }
 
@@ -101,13 +103,13 @@ for (const entry of entries) {
 	let oldTime: Date;
 	try {
 		oldTime = fs.statSync(repoPath).mtime;
-	} catch (error) {
-		console.warn(`Cannot stat ${repoPath}: ${(error as Error).message}`);
+	} catch (err) {
+		console.warn(`Cannot stat ${repoPath}: ${(err as Error).message}`);
 		continue;
 	}
 
 	if (!fs.existsSync(gitPath)) {
-		results.push({ name: entry.name, status: 'skipped:not-git', oldTime, newTime: oldTime });
+		results.push({ name: entry.name, newTime: oldTime, oldTime, status: 'skipped:not-git' });
 		continue;
 	}
 
@@ -128,12 +130,12 @@ for (const entry of entries) {
 
 		results.push({
 			name: entry.name,
-			status: args.dryRun ? 'would-update' : 'updated',
-			oldTime,
 			newTime: commitTime,
+			oldTime,
+			status: args.dryRun ? 'would-update' : 'updated',
 		});
 	} catch {
-		results.push({ name: entry.name, status: 'skipped:no-commit', oldTime, newTime: oldTime });
+		results.push({ name: entry.name, newTime: oldTime, oldTime, status: 'skipped:no-commit' });
 	}
 }
 
@@ -146,7 +148,7 @@ console.log(`Skipped: ${skipped.length}`);
 
 const formatTable = <T extends Record<string, string>>(
 	rows: T[],
-	columns: Array<keyof T & string>
+	columns: (keyof T & string)[]
 ): void => {
 	if (rows.length === 0) return;
 	const widths = columns.map((col) => ({
