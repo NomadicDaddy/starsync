@@ -1,19 +1,26 @@
 {
 	"compilerOptions": {
-		"declaration": true,
-		"declarationMap": true,
+		"allowImportingTsExtensions": true,
+		"esModuleInterop": true,
 		"exactOptionalPropertyTypes": true,
+		"forceConsistentCasingInFileNames": true,
 		"isolatedModules": true,
-		"jsx": "react-jsx",
-		"module": "nodenext",
-		"moduleDetection": "force",
+		"lib": ["ES2022"],
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"noEmit": true,
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitOverride": true,
 		"noUncheckedIndexedAccess": true,
-		"noUncheckedSideEffectImports": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"resolveJsonModule": true,
 		"skipLibCheck": true,
-		"sourceMap": true,
 		"strict": true,
-		"target": "esnext",
-		"types": ["node"],
+		"target": "ES2022",
+		"types": ["bun-types"],
 		"verbatimModuleSyntax": true
-	}
+	},
+	"exclude": ["node_modules", "dist", "starred_repos"],
+	"include": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
 }
