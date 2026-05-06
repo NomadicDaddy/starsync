@@ -1,8 +1,10 @@
 # starsync
 
+**SAVE YOUR STARRED REPOS BEFORE THEY DISAPPEAR!**
+
 Clone or pull every starred GitHub repository to your local machine. Subsequent runs pull each existing repo to the latest commit; new stars are cloned.
 
-Single-file Bun + TypeScript CLI plus a companion script for normalizing folder timestamps.
+Bun + TypeScript CLI plus a companion script for normalizing folder timestamps.
 
 ## Install
 
@@ -26,9 +28,9 @@ A positional argument on the command line overrides `TARGET_PATH`.
 Sync all starred repos:
 
 ```sh
-bun start
+bun run sync
 # or
-bun index.ts [target-path]
+bun src/cli.ts [target-path]
 ```
 
 Update each top-level repo folder's mtime to match its latest commit:
@@ -48,11 +50,16 @@ Both commands exit with code 2 on unknown arguments and code 1 on runtime errors
 
 | Script                     | What it runs                        |
 | -------------------------- | ----------------------------------- |
-| `bun start`                | `bun index.ts`                      |
+| `bun run sync`             | `bun ./src/cli.ts`                  |
+| `bun start`                | `bun src/cli.ts`                    |
 | `bun run set-folder-dates` | `bun ./scripts/set-folder-dates.ts` |
+| `bun run build`            | `bun build ./src/cli.ts --target=bun` |
+| `bun run compile`          | standalone binary in `dist/`        |
 | `bun run typecheck`        | `tsc --noEmit`                      |
-| `bun run format`           | `prettier --write .`                |
-| `bun run format:check`     | `prettier --check .`                |
+| `bun run lint`             | `eslint "**/*.ts"`                  |
+| `bun run smoke:qc`         | typecheck, lint, format check       |
+| `bun run format`           | `prettier --write "**/*.ts" "*.json"` |
+| `bun run format:check`     | `prettier --check "**/*.ts" "*.json"` |
 
 ## Scheduling
 
