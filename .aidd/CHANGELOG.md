@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Testing scenarios augment (testing-scenarios starsync augment, 2026-08-16) in `.aidd/testing-scenarios.md`
+  - Added 5 new scenarios (16–20) to fill coverage gaps:
+    16. Partial sync failure — one repo fails while others succeed, "Failed repositories" list printed, exit code 1
+    17. Pagination (>100 starred repos) — Octokit paginates through all pages, succeeded count matches actual total
+    18. Empty starred list — zero repos returns "Succeeded: 0. Failed: 0." with exit code 0
+    19. Cross-cutting end-to-end — sync into fresh temp dir then set-folder-dates, both exit code 0 and timestamps match
+    20. set-folder-dates --help — prints help text with usage, --dry-run, TARGET_PATH docs, exits code 0
+  - Coverage rationale: filled gaps in partial failure handling, pagination boundary, empty-result edge case, cross-tool workflow, and companion script help flag
+  - Existing scenarios 1–15 and Post-Test Procedure untouched
+
 - Feature coverage audit (2026-06-10) in `.aidd/reports/feature-coverage-audit-2026-06-10.md`
   - All 7 implemented capabilities backfilled with feature JSONs (previously 0 existed)
   - No ambiguous boundaries or stale docs found
@@ -63,6 +73,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 ### Security
+
+- Testing scenarios augment (testing-scenarios starsync augment, 2026-07-27) in `.aidd/testing-scenarios.md`
+  - Added 5 new scenarios (11–15) to fill coverage gaps:
+    11. --help / -h flag displays help text and exits with code 0
+    12. TARGET_PATH env var resolution (no positional argument)
+    13. set-folder-dates with non-existent root path error
+    14. Invalid/expired GITHUB_TOKEN API authentication error
+    15. bun test unit test execution (parseArgs, resolveTargetPath, listFolders, stripQuotes)
+  - Coverage rationale: filled gaps in help flag coverage, env-only path resolution, error boundary for non-existent directories, invalid auth token handling, and unit test execution verification
+  - Existing scenarios 1–10 and Post-Test Procedure untouched
 
 - Testing scenarios seed (testing-scenarios starsync seed, 2026-07-15) in `.aidd/testing-scenarios.md`
   - Created 10 scenarios covering all major feature areas:
