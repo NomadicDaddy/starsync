@@ -13,9 +13,9 @@
 	"auditSeverity": "Low",
 	"auditSource": "CODE_QUALITY",
 	"createdAt": "2026-06-10T23:26:23.126Z",
-	"spec": "1. Change `} catch {` at scripts/set-folder-dates.ts:137 to `} catch (err)` to capture the error.\n2. Add a `console.warn` logging the specific error: `console.warn(`Cannot process ${entry.name}: ${(err as Error).message}`)` before pushing the 'skipped:no-commit' result.\n3. Consider distinguishing between 'skipped:no-commit' (git log returned empty) and 'skipped:error' (git log or utimesSync threw) for more actionable output.\n4. Verify `bun run lint` passes after the change.",
+	"spec": "1. Change `} catch {` at scripts/set-folder-dates.ts:137 to `} catch (err)` to capture the error variable.\n2. Add a `console.warn` logging the specific error before the skipped result: `console.warn(`Cannot process ${entry.name}: ${(err as Error).message}`)`.\n3. Verify `bun run lint` passes after the change (catch variable `err` satisfies the ESLint catch-variable rule at eslint.config.js:59-61).\n4. Verify `bun run smoke:qc` passes.",
 	"consolidatedFrom": [
 		"audit-security-1781133982-bare-catch-block-silently-swallows-git-log-and-utimessync-errors-in-set-folder-d"
 	],
-	"updatedAt": "2026-06-10T23:59:00.000Z"
+	"updatedAt": "2026-06-10T23:41:43.000Z"
 }
