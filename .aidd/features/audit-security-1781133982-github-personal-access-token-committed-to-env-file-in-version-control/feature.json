@@ -1,9 +1,11 @@
 {
 	"id": "audit-security-1781133982-github-personal-access-token-committed-to-env-file-in-version-control",
-	"title": "Replace dotenv with Bun-native env — remove .env dependency",
-	"description": "The .env file contains a real GitHub PAT and is in the working tree, but .gitignore properly excludes it and `git log --all -- .env` confirms it was never committed to git history. However, the code uses `dotenv` to load from `.env` (src/index.ts:126, scripts/set-folder-dates.ts:59) which is unnecessary — Bun auto-loads environment variables. The dotenv dependency adds weight and .env file management is unnecessary when the user can simply `export GITHUB_TOKEN=...` or set it inline.",
+	"title": "Replace dotenv with Bun-native env loading — remove unnecessary .env dependency",
+	"description": "The .env file contains a real GitHub PAT and is in the working tree, but .gitignore properly excludes it and `git log --all -- .env` confirms it was never committed to git history. However, the code uses `dotenv` to load from `.env` (src/index.ts:126, scripts/set-folder-dates.ts:59) which is unnecessary — Bun auto-loads environment variables from .env files natively. The dotenv dependency adds weight and .env file management is redundant when the user can simply `export GITHUB_TOKEN=...` or rely on Bun's built-in .env loading.",
 	"category": "Audit",
-	"dependencies": [],
+	"dependencies": [
+		"audit-reorg-1781133983-duplicate-utility-code-across-src-index-ts-and-scripts-set-folder-dates-ts-shoul"
+	],
 	"status": "backlog",
 	"passes": false,
 	"priority": 1,
@@ -17,6 +19,6 @@
 	"auditSeverity": "Critical",
 	"auditSource": "SECURITY",
 	"createdAt": "2026-06-10T23:26:22.855Z",
-	"spec": "1. Delete the .env file from the working tree (it is gitignored, so no git history impact).\n2. Replace the dotenv dependency with a Bun-native approach: read GITHUB_TOKEN from `process.env.GITHUB_TOKEN` directly (Bun auto-loads env vars, or the user can `export GITHUB_TOKEN=...` before running the tool).\n3. Update README.md to instruct users to set the GITHUB_TOKEN environment variable via their shell profile or inline `GITHUB_TOKEN=xxx bun run sync`.\n4. Remove the `dotenv` dependency from package.json and the `import { config as loadDotenv } from 'dotenv'` from both src/index.ts and scripts/set-folder-dates.ts.\n5. Remove the `loadDotenv()` calls from src/index.ts:126 and scripts/set-folder-dates.ts:59.\n6. Run `bun run smoke:qc` to verify.",
-	"updatedAt": "2026-06-10T23:59:00.000Z"
+	"spec": "1. Remove the `import { config as loadDotenv } from 'dotenv'` and the `loadDotenv()` call from src/index.ts:2 and src/index.ts:126.\n2. Remove the `import { config as loadDotenv } from 'dotenv'` and the `loadDotenv()` call from scripts/set-folder-dates.ts:3 and scripts/set-folder-dates.ts:59.\n3. Remove the `dotenv` dependency from package.json devDependencies/dependencies.\n4. Run `bun install` to update the lockfile.\n5. Update README.md Configuration section: remove the '.env.example to .env' copy instruction; instruct users to either (a) create a .env file with GITHUB_TOKEN (Bun auto-loads it) or (b) set the GITHUB_TOKEN environment variable via their shell profile or inline `GITHUB_TOKEN=xxx bun run sync`.\n6. Verify `bun test` passes.\n7. Verify `bun run smoke:qc` passes.",
+	"updatedAt": "2026-06-10T23:41:43.000Z"
 }

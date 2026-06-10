@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Reviewed
 
+- Feature review (feature-review starsync, 2026-06-10 #3 — backlog audit features) in `.aidd/reports/feature-review-2026-06-10-starsync-backlog.md`
+  - First review covering 12 backlog audit-sourced feature.json files (previous reviews only found 0 backlog features)
+  - **12 backlog features reviewed**, **7 completed features skipped** (all `passes: true`)
+  - **14 issues found**: 0 conflicts, 1 contradiction, 8 vague, 0 duplications, 5 minor
+  - **8 features auto-fixed**, 21 issues resolved
+  - Key fixes: expanded vague specs with concrete artifacts, added missing `bun test`/`bun run smoke:qc` verification steps, resolved "Consider" banned verbs, fixed misleading dotenv title, added undeclared dependencies between related features
+  - Established dependency chain: architecture-export → testing + sync-fs; bare-catch → reorg → dotenv removal
+  - No roadmap.json — assignment skipped
+  - Feature inventory health: 19 total / 12 backlog / 7 completed
 - Audit finding review (audit-finding-review starsync, 2026-06-10) — 18 audit findings reviewed against codebase
   - **Application**: starsync (typescript+bun CLI tool, not spernakit-derived)
   - **Findings reviewed**: 18 audit-sourced feature.json files

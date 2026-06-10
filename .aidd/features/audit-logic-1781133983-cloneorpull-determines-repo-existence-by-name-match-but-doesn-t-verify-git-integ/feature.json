@@ -13,6 +13,6 @@
 	"auditSeverity": "Medium",
 	"auditSource": "LOGIC",
 	"createdAt": "2026-06-10T23:26:23.466Z",
-	"spec": "1. After confirming isCloned, add a remote URL check: read the current remote origin URL from the existing repo via `git -C {repoPath} config --get remote.origin.url` and compare it to `repo.clone_url`.\n2. If the URLs don't match, treat it as a new clone (remove or rename the existing directory first, or skip with a warning).",
-	"updatedAt": "2026-06-10T23:59:00.000Z"
+	"spec": "1. After confirming isCloned at src/index.ts:88, add a remote URL check: read the current remote origin URL from the existing repo via `execFileSync('git', ['-C', repoPath, 'config', '--get', 'remote.origin.url'])` and compare it to `repo.clone_url`.\n2. If the URLs don't match, skip the repo with a `console.warn` message: `console.warn(`Skipping ${repo.name}: remote URL mismatch (expected ${repo.clone_url})`)`, and record it as a SyncFailure with verb 'clone' and message 'Remote URL mismatch'.\n3. Verify `bun test` passes after the change.\n4. Verify `bun run smoke:qc` passes.",
+	"updatedAt": "2026-06-10T23:41:43.000Z"
 }
