@@ -1,8 +1,9 @@
 # Codebase Analysis Report — starsync
 
-**Date:** 2026-06-10 (updated)
+**Date:** 2026-06-10 (refresh)
 **Analyst:** AIDD codebase-analysis ingredient
-**Version analyzed:** v1.0.0 (commit `7b81885`, `master` branch)
+**Version analyzed:** v1.0.0 (commit `ffcb5a1` on `master`, plus uncommitted working-tree changes to `package.json` and `bun.lock`)
+**Previous report:** `.aidd/audit-reports/CODEBASE_ANALYSIS-2026-06-10.md` (commit `e4a7aca`)
 
 ---
 
@@ -10,28 +11,39 @@
 
 | Metric | Value |
 |---|---|
-| **Overall Health** | **B+** |
+| **Overall Health** | **B+** (unchanged from prior analysis) |
 | **Lines of source code** | ~436 total (src/index.ts: 173, src/cli.ts: 11, scripts/set-folder-dates.ts: 192, test/index.test.ts: 60) |
 | **Files in src/** | 2 (`index.ts`, `cli.ts`) |
 | **Test files** | 1 (`test/index.test.ts`) |
 | **Dependencies (runtime)** | 2 (`@octokit/rest`, `dotenv`) |
-| **Dev dependencies** | 12 (lint, format, type-check, build) |
-| **Git commits** | 9 substantive + 9 cascade snapshots |
+| **Dev dependencies** | 13 (lint, format, type-check, build, `only-allow` added in working tree) |
+| **Git commits** | 11 substantive + 9 cascade snapshots |
 | **Test coverage** | Utility functions only (~30% of total LOC); core sync engine untested |
 | **Type safety** | Excellent — strict tsconfig, zero `any` usage |
+| **Dirty working tree** | Yes — `package.json` and `bun.lock` have uncommitted additions (`packageManager` field, `only-allow` devDep, `preinstall` script, updated `engines`) |
+
+### Delta Since Prior Report
+
+| Change | Impact |
+|---|---|
+| New commit `ffcb5a1` — project assurance profile | `.aidd/project-profile.json` created; no source code changes |
+| Working tree: `packageManager` field added | Good practice — locks Bun version |
+| Working tree: `only-allow` + `preinstall` hook | Enforces Bun as package manager — aligns with AGENTS.md rules |
+| Working tree: `engines.node` added | Misleading — project is Bun-only, `node` engine constraint is unnecessary |
+| All prior findings from `CODEBASE_ANALYSIS-2026-06-10.md` remain | No issues have been remediated |
 
 ### Top 3 Critical Issues
 
-1. **Dead `frontend/` directory** — Contains only a 137-line React ESLint config (`frontend/eslint.config.js`) with zero corresponding source files, no `package.json`, no Vite config, and no React dependencies in `package.json`. Adds maintenance burden and confusion. Imports plugins (`eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`) that are not installed.
+1. **Dead `frontend/` directory** — Contains only a 137-line React ESLint config (`frontend/eslint.config.js`) with zero corresponding source files, no `package.json`, no Vite config, and no React dependencies in `package.json`. Adds maintenance burden and confusion. Imports plugins (`eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`) that are not installed. **Unchanged since prior report.**
 
-2. **Untestable core sync logic** — `cloneOrPull` is a private (non-exported) function that directly calls `execFileSync` with no seam for dependency injection. `runStarsync` (the main orchestrator) also has no test coverage. The core business value of the application — cloning and pulling repos — has zero automated test coverage.
+2. **Untestable core sync logic** — `cloneOrPull` is a private (non-exported) function that directly calls `execFileSync` with no seam for dependency injection. `runStarsync` (the main orchestrator) also has no test coverage. The core business value — cloning and pulling repos — has zero automated test coverage. **Unchanged since prior report.**
 
-3. **No concurrency** — Repos are cloned/pulled sequentially in a `for...of` loop. For users with 100+ starred repos, this is the dominant runtime bottleneck.
+3. **No concurrency** — Repos are cloned/pulled sequentially in a `for...of` loop. For users with 100+ starred repos, this is the dominant runtime bottleneck. **Unchanged since prior report.**
 
 ### Top 3 Optimization Opportunities
 
-1. **Parallel clone/pull** — Use `Promise.allSettled` with a configurable concurrency semaphore to sync repos in parallel. Expected speedup: 4-10x depending on concurrency limit.
-2. **Incremental sync / change detection** — Persist last-sync metadata and skip repos already at the latest commit (via SHA comparison or `git fetch --dry-run`).
+1. **Parallel clone/pull** — Use `Promise.allSettled` with a configurable concurrency semaphore. Expected speedup: 4-10x.
+2. **Incremental sync / change detection** — Persist last-sync metadata and skip repos already at the latest commit.
 3. **Extract shared utilities** — Eliminate code duplication between `src/index.ts` and `scripts/set-folder-dates.ts` by creating `src/lib/` shared modules.
 
 ---
@@ -44,21 +56,21 @@
 - Clean single-purpose CLI: sync starred GitHub repos → local disk. Clear, focused scope.
 - Proper separation: `cli.ts` (entrypoint/error boundary) → `index.ts` (core logic + exports).
 - Companion script (`set-folder-dates.ts`) is correctly isolated in `scripts/`.
-- Secure subprocess handling: `execFileSync` with argv array eliminates shell-injection risk from repo names containing special characters.
+- Secure subprocess handling: `execFileSync` with argv array eliminates shell-injection risk.
 - Exported pure functions (`parseArgs`, `resolveTargetPath`, `stripQuotes`, `listFolders`) enable unit testing of utilities.
 - Discriminated union `SyncResult` type provides type-safe success/failure handling.
 - Correct use of Octokit pagination (`octokit.paginate()`) to fetch all starred repos.
 
 **Weaknesses:**
-- **Monolithic `index.ts`** — All sync logic (CLI parsing, env loading, GitHub API, git operations, reporting) lives in one 173-line file. No domain separation. For this codebase size it's acceptable but approaching the threshold.
+- **Monolithic `index.ts`** — All sync logic (CLI parsing, env loading, GitHub API, git operations, reporting) lives in one 173-line file. No domain separation. Acceptable at current size but approaching the threshold.
 - **Non-exported `cloneOrPull`** — Cannot be unit-tested in isolation. The function mixes I/O (git operations, console output) with business logic (decision to clone vs pull).
 - **Duplicated code across `src/index.ts` and `scripts/set-folder-dates.ts`:**
   - `stripQuotes` — identical implementation in both files
-  - `resolveTargetPath` — same logic with minor signature variations (index.ts takes explicit params, set-folder-dates.ts reads env internally)
+  - `resolveTargetPath` — same logic with minor signature variations
   - `parseArgs` — same pattern with different flag sets
   - `HELP_TEXT` — same pattern
-  - `repoDir` computation — identical `path.dirname(fileURLToPath(import.meta.url))` / `path.resolve(scriptDir, '..')` in both
-- **Dead `frontend/` directory** — Full React ESLint config referencing uninstalled plugins (`eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`). This appears to be a leftover from project scaffolding or a copy-paste from another project.
+  - `repoDir` computation — identical in both
+- **Dead `frontend/` directory** — Full React ESLint config referencing uninstalled plugins. Leftover from scaffolding or copy-paste.
 
 ### 2. Type Safety
 
@@ -72,9 +84,9 @@
 - `consistent-type-imports` rule ensures type-only imports use `type` keyword.
 
 **Minor weaknesses:**
-- `src/index.ts` line 103: `(err as Error).message` — type assertion instead of the `getErrorMessage` helper that already exists at line 109. Inconsistent error handling within the same file.
-- `scripts/set-folder-dates.ts` line 137: bare `catch {}` with no error variable — the custom ESLint rule `CatchClause > Identifier[name!='err']` does not trigger because there is no CatchClause Identifier at all. This silently swallows errors from `git log` / `fs.utimesSync` operations.
-- `set-folder-dates.ts` `Result.newTime` is typed as `Date` but for skipped entries, the `newTime` is set to `oldTime` (the filesystem mtime), which is semantically misleading — the "new time" was never computed.
+- `src/index.ts` line 103: `(err as Error).message` — type assertion instead of the `getErrorMessage` helper at line 109. Inconsistent error handling within the same file.
+- `scripts/set-folder-dates.ts` line 137: bare `catch {}` with no error variable — the custom ESLint rule `CatchClause > Identifier[name!='err']` does not trigger because there is no CatchClause Identifier. This silently swallows errors from `git log` / `fs.utimesSync`.
+- `set-folder-dates.ts` `Result.newTime` is typed as `Date` but for skipped entries, `newTime` is set to `oldTime` (the filesystem mtime) — semantically misleading.
 
 ### 3. Performance
 
@@ -107,10 +119,10 @@
 - No network listeners or exposed endpoints.
 
 **Weaknesses:**
-- **No token scope validation** — If the token lacks `repo` or `read:user` scopes, the error message is generic ("Error fetching repositories") with no guidance on fixing scopes. Could catch Octokit 401/403 and provide specific scope guidance.
-- **No rate-limit handling** — GitHub API returns 403/429 when rate-limited. Octokit throws but there's no retry, backoff, or rate-limit status display. For users with many starred repos, this could be a problem.
-- **`clone_url` from API used directly** — HTTPS clone URLs are used exclusively. No option for SSH URLs (`ssh_url`), which some users with SSH key auth may prefer.
-- **`dotenv` loads `.env` from resolved filesystem path** — Works correctly, but no check that file permissions are restrictive (minor concern for a personal CLI tool).
+- **No token scope validation** — If the token lacks `repo` or `read:user` scopes, the error message is generic ("Error fetching repositories") with no guidance on fixing scopes.
+- **No rate-limit handling** — GitHub API returns 403/429 when rate-limited. Octokit throws but there's no retry, backoff, or rate-limit status display.
+- **`clone_url` from API used directly** — HTTPS clone URLs exclusively. No option for SSH URLs (`ssh_url`), which some users with SSH key auth may prefer.
+- **`dotenv` loads `.env` from resolved filesystem path** — Works correctly, but no check that file permissions are restrictive (minor for a personal CLI tool).
 
 **Severity: Low.** This is a local CLI tool for personal use, not a network service.
 
@@ -138,11 +150,11 @@
 | `HELP_TEXT` | Lines 11-25 | Lines 12-24 | ~12 (different content) |
 
 **Naming consistency:**
-- ✅ Good: `cloneOrPull`, `listFolders`, `resolveTargetPath` — clear, descriptive names.
+- ✅ `cloneOrPull`, `listFolders`, `resolveTargetPath` — clear, descriptive names.
 - ✅ Consistent `camelCase` for functions and variables, `PascalCase` for types and interfaces.
-- ⚠️ `SyncResult` type alias is not exported — it's used only in `cloneOrPull`'s return type.
+- ⚠️ `SyncResult` type alias is not exported — used only in `cloneOrPull`'s return type.
 - ⚠️ `SyncFailure` is exported but never imported by any other file.
-- ⚠️ `getErrorMessage` is defined at line 109 (near the bottom) rather than near the other utility functions at the top. This is a minor organization issue.
+- ⚠️ `getErrorMessage` is defined at line 109 (near the bottom) rather than near other utility functions at the top.
 
 **Dead code / artifacts:**
 
@@ -151,16 +163,8 @@
 | `frontend/eslint.config.js` | `frontend/` | 137-line React ESLint config, zero source files, uninstalled plugins |
 | `.nvmrc` | Root | Contains `24` — project uses Bun, not nvm/Node. Misleading. |
 | `prettier-plugin-tailwindcss` | `.prettierrc` / `package.json` | Listed as plugin/dependency but Tailwind is not used anywhere |
-| `CHANGELOG.md` | Root | Only the Keep a Changelog template header — never used for actual entries |
 | `.prettierignore` | Root | Identical to `.gitignore` — fully redundant |
-
-**Linting configuration:**
-- ESLint config is comprehensive and well-tuned:
-  - Enforces named exports (`import/no-default-export`), `eqeqeq`, `prefer-const`, `prefer-template`, `object-shorthand`.
-  - Custom `no-restricted-syntax` rule requires catch variables to be named `err`.
-  - Perfectionist plugin enforces alphabetical sorting of imports, exports, interfaces, objects.
-  - `unused-imports` plugin removes unused imports automatically.
-- ⚠️ The `import` plugin key in ESLint config maps to the custom `noDefaultExportPlugin` object, not the real `eslint-plugin-import`. This works but the naming is slightly misleading.
+| `CHANGELOG.md` (root) | Root | Has content but is not actively maintained per-release |
 
 ### 6. Testing
 
@@ -182,10 +186,10 @@
 **Estimated line coverage: ~30%** (only pure utility functions are tested)
 
 **Test quality:**
-- ✅ Existing tests are well-structured with proper cleanup in `finally` blocks.
-- ✅ Uses `mkdtempSync` for filesystem isolation — good practice.
-- ✅ Covers both happy and sad paths for argument parsing (unknown flags, repeated positionals).
-- ✅ Tests `resolveTargetPath` with all three resolution strategies (positional, env, default).
+- ✅ Well-structured with proper cleanup in `finally` blocks.
+- ✅ Uses `mkdtempSync` for filesystem isolation.
+- ✅ Covers both happy and sad paths for argument parsing.
+- ✅ Tests `resolveTargetPath` with all three resolution strategies.
 
 **Gaps:**
 - Core business logic (`cloneOrPull` + `runStarsync`) has **zero test coverage**.
@@ -207,6 +211,8 @@
 2026-05-06  Tighten TypeScript/lint tooling (bbce0d3)
 2026-05-06  Refactor: move CLI into src/ (d392429)
 2026-05-06  Add test coverage for sync helpers (7b81885)
+2026-06-10  Add comprehensive codebase analysis report (e4a7aca)
+2026-06-10  Create project assurance profile (ffcb5a1) ← HEAD
 ```
 
 **Key observations:**
@@ -215,7 +221,8 @@
 - Clean commit history with conventional commit prefixes (`test:`, `refactor:`, `chore:`).
 - No bug-fix-only commits, suggesting the tool works reliably for its intended purpose.
 - Technical debt trend: **Low and stable**. The codebase started clean and stayed clean.
-- The only accumulating debt is the duplicated utilities between `index.ts` and `set-folder-dates.ts`.
+- Only accumulating debt is duplicated utilities between `index.ts` and `set-folder-dates.ts`.
+- 5-week gap between last code change (May 6) and analysis work (June 10) — project appears stable.
 
 ### 8. Dependencies
 
@@ -226,11 +233,11 @@
 | `@octokit/rest` | ^22.0.1 | ✅ GitHub API client. Well-maintained, de-facto standard. |
 | `dotenv` | ^17.4.2 | ⚠️ Consider Bun's native `--env-file` or built-in `.env` loading to remove this dependency. |
 
-**Development (12):**
+**Development (13 in working tree):**
 - All lint/format/build tools. Appropriate and current.
-- `only-allow` enforces Bun as package manager — good practice.
+- `only-allow` enforces Bun as package manager — good practice (new in working tree).
 - ⚠️ `prettier-plugin-tailwindcss` is included but Tailwind is not used anywhere.
-- ⚠️ `eslint-plugin-react-hooks` and `eslint-plugin-react-refresh` are referenced in `frontend/eslint.config.js` but not in `package.json` devDependencies. This would cause an error if ESLint is run against that directory.
+- ⚠️ `eslint-plugin-react-hooks` and `eslint-plugin-react-refresh` are referenced in `frontend/eslint.config.js` but not in `package.json` devDependencies.
 
 ### 9. Configuration & Metadata
 
@@ -248,9 +255,25 @@
 | `prettier-plugin-tailwindcss` in `.prettierrc` | Tailwind not used. Plugin loads but does nothing. | Low |
 | `.gitattributes` duplicate entries | `*.json`, `*.md`, `*.yml`/`*.yaml`, `*.zip` appear multiple times. | Trivial |
 | `.prettierignore` ≡ `.gitignore` | Fully redundant file. | Trivial |
-| `CHANGELOG.md` | Only template header, never used for actual entries. | Low |
-| `package.json` engines field | Lists `node: ">=24.0.0 <25.0.0"` but project is Bun-only. | Low |
 | `frontend/eslint.config.js` | References uninstalled ESLint plugins. Would error if executed. | Medium |
+| `package.json` engines: `node` field | Working tree adds `"node": ">=24.0.0 <25.0.0"` but project is Bun-only. Misleading. | Low |
+| Uncommitted working tree | `package.json` and `bun.lock` changes should be committed. | Medium |
+
+### 10. AIDD Metadata Health
+
+| Artifact | Severity | Status |
+|---|---|---|
+| `.aidd/spec.md` | Required | ❌ Missing — no formal spec document |
+| `CONTEXT.md` | Required | ❌ Missing — no context document |
+| `.aidd/assertions.md` | Recommended | ❌ Missing |
+| `.aidd/roadmap.json` | Recommended | ❌ Missing |
+| `.aidd/screen-map.md` | Recommended | ❌ Missing (not applicable — CLI tool, no screens) |
+| `.aidd/testing-scenarios.md` | Recommended | ❌ Missing |
+| `.aidd/project-structure.md` | Recommended | ✅ Fresh (0 days old) |
+| `.aidd/project.md` | Recommended | ✅ Fresh (21 days old) |
+| `.aidd/project-profile.json` | Recommended | ✅ Fresh (0 days old) |
+
+**Required items missing: 2 of 2** (`spec.md`, `CONTEXT.md`). For a small CLI utility like starsync, a full spec may be disproportionate, but at minimum a `spec.md` describing the intended behavior would formalize the project's contract.
 
 ---
 
@@ -262,8 +285,9 @@
 |---|---|---|---|
 | H1 | Remove dead `frontend/` directory | 5 min | Delete `frontend/eslint.config.js` and the `frontend/` directory. Remove `prettier-plugin-tailwindcss` from `.prettierrc` and `package.json` devDependencies. |
 | H2 | Remove misleading `.nvmrc` | 2 min | Delete `.nvmrc` — the project uses Bun, not nvm. |
-| H3 | Fix `catch {}` without error variable | 5 min | In `scripts/set-folder-dates.ts` line 137, add `err` variable: `catch (err)` and log a warning. This respects the ESLint convention already established in the root config. |
-| H4 | Extract duplicated utilities | 1 hr | Create `src/lib/paths.ts` (resolveTargetPath, stripQuotes, repoDir) and `src/lib/args.ts` (parseArgs base). Import from both `src/index.ts` and `scripts/set-folder-dates.ts`. |
+| H3 | Fix `catch {}` without error variable | 5 min | In `scripts/set-folder-dates.ts` line 137, add `err` variable: `catch (err)` and log a warning. Respects the ESLint convention established in the root config. |
+| H4 | Commit working tree changes | 5 min | Commit the pending `package.json` and `bun.lock` changes (addition of `packageManager`, `only-allow`, `preinstall` script). Also fix the `engines.node` field — either remove it or document why it's there. |
+| H5 | Extract duplicated utilities | 1 hr | Create `src/lib/paths.ts` (resolveTargetPath, stripQuotes, repoDir) and `src/lib/args.ts` (parseArgs base). Import from both `src/index.ts` and `scripts/set-folder-dates.ts`. |
 
 ### Medium Priority
 
@@ -273,61 +297,62 @@
 | M2 | Improve auth error messages | 30 min | Catch Octokit 401/403 specifically and emit clear messages about token scope requirements. |
 | M3 | Export and test `cloneOrPull` | 1 hr | Export `cloneOrPull` and refactor to accept an executor interface (`{ execFileSync }`) for testability. Add unit tests with mocked git operations. |
 | M4 | Deduplicate `.gitattributes` | 10 min | Remove duplicate entries for `*.json`, `*.md`, `*.yml`/`*.yaml`, `*.zip`. |
-| M5 | Remove `.prettierignore` or make it minimal | 5 min | Remove `.prettierignore` since it's identical to `.gitignore`, or keep only patterns Prettier should skip (e.g., `*.md` if desired). |
-| M6 | Fix `package.json` engines field | 2 min | Remove `node` from engines or change to `"*"` since this is a Bun-only project. |
+| M5 | Remove `.prettierignore` or make it minimal | 5 min | Remove `.prettierignore` since it's identical to `.gitignore`, or keep only patterns Prettier should skip. |
+| M6 | Create minimal `.aidd/spec.md` | 30 min | Document the intended behavior, CLI interface, and data model. Even a short spec formalizes the project contract. |
 
 ### Low Priority
 
 | # | Issue | Effort | Steps |
 |---|---|---|---|
-| L1 | Replace `dotenv` with Bun native env | 30 min | Use Bun's built-in `.env` loading. Remove `dotenv` dependency and `import { config }`. |
+| L1 | Replace `dotenv` with Bun native env | 30 min | Use Bun's built-in `.env` loading. Remove `dotenv` dependency. |
 | L2 | Add progress indicator | 1 hr | Show `Syncing repo 12/247...` with a counter during long operations. |
 | L3 | Add `--dry-run` to main sync | 1 hr | Preview which repos would be cloned vs pulled without executing git commands. |
 | L4 | Add SSH URL support | 1 hr | Add `--ssh` flag to use `ssh_url` instead of `clone_url` from GitHub API response. |
-| L5 | Add integration tests | 2-3 hr | Mock Octokit and git binary, test full sync flow including error cases (network failure, auth failure, merge conflicts). |
-| L6 | Use `CHANGELOG.md` actively | Ongoing | Document each release instead of leaving it as an empty template. |
-| L7 | Add rate-limit awareness | 1 hr | Display remaining API calls after pagination. Consider retry/backoff for 403/429 responses. |
+| L5 | Add integration tests | 2-3 hr | Mock Octokit and git binary, test full sync flow including error cases. |
+| L6 | Add rate-limit awareness | 1 hr | Display remaining API calls after pagination. Consider retry/backoff for 403/429. |
+| L7 | Fix inconsistent error handling in `cloneOrPull` | 5 min | Use `getErrorMessage(err)` instead of `(err as Error).message` at line 103 of `src/index.ts`. |
 
 ---
 
 ## Implementation Roadmap
 
 ### Immediate (1-2 days)
-1. Remove `frontend/` directory and `.nvmrc` (H1, H2)
-2. Remove `prettier-plugin-tailwindcss` from devDependencies and `.prettierrc` (H1)
-3. Fix bare `catch {}` in set-folder-dates.ts (H3)
-4. Clean up `.gitattributes` duplicates (M4)
-5. Fix `package.json` engines field (M6)
+1. Commit working tree changes + fix `engines` field (H4)
+2. Remove `frontend/` directory and `.nvmrc` (H1, H2)
+3. Remove `prettier-plugin-tailwindcss` from devDependencies and `.prettierrc` (H1)
+4. Fix bare `catch {}` in set-folder-dates.ts (H3)
+5. Clean up `.gitattributes` duplicates (M4)
 6. Remove `.prettierignore` or make it minimal (M5)
 
 ### Short-term (1-2 weeks)
-7. Extract shared utilities to `src/lib/` (H4)
+7. Extract shared utilities to `src/lib/` (H5)
 8. Export and test `cloneOrPull` (M3)
 9. Improve auth error messages (M2)
-10. Add integration tests for core sync flow (L5, partial)
+10. Create minimal `.aidd/spec.md` (M6)
+11. Add integration tests for core sync flow (L5, partial)
 
 ### Medium-term (1-2 months)
-11. Add parallel clone/pull with `--concurrency` flag (M1)
-12. Replace `dotenv` with Bun native env (L1)
-13. Add `--dry-run` to sync and `--ssh` flag (L3, L4)
-14. Add progress indicator (L2)
-15. Add rate-limit awareness (L7)
+12. Add parallel clone/pull with `--concurrency` flag (M1)
+13. Replace `dotenv` with Bun native env (L1)
+14. Add `--dry-run` to sync and `--ssh` flag (L3, L4)
+15. Add progress indicator (L2)
+16. Add rate-limit awareness (L7)
 
 ### Long-term (3-6 months)
-16. Add incremental sync / change detection
-17. Maintain `CHANGELOG.md` going forward (L6)
+17. Add incremental sync / change detection
 18. Consider git worktree or shallow clone options for large repos
+19. Maintain `CHANGELOG.md` going forward with each release
 
 ---
 
 ## Quality Validation Status
 
-> **Note:** Quality checks could not be executed in this session because the runtime environment is WSL 1, which does not support the Bun runtime or Node.js. The following is a manual assessment based on thorough static code analysis.
+> **Note:** Quality checks could not be executed in this session. The runtime environment (WSL 1 containerized agent) does not support the Bun runtime or Node.js. The following is a manual assessment based on thorough static code analysis.
 
 | Check | Expected Status | Notes |
 |---|---|---|
-| `bun run typecheck` | ✅ Likely pass | Strict tsconfig, no obvious type errors in source files. All types are well-defined. |
-| `bun run lint` | ✅ Likely pass | ESLint config matches code patterns; no `any`, all named exports, catch variables named `err` (except one bare `catch` in set-folder-dates which may not be caught by the root config since it's a different file path). |
+| `bun run typecheck` | ✅ Likely pass | Strict tsconfig, no obvious type errors. All types well-defined. |
+| `bun run lint` | ✅ Likely pass | ESLint config matches code patterns. No `any`, all named exports, catch variables named `err` (except bare `catch` in set-folder-dates which escapes the root ESLint rule). |
 | `bun run format:check` | ⚠️ Needs verification | `prettier-plugin-tailwindcss` may warn if Tailwind is not detected, though it should gracefully no-op. |
 | `bun run test` | ✅ Likely pass | Tests cover pure functions with temp directory isolation. No external dependencies. |
 | `bun run build` | ✅ Likely pass | Simple `bun build` of single entry point (`src/cli.ts`). |
@@ -337,8 +362,21 @@
 
 ## Security Note
 
-The `.env` file in the working directory contains what appears to be a real GitHub Personal Access Token. This file is correctly listed in `.gitignore` and is not tracked by git. The token is a `github_pat_` prefixed fine-grained PAT. No exposure risk was identified in the codebase — the token is loaded via `dotenv` and passed directly to Octokit without being logged.
+The `.env` file in the working directory contains a real GitHub Personal Access Token (`github_pat_` prefix, fine-grained PAT). This file is correctly listed in `.gitignore` and is not tracked by git. No exposure risk was identified in the codebase — the token is loaded via `dotenv` and passed directly to Octokit without being logged.
 
 ---
 
-*Report generated by AIDD codebase-analysis ingredient.*
+## Working Tree Advisory
+
+The following uncommitted changes exist in the working tree:
+
+| File | Change | Recommendation |
+|---|---|---|
+| `package.json` | Added `packageManager: "bun@1.3.14"`, `only-allow` devDep, `preinstall` script, `engines.node` | Commit, but remove or reconsider `engines.node` field |
+| `bun.lock` | Updated lockfile reflecting above | Commit alongside package.json |
+
+These changes should be committed to preserve the Bun enforcement configuration.
+
+---
+
+*Report generated by AIDD codebase-analysis ingredient. Prior report preserved at `.aidd/audit-reports/CODEBASE_ANALYSIS-2026-06-10.md`.*

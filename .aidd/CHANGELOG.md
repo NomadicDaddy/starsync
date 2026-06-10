@@ -9,14 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Codebase analysis report (2026-06-10) in `.aidd/audit-reports/CODEBASE_ANALYSIS-2026-06-10.md`
-  - Overall health grade: B+
-  - Top issues: dead frontend/ directory, untestable core sync logic, sequential repo processing
-  - Top opportunities: parallel clone/pull, incremental sync, shared utility extraction
-  - Full findings across architecture, type safety, performance, security, testing, and dependencies
+- Codebase analysis report (2026-06-10, refresh) in `.aidd/audit-reports/CODEBASE_ANALYSIS-2026-06-10.md`
+  - Overall health grade: B+ (unchanged)
+  - Analyzed commit `ffcb5a1` + uncommitted working-tree changes (packageManager, only-allow)
+  - Noted uncommitted working tree: package.json and bun.lock changes pending commit
+  - Identified 2 required AIDD artifacts missing (spec.md, CONTEXT.md)
+  - All prior findings (dead frontend/, untestable cloneOrPull, no concurrency) remain unresolved
 - Project assurance profile (2026-06-10) at `.aidd/project-profile.json`
-  - Inferred from codebase analysis, source tree, package.json, and project-structure.md
-  - Covers: stack, deployment, auth, data sensitivity, criticality, external integrations, validation commands
 
 ### Changed
 
