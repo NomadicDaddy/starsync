@@ -1,0 +1,23 @@
+{
+	"id": "audit-reorg-1781133983-duplicate-utility-code-across-src-index-ts-and-scripts-set-folder-dates-ts-shoul",
+	"title": "Duplicate utility code across src/index.ts and scripts/set-folder-dates.ts — extract to shared module",
+	"description": "Verified: src/index.ts:49 — stripQuotes function. scripts/set-folder-dates.ts:55 — identical stripQuotes. src/index.ts:51-59 — resolveTargetPath. scripts/set-folder-dates.ts:57-63 — nearly identical resolveTargetPath. src/index.ts:32-47 — parseArgs. scripts/set-folder-dates.ts:32-53 — similar parseArgs with --dry-run addition. Both files independently implement the same path resolution, string stripping, and argument parsing logic. A shared module would eliminate this duplication and create a natural home for future CLI utilities.",
+	"category": "Audit",
+	"dependencies": [],
+	"status": "backlog",
+	"passes": false,
+	"priority": 3,
+	"affectedFiles": [
+		"src/index.ts",
+		"scripts/set-folder-dates.ts"
+	],
+	"auditSeverity": "Medium",
+	"auditSource": "REORG",
+	"createdAt": "2026-06-10T23:26:23.891Z",
+	"spec": "1. Create `src/lib/cli-utils.ts` with exported `stripQuotes`, `resolveTargetPath`, and a base argument parser.\n2. Import from the shared module in both src/index.ts and scripts/set-folder-dates.ts.\n3. Each consumer keeps its own specialized parseArgs (sync flags vs --dry-run) but delegates shared logic.\n4. Update tsconfig.json include array to cover `src/lib/**/*.ts` if needed.",
+	"consolidatedFrom": [
+		"audit-security-1781133982-duplicated-parseargs-and-stripquotes-logic-between-src-index-ts-and-scripts-set-",
+		"audit-techdebt-1781133983-duplicate-utility-functions-between-src-index-ts-and-scripts-set-folder-dates-ts"
+	],
+	"updatedAt": "2026-06-10T23:59:00.000Z"
+}

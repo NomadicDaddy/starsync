@@ -1,0 +1,22 @@
+{
+	"id": "audit-security-1781133982-synchronous-filesystem-operations-block-the-event-loop-during-large-syncs",
+	"title": "Synchronous filesystem and child_process operations block the event loop",
+	"description": "Verified: src/index.ts:93,96 — `execFileSync('git', ['pull']|['clone', ...])` blocks the event loop. src/index.ts:134 — `fs.mkdirSync`, src/index.ts:137 — `fs.existsSync` and `readdirSync` (via listFolders). scripts/set-folder-dates.ts also uses `fs.readdirSync`, `fs.statSync`, `fs.existsSync`, `execFileSync`, `fs.utimesSync`. For a tool syncing potentially hundreds of repos, these synchronous calls block the Bun event loop. Since cloneOrPull is already sequential (no concurrency), the practical impact is limited, but it prevents future concurrency improvements.",
+	"category": "Audit",
+	"dependencies": [],
+	"status": "backlog",
+	"passes": false,
+	"priority": 3,
+	"affectedFiles": [
+		"src/index.ts",
+		"scripts/set-folder-dates.ts"
+	],
+	"auditSeverity": "Medium",
+	"auditSource": "SECURITY",
+	"createdAt": "2026-06-10T23:26:22.855Z",
+	"spec": "1. Replace `fs.mkdirSync` at src/index.ts:134 with `fs.mkdir(targetBase, { recursive: true })` (async).\n2. Replace `fs.existsSync` and `readdirSync` in listFolders with async equivalents using `fs.promises`.\n3. Replace `execFileSync` calls in cloneOrPull with `execFile` from node:child_process (async).\n4. Make cloneOrPull async and update the call site at src/index.ts:156 to use `await`.\n5. Convert set-folder-dates.ts filesystem operations to async equivalents.\n6. After async conversion, the sync loop can use Promise.all with a concurrency limiter for parallel clone/pull operations.",
+	"consolidatedFrom": [
+		"audit-techdebt-1781133983-synchronous-i-o-throughout-prevents-future-concurrency-improvements"
+	],
+	"updatedAt": "2026-06-10T23:59:00.000Z"
+}

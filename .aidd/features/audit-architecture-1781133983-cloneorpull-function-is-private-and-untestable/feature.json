@@ -1,0 +1,19 @@
+{
+  "id": "audit-architecture-1781133983-cloneorpull-function-is-private-and-untestable",
+  "title": "cloneOrPull function is private and untestable",
+  "description": "Verified: src/index.ts:85 — `const cloneOrPull = (repo, targetBase, existing): SyncResult` is declared as a module-level `const` (not exported). The function encapsulates the core git clone/pull logic but cannot be imported or unit-tested. The existing test file test/index.test.ts only tests the exported functions (parseArgs, resolveTargetPath, listFolders, stripQuotes). This is already noted in the starred-repo-sync feature.json notes: 'cloneOrPull is private (not exported) and cannot be unit-tested without refactoring.'",
+  "category": "Audit",
+  "dependencies": [],
+  "status": "backlog",
+  "passes": false,
+  "priority": 3,
+  "affectedFiles": [
+    "src/index.ts",
+    "test/index.test.ts"
+  ],
+  "auditSeverity": "Medium",
+  "auditSource": "ARCHITECTURE",
+  "createdAt": "2026-06-10T23:26:23.062Z",
+  "spec": "1. Export the cloneOrPull function from src/index.ts by changing `const cloneOrPull` to `export const cloneOrPull`.\n2. Add unit tests in test/index.test.ts for cloneOrPull covering: successful clone, successful pull, clone failure (nonexistent URL), pull failure (merge conflict).\n3. Mock `execFileSync` using `bun:test`'s mock mechanism to avoid needing real git operations in tests.\n\nIMPORTANT: After resolving this finding, locate the feature.json file(s) in .aidd/features/ whose spec originally produced the code or pattern that caused this audit finding. Update those feature.json spec(s) to prevent this issue from being reintroduced during a feature-based rebuild.",
+  "updatedAt": "2026-06-10T23:26:23.062Z"
+}

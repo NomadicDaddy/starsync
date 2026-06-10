@@ -1,0 +1,18 @@
+{
+	"id": "audit-logic-1781133983-cloneorpull-determines-repo-existence-by-name-match-but-doesn-t-verify-git-integ",
+	"title": "cloneOrPull uses name-only matching — could misidentify repos with identical names",
+	"description": "Verified: src/index.ts:88 — `const isCloned = existing.has(repo.name) && fs.existsSync(path.join(repoPath, '.git'))`. If two different GitHub repos have the same name (e.g., forked repos from different owners), the tool will treat the existing directory as the same repo and attempt `git pull` instead of cloning the new repo. This is a rare edge case (requires starring two repos with identical names from different owners) but would result in incorrect sync behavior.",
+	"category": "Audit",
+	"dependencies": [],
+	"status": "backlog",
+	"passes": false,
+	"priority": 4,
+	"affectedFiles": [
+		"src/index.ts"
+	],
+	"auditSeverity": "Medium",
+	"auditSource": "LOGIC",
+	"createdAt": "2026-06-10T23:26:23.466Z",
+	"spec": "1. After confirming isCloned, add a remote URL check: read the current remote origin URL from the existing repo via `git -C {repoPath} config --get remote.origin.url` and compare it to `repo.clone_url`.\n2. If the URLs don't match, treat it as a new clone (remove or rename the existing directory first, or skip with a warning).",
+	"updatedAt": "2026-06-10T23:59:00.000Z"
+}

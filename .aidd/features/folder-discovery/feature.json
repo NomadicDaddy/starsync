@@ -1,0 +1,19 @@
+{
+	"affectedFiles": [
+		"src/index.ts"
+	],
+	"category": "core",
+	"createdAt": "2026-06-10T22:28:23.000Z",
+	"dependencies": [],
+	"description": "Utility function that scans a directory and returns a Set of immediate subdirectory names. Returns an empty set if the directory does not exist. Used by the sync engine to detect which repos are already cloned.",
+	"id": "folder-discovery",
+	"notes": [
+		"Backfilled by feature-coverage-audit from current implementation evidence on 2026-06-10."
+	],
+	"passes": true,
+	"priority": 3,
+	"spec": "1. Verify listFolders returns a Set containing only immediate subdirectory names.\n2. Verify listFolders returns an empty Set when the target directory does not exist.\n3. Verify non-directory entries (files, symlinks) are excluded from the result.",
+	"status": "completed",
+	"title": "Folder Discovery",
+	"updatedAt": "2026-06-10T22:28:23.000Z"
+}

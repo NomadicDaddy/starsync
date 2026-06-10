@@ -1,0 +1,19 @@
+{
+	"id": "audit-testing-1781133983-no-test-coverage-for-runstarsync-orchestration-function",
+	"title": "No test coverage for runStarsync orchestration function — nice-to-have",
+	"description": "Verified: test/index.test.ts — tests cover parseArgs, resolveTargetPath, listFolders, and stripQuotes but not the main `runStarsync` function exported from src/index.ts:112. runStarsync orchestrates the full sync flow (arg parsing → env loading → target resolution → folder listing → GitHub API fetch → clone/pull loop → summary). The function is the primary exported entry point and has zero test coverage. Mocking would require stubbing Octokit and execFileSync.",
+	"category": "Audit",
+	"dependencies": [],
+	"status": "backlog",
+	"passes": false,
+	"priority": 4,
+	"affectedFiles": [
+		"test/index.test.ts",
+		"src/index.ts"
+	],
+	"auditSeverity": "Medium",
+	"auditSource": "TESTING",
+	"createdAt": "2026-06-10T23:26:23.611Z",
+	"spec": "1. Add a new describe block in test/index.test.ts for `runStarsync`.\n2. Test cases: (a) missing GITHUB_TOKEN → exit code 1, (b) --help flag → exit code 0 and help text printed, (c) unknown argument → exit code 2, (d) successful sync with mocked Octokit and git → exit code 0, (e) partial failure (one clone fails) → exit code 1 with failure summary.\n3. Use `bun:test`'s `mock` to stub `execFileSync` and Octokit's paginate method.",
+	"updatedAt": "2026-06-10T23:59:00.000Z"
+}

@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Reviewed
+
+- Audit finding review (audit-finding-review starsync, 2026-06-10) — 18 audit findings reviewed against codebase
+  - **Application**: starsync (typescript+bun CLI tool, not spernakit-derived)
+  - **Findings reviewed**: 18 audit-sourced feature.json files
+  - **Non-audit features skipped**: 7 (build-and-compile-pipeline, cli-argument-parsing, etc.)
+  - **No spernakit template** — all findings are APP-ONLY by definition
+  - **No roadmap.json** — roadmap reconciliation skipped
+  - **Results applied directly** (no confirmation needed — unattended mode)
+
+  #### Summary
+
+  | Disposition     | Count | Action                                   |
+  | --------------- | ----- | ---------------------------------------- |
+  | KEEP            | 4     | Retain in app backlog                    |
+  | CONSOLIDATE     | 5 (14 → 5 surviving) | Merged 9 duplicate findings into 5 groups |
+  | REMOVE          | 1     | Deleted from app                         |
+  | DOWNGRADE       | 3     | Reduced priority/scope                   |
+
+  #### REMOVE (1 finding deleted)
+
+  - **execFileSync URL validation** (`audit-security-1781133982-execfilesync-passes-user-influenced-repo-clone-url-to-git-clone-without-validati`)
+    - **Reason**: UNNECESSARY — execFileSync prevents shell injection, GitHub API is over TLS, defense-in-depth for MITM on GitHub's own API is overkill for a personal CLI tool
+    - **Annotation**:
+      - finding_id: `audit-security-1781133982-execfilesync-passes-user-influenced-repo-clone-url-to-git-clone-without-validati`
+      - reason_code: `UNNECESSARY`
+      - audit_source: `SECURITY`
+      - evidence: `execFileSync prevents shell injection (no shell interpolation); GitHub API uses TLS; MITM on GitHub's own API is not a realistic threat for a personal CLI tool`
+
+  #### CONSOLIDATE (5 groups, 14 → 5 findings)
+
+  - **Group: Tailwind plugin removal** → surviving: `audit-code-quality-...prettier-plugin-tailwindcss...`
+    - Merged: `audit-dead-code-...prettier-plugin-tailwindcss...` (dead-code source)
+  - **Group: Dead frontend directory** → surviving: `audit-dead-code-...entire-frontend-directory...`
+    - Merged: `audit-feature-integration-...dead-frontend-directory...` (feature-integration source)
+  - **Group: Duplicate utility code** → surviving: `audit-reorg-...duplicate-utility-code...`
+    - Merged: `audit-security-...duplicated-parseargs-and-stripquotes...` (security source), `audit-techdebt-...duplicate-utility-functions...` (techdebt source)
+  - **Group: Synchronous I/O** → surviving: `audit-security-...synchronous-filesystem-operations...`
+    - Merged: `audit-techdebt-...synchronous-i-o-throughout...` (techdebt source)
+  - **Group: Bare catch block** → surviving: `audit-code-quality-...identical-eslint-config-js-for...`
+    - Merged: `audit-security-...bare-catch-block-silently-swallows...` (security source)
+
+  #### KEEP (4 findings retained as-is)
+
+  - **cloneOrPull private/untestable** (`audit-architecture-...cloneorpull-function-is-private...`) — priority 3
+  - **Misleading .nvmrc** (`audit-code-quality-...misleading-nvmrc...`) — priority 4
+  - **Dead frontend directory** (`audit-dead-code-...entire-frontend-directory...`) — priority 4, consolidated
+  - **Replace dotenv with Bun-native env** (`audit-security-...github-personal-access-token...`) — priority 1, description corrected (token was never committed to git)
+
+  #### DOWNGRADE (3 findings)
+
+  - **Duplicate .gitattributes entries** — priority 4 → 5 (harmless housekeeping)
+  - **cloneOrPull name-match logic** — priority 3 → 4 (rare edge case, nice-to-have)
+  - **No runStarsync test coverage** — priority 3 → 4 (nice-to-have for personal CLI)
+
+  #### Pipeline Handoff Notes
+
+  - 4 KEEP findings remain in backlog — recommend: `Run the native feature-review ingredient for starsync to validate remaining finding specs against codebase conventions`
+  - 1 REMOVE as UNNECESSARY from SECURITY audit — recommend: `Run the native audit-review ingredient on the SECURITY audit definition to prevent future false positives`
+  - No ESCALATE findings (not a spernakit-derived app)
+  - No roadmap.json — assignment skipped
+
+  #### Final Feature Inventory
+
+  - **Total**: 19 feature directories (11 audit findings + 8 non-audit features)
+  - **Audit findings by status**: 11 backlog, 0 completed
+  - **Non-audit features by status**: 0 backlog, 8 completed
+  - **All JSON valid**, **no orphaned directories**, **all dependency references resolve**
+
 ### Added
 
 - Testing scenarios augment (testing-scenarios starsync augment, 2026-08-16) in `.aidd/testing-scenarios.md`
