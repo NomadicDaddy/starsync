@@ -8,9 +8,13 @@ Bun + TypeScript CLI plus a companion script for normalizing folder timestamps.
 
 ## Install
 
+Requires [Bun](https://bun.sh) >= 1.3.14.
+
 ```sh
 bun install
 ```
+
+The `preinstall` hook enforces Bun as the package manager — `npm install`, `yarn install`, and `pnpm install` will be rejected.
 
 ## Configuration
 
