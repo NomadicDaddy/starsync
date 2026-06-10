@@ -1,0 +1,22 @@
+{
+	"id": "audit-code-quality-1781133983-prettier-plugin-tailwindcss-in-prettierrc-and-package-json-but-tailwind-is-not-u",
+	"title": "prettier-plugin-tailwindcss is a dead dependency — not used in this CLI tool",
+	"description": "Verified: .prettierrc:12 — lists `prettier-plugin-tailwindcss` in the plugins array. package.json:24 — lists `prettier-plugin-tailwindcss` version `0.8.0` in devDependencies. This is a CLI tool with no CSS, no HTML, no Tailwind classes, and no frontend. The plugin is a no-op but adds unnecessary dependency weight and maintenance burden. Grepped for 'tailwind' across all source files — no matches in src/ or scripts/. The plugin processes Tailwind class sorting in HTML/JSX, but no such files exist.",
+	"category": "Audit",
+	"dependencies": [],
+	"status": "backlog",
+	"passes": false,
+	"priority": 4,
+	"affectedFiles": [
+		".prettierrc",
+		"package.json"
+	],
+	"auditSeverity": "Low",
+	"auditSource": "CODE_QUALITY",
+	"createdAt": "2026-06-10T23:26:23.126Z",
+	"spec": "1. Remove `prettier-plugin-tailwindcss` from the plugins array in `.prettierrc`.\n2. Remove `prettier-plugin-tailwindcss` from devDependencies in `package.json`.\n3. Run `bun install` to update the lockfile.\n4. Run `bun run smoke:qc` to verify quality gate passes.",
+	"consolidatedFrom": [
+		"audit-dead-code-1781133983-prettier-plugin-tailwindcss-is-a-dead-dependency-not-used-by-any-source-file"
+	],
+	"updatedAt": "2026-06-10T23:59:00.000Z"
+}

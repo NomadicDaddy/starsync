@@ -1,0 +1,21 @@
+{
+	"id": "audit-code-quality-1781133983-src-index-ts-and-scripts-set-folder-dates-ts-have-identical-eslint-config-js-for",
+	"title": "Bare catch block in set-folder-dates.ts silently swallows errors, bypassing eslint catch-variable rule",
+	"description": "Verified: scripts/set-folder-dates.ts:137 — `} catch {` with no error variable and no logging. This catch block handles failures from both `execFileSync('git', [..., 'log', ...])` and `fs.utimesSync(...)`. When git log fails (e.g., corrupted .git directory) or utimesSync fails (e.g., permission denied), the error is silently swallowed and the folder is marked 'skipped:no-commit'. The root eslint.config.js at line 59-61 enforces catch variables named 'err' via selector `CatchClause > Identifier[name!='err']`, but the bare catch (no variable at all) bypasses this rule because there is no CatchClause Identifier to match.",
+	"category": "Audit",
+	"dependencies": [],
+	"status": "backlog",
+	"passes": false,
+	"priority": 4,
+	"affectedFiles": [
+		"scripts/set-folder-dates.ts"
+	],
+	"auditSeverity": "Low",
+	"auditSource": "CODE_QUALITY",
+	"createdAt": "2026-06-10T23:26:23.126Z",
+	"spec": "1. Change `} catch {` at scripts/set-folder-dates.ts:137 to `} catch (err)` to capture the error.\n2. Add a `console.warn` logging the specific error: `console.warn(`Cannot process ${entry.name}: ${(err as Error).message}`)` before pushing the 'skipped:no-commit' result.\n3. Consider distinguishing between 'skipped:no-commit' (git log returned empty) and 'skipped:error' (git log or utimesSync threw) for more actionable output.\n4. Verify `bun run lint` passes after the change.",
+	"consolidatedFrom": [
+		"audit-security-1781133982-bare-catch-block-silently-swallows-git-log-and-utimessync-errors-in-set-folder-d"
+	],
+	"updatedAt": "2026-06-10T23:59:00.000Z"
+}
