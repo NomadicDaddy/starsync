@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Project assurance profile (2026-06-10) at `.aidd/project-profile.json`
 - Project assurance profile refresh (2026-07-14): verified all fields against codebase, no changes needed — profile is accurate
 - Project assurance profile refresh (2026-07-27): re-verified all fields against package.json, tsconfig.json, eslint.config.js, src/index.ts, src/cli.ts — no fields are clearly wrong, profile is accurate, no changes made
+- Feature coverage audit refresh (2026-06-10) in `.aidd/reports/feature-coverage-audit-2026-06-10.md`
+  - Re-audited all implemented capabilities against feature JSONs
+  - 8 capabilities / 8 feature JSONs — all covered, no gaps
+  - No new capabilities detected since 2026-07-14 audit
+  - No feature JSONs created, modified, or deleted
+  - No ambiguous boundaries or stale docs found
 - Feature coverage audit refresh (2026-07-14) in `.aidd/reports/feature-coverage-audit-2026-07-14.md`
   - Detected 1 new capability since 2026-06-10 audit: package-manager-enforcement
   - Created `package-manager-enforcement/feature.json` (only-allow preinstall hook, packageManager field, engines)
