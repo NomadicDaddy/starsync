@@ -1,0 +1,74 @@
+{
+	"$schema": "https://aidd.dev/schemas/project-profile/v1.json",
+	"project": "starsync",
+	"description": "CLI tool that synchronizes all starred GitHub repositories to the local filesystem, cloning new repos and pulling existing ones.",
+	"stack": {
+		"runtime": "bun >=1.3.14",
+		"language": "TypeScript (strict, ES2022, ESM only)",
+		"framework": "none (CLI tool)",
+		"build": "bun build / bun build --compile",
+		"testRunner": "bun test",
+		"packageManager": "bun",
+		"keyDependencies": [
+			"@octokit/rest ^22.0.1",
+			"dotenv ^17.4.2"
+		],
+		"tooling": {
+			"linter": "eslint with typescript-eslint, perfectionist, unused-imports",
+			"formatter": "prettier (tabs, 100 chars, single quotes)",
+			"typeChecker": "tsc --noEmit"
+		}
+	},
+	"deployment": {
+		"type": "cli",
+		"targets": ["local-execution", "standalone-binary"],
+		"notes": "Run via `bun src/cli.ts` or compiled binary `dist/starsync`. No server, no container, no CI/CD pipeline."
+	},
+	"auth": {
+		"mode": "api-key",
+		"mechanism": "GitHub Personal Access Token (GITHUB_TOKEN) read from .env file via dotenv",
+		"scopes": "repo + read:user",
+		"notes": "Single-user CLI; token is user-provided. No multi-user auth, no sessions, no OAuth flow."
+	},
+	"dataSensitivity": {
+		"level": "medium",
+		"details": [
+			"Reads user's GitHub starred repositories via authenticated API",
+			"Clones/pulls public and potentially private repositories to local filesystem",
+			"GITHUB_TOKEN stored in .env file (gitignored)",
+			"No database, no persisted user data beyond cloned repos",
+			"No PII collected or stored by the tool itself"
+		]
+	},
+	"criticality": {
+		"level": "low",
+		"justification": "Personal developer utility. No production users, no SLAs, no revenue dependency. Failure modes are limited to incomplete syncs."
+	},
+	"externalIntegrations": [
+		{
+			"name": "GitHub REST API",
+			"client": "@octokit/rest",
+			"operations": [
+				"activity.listReposStarredByAuthenticatedUser (paginated, 100/page)"
+			],
+			"auth": "Bearer token (GITHUB_TOKEN)"
+		},
+		{
+			"name": "git CLI",
+			"client": "node:child_process.execFileSync",
+			"operations": ["git clone", "git pull", "git log"],
+			"auth": "inherits system git credentials"
+		}
+	],
+	"validation": {
+		"smokeCommand": "bun run smoke:qc",
+		"smokeSteps": ["typecheck", "lint", "format:check"],
+		"individualCommands": {
+			"typecheck": "bun run typecheck",
+			"lint": "bun run lint",
+			"format:check": "bun run format:check",
+			"test": "bun test",
+			"build": "bun run build"
+		}
+	}
+}
