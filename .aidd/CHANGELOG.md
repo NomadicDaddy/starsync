@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Intake report (2026-06-10) in `.aidd/reports/intake.md`
+  - Detected stack: Bun/TypeScript CLI tool, no framework, no server runtime
+  - Project profile: personal developer utility, low criticality, medium data sensitivity
+  - Artifact inventory: 4 present/fresh, 2 required missing (spec.md, CONTEXT.md), 3 recommended missing
+  - Feature counts: 8 completed (all non-audit), 10 backlog (all audit-sourced), 0 remediation
+  - Audit history: 2 audit-finding-review rounds, 1 feature review of backlog; 2 findings removed, 9 consolidated to 5
+  - Codebase health: B+ (unchanged since May 6 — no source code changes)
+  - No open questions (questions.md does not exist)
+  - 15 recommended next actions prioritized
+
 ### Reviewed
 
 - Audit finding review (audit-finding-review starsync, 2026-06-10 #2) — 11 audit findings reviewed against codebase
