@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `folder-discovery` (core) — listFolders utility for existing repo detection
   - `unit-test-suite` (quality) — Bun tests for parseArgs, resolveTargetPath, listFolders, stripQuotes
   - `build-and-compile-pipeline` (tooling) — bun build, compile, smoke:qc
+- Codebase analysis report (2026-06-10, refresh 2) in `.aidd/audit-reports/CODEBASE_ANALYSIS-2026-06-10.md`
+  - Overall health grade: B+ (unchanged — no source code changes since prior analysis)
+  - Analyzed commit `6c4088d` + uncommitted working-tree changes
+  - No source code changes since commit `7b81885` (May 6) — all recent commits are AIDD metadata only
+  - Working tree still dirty: package.json and bun.lock changes remain uncommitted
+  - 1 required AIDD artifact now present: testing-scenarios.md (was missing in prior report)
+  - 1 required artifact still missing: spec.md
+  - All prior findings (dead frontend/, untestable cloneOrPull, no concurrency) remain unresolved
 - Codebase analysis report (2026-06-10, refresh) in `.aidd/audit-reports/CODEBASE_ANALYSIS-2026-06-10.md`
   - Overall health grade: B+ (unchanged)
   - Analyzed commit `ffcb5a1` + uncommitted working-tree changes (packageManager, only-allow)
@@ -48,6 +56,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 ### Security
+
+- Testing scenarios seed (testing-scenarios starsync seed, 2026-07-15) in `.aidd/testing-scenarios.md`
+  - Created 10 scenarios covering all major feature areas:
+    1. Full sync with valid token (happy path, exit code 0)
+    2. Re-sync pulls existing repos (idempotent behavior)
+    3. Custom target-path positional override
+    4. Missing GITHUB_TOKEN error (exit code 1)
+    5. set-folder-dates mtime normalization with timestamp tables
+    6. set-folder-dates --dry-run preview mode
+    7. Build and compile pipeline (bundled output + standalone binary)
+    8. Unknown CLI flags rejection (exit code 2)
+    9. smoke:qc quality gate (typecheck + lint + format)
+    10. Mixed target directory (non-git folders alongside repos)
+  - Coverage rationale: one scenario per major feature area (sync engine, companion script, build pipeline, CLI arg parsing, quality gate), cross-cutting flows (re-sync idempotency, mixed directory handling), and edge cases (missing auth, unknown flags)
+  - No RBAC scenarios needed (single-user CLI tool, no auth tiers)
 
 ### Reviewed
 

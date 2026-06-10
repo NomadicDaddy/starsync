@@ -1,9 +1,9 @@
 # Codebase Analysis Report — starsync
 
-**Date:** 2026-06-10 (refresh)
+**Date:** 2026-06-10 (refresh 2)
 **Analyst:** AIDD codebase-analysis ingredient
-**Version analyzed:** v1.0.0 (commit `ffcb5a1` on `master`, plus uncommitted working-tree changes to `package.json` and `bun.lock`)
-**Previous report:** `.aidd/audit-reports/CODEBASE_ANALYSIS-2026-06-10.md` (commit `e4a7aca`)
+**Version analyzed:** v1.0.0 (commit `6c4088d` on `master`, plus uncommitted working-tree changes to `package.json` and `bun.lock`)
+**Previous report:** `.aidd/audit-reports/CODEBASE_ANALYSIS-2026-06-10.md` (commit `ffcb5a1`)
 
 ---
 
@@ -11,34 +11,35 @@
 
 | Metric | Value |
 |---|---|
-| **Overall Health** | **B+** (unchanged from prior analysis) |
-| **Lines of source code** | ~436 total (src/index.ts: 173, src/cli.ts: 11, scripts/set-folder-dates.ts: 192, test/index.test.ts: 60) |
+| **Overall Health** | **B+** (unchanged — no source code changes since prior analysis) |
+| **Lines of source code** | 435 total (src/index.ts: 173, src/cli.ts: 11, scripts/set-folder-dates.ts: 191, test/index.test.ts: 60) |
 | **Files in src/** | 2 (`index.ts`, `cli.ts`) |
 | **Test files** | 1 (`test/index.test.ts`) |
 | **Dependencies (runtime)** | 2 (`@octokit/rest`, `dotenv`) |
-| **Dev dependencies** | 13 (lint, format, type-check, build, `only-allow` added in working tree) |
-| **Git commits** | 11 substantive + 9 cascade snapshots |
+| **Dev dependencies** | 14 (lint, format, type-check, build, `only-allow`) |
+| **Git commits** | 11 substantive + 12 cascade/metadata snapshots |
+| **Feature coverage** | 8 features tracked, all completed with `passes: true` |
 | **Test coverage** | Utility functions only (~30% of total LOC); core sync engine untested |
 | **Type safety** | Excellent — strict tsconfig, zero `any` usage |
-| **Dirty working tree** | Yes — `package.json` and `bun.lock` have uncommitted additions (`packageManager` field, `only-allow` devDep, `preinstall` script, updated `engines`) |
+| **Dirty working tree** | Yes — `package.json` and `bun.lock` have uncommitted additions (`packageManager`, `only-allow`, `engines.node` tightening) |
 
-### Delta Since Prior Report
+### Delta Since Prior Report (commit `ffcb5a1`)
 
 | Change | Impact |
 |---|---|
-| New commit `ffcb5a1` — project assurance profile | `.aidd/project-profile.json` created; no source code changes |
-| Working tree: `packageManager` field added | Good practice — locks Bun version |
-| Working tree: `only-allow` + `preinstall` hook | Enforces Bun as package manager — aligns with AGENTS.md rules |
-| Working tree: `engines.node` added | Misleading — project is Bun-only, `node` engine constraint is unnecessary |
-| All prior findings from `CODEBASE_ANALYSIS-2026-06-10.md` remain | No issues have been remediated |
+| New commits `8027012..6c4088d` — AIDD metadata only | Feature reviews, coverage audits, project profile refresh. No source code changes. |
+| Working tree still dirty | `package.json` and `bun.lock` changes remain uncommitted since prior report |
+| `.nvmrc` still untracked | Was noted in prior report, still present |
+| `frontend/` still untracked | Was noted in prior report, still present |
+| All prior findings remain | No issues have been remediated since first analysis |
 
 ### Top 3 Critical Issues
 
-1. **Dead `frontend/` directory** — Contains only a 137-line React ESLint config (`frontend/eslint.config.js`) with zero corresponding source files, no `package.json`, no Vite config, and no React dependencies in `package.json`. Adds maintenance burden and confusion. Imports plugins (`eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`) that are not installed. **Unchanged since prior report.**
+1. **Dead `frontend/` directory** — Contains only a 137-line React ESLint config (`frontend/eslint.config.js`) with zero corresponding source files, no `package.json`, no Vite config, and no React dependencies in `package.json`. References uninstalled ESLint plugins (`eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`). Adds maintenance burden and confusion. **Unchanged since initial report.**
 
-2. **Untestable core sync logic** — `cloneOrPull` is a private (non-exported) function that directly calls `execFileSync` with no seam for dependency injection. `runStarsync` (the main orchestrator) also has no test coverage. The core business value — cloning and pulling repos — has zero automated test coverage. **Unchanged since prior report.**
+2. **Untestable core sync logic** — `cloneOrPull` is a private (non-exported) function that directly calls `execFileSync` with no seam for dependency injection. `runStarsync` (the main orchestrator) also has no test coverage. The core business value — cloning and pulling repos — has zero automated test coverage. **Unchanged since initial report.**
 
-3. **No concurrency** — Repos are cloned/pulled sequentially in a `for...of` loop. For users with 100+ starred repos, this is the dominant runtime bottleneck. **Unchanged since prior report.**
+3. **No concurrency** — Repos are cloned/pulled sequentially in a `for...of` loop. For users with 100+ starred repos, this is the dominant runtime bottleneck. **Unchanged since initial report.**
 
 ### Top 3 Optimization Opportunities
 
@@ -53,7 +54,7 @@
 ### 1. Architecture
 
 **Strengths:**
-- Clean single-purpose CLI: sync starred GitHub repos → local disk. Clear, focused scope.
+- Clean single-purpose CLI: sync starred GitHub repos to local disk. Clear, focused scope.
 - Proper separation: `cli.ts` (entrypoint/error boundary) → `index.ts` (core logic + exports).
 - Companion script (`set-folder-dates.ts`) is correctly isolated in `scripts/`.
 - Secure subprocess handling: `execFileSync` with argv array eliminates shell-injection risk.
@@ -62,7 +63,7 @@
 - Correct use of Octokit pagination (`octokit.paginate()`) to fetch all starred repos.
 
 **Weaknesses:**
-- **Monolithic `index.ts`** — All sync logic (CLI parsing, env loading, GitHub API, git operations, reporting) lives in one 173-line file. No domain separation. Acceptable at current size but approaching the threshold.
+- **Monolithic `index.ts`** — All sync logic (CLI parsing, env loading, GitHub API, git operations, reporting) lives in one 173-line file. Acceptable at current size but approaching the threshold.
 - **Non-exported `cloneOrPull`** — Cannot be unit-tested in isolation. The function mixes I/O (git operations, console output) with business logic (decision to clone vs pull).
 - **Duplicated code across `src/index.ts` and `scripts/set-folder-dates.ts`:**
   - `stripQuotes` — identical implementation in both files
@@ -95,7 +96,7 @@
 - No progress indication during sync (no counter like "Syncing 12/247...").
 
 **Octokit pagination:**
-- Correctly uses `octokit.paginate()` to fetch all starred repos in a single call chain. Good.
+- Correctly uses `octokit.paginate()` to fetch all starred repos in a single call chain.
 - `per_page: 100` is the GitHub API maximum. Optimal.
 
 **No caching or change detection:**
@@ -103,7 +104,7 @@
 - No local SHA comparison or `git fetch --dry-run` to skip unchanged repos.
 
 **Filesystem operations:**
-- `listFolders` uses `fs.readdirSync` (synchronous) — fine for a CLI tool, but the entire sync flow is `async` already; could be non-blocking.
+- `listFolders` uses `fs.readdirSync` (synchronous) — fine for a CLI tool.
 - `fs.mkdirSync` and `fs.existsSync` in `runStarsync` — synchronous but appropriate for startup operations.
 
 ### 4. Security
@@ -123,6 +124,7 @@
 - **No rate-limit handling** — GitHub API returns 403/429 when rate-limited. Octokit throws but there's no retry, backoff, or rate-limit status display.
 - **`clone_url` from API used directly** — HTTPS clone URLs exclusively. No option for SSH URLs (`ssh_url`), which some users with SSH key auth may prefer.
 - **`dotenv` loads `.env` from resolved filesystem path** — Works correctly, but no check that file permissions are restrictive (minor for a personal CLI tool).
+- **`.env` contains a real fine-grained PAT** — The `.env` file contains a `github_pat_` prefixed token. While correctly gitignored, the token is in plaintext on disk. For a personal CLI tool this is standard practice.
 
 **Severity: Low.** This is a local CLI tool for personal use, not a network service.
 
@@ -212,17 +214,22 @@
 2026-05-06  Refactor: move CLI into src/ (d392429)
 2026-05-06  Add test coverage for sync helpers (7b81885)
 2026-06-10  Add comprehensive codebase analysis report (e4a7aca)
-2026-06-10  Create project assurance profile (ffcb5a1) ← HEAD
+2026-06-10  Create project assurance profile (ffcb5a1)
+2026-06-10  Refresh codebase analysis with working-tree delta (8027012)
+2026-06-10  Verify project profile refresh (0241aa3)
+2026-06-10  Feature coverage audit refresh (b78668c)
+2026-06-10  Feature review (d3379f5)
+2026-06-10  Feature review (6c4088d) ← HEAD
 ```
 
 **Key observations:**
 - Rapid initial development (April 30 → May 1), then a 5-day gap for polish and tooling.
 - **Security hardening commit** (`ed120a0`) is the most significant — migrated from `execSync` (string interpolation) to `execFileSync` (argv array), eliminating shell injection risk.
-- Clean commit history with conventional commit prefixes (`test:`, `refactor:`, `chore:`).
+- Clean commit history with conventional commit prefixes.
 - No bug-fix-only commits, suggesting the tool works reliably for its intended purpose.
 - Technical debt trend: **Low and stable**. The codebase started clean and stayed clean.
 - Only accumulating debt is duplicated utilities between `index.ts` and `set-folder-dates.ts`.
-- 5-week gap between last code change (May 6) and analysis work (June 10) — project appears stable.
+- 5-week gap between last code change (May 6) and AIDD metadata work (June 10) — project is stable.
 
 ### 8. Dependencies
 
@@ -233,9 +240,9 @@
 | `@octokit/rest` | ^22.0.1 | ✅ GitHub API client. Well-maintained, de-facto standard. |
 | `dotenv` | ^17.4.2 | ⚠️ Consider Bun's native `--env-file` or built-in `.env` loading to remove this dependency. |
 
-**Development (13 in working tree):**
+**Development (14 in working tree):**
 - All lint/format/build tools. Appropriate and current.
-- `only-allow` enforces Bun as package manager — good practice (new in working tree).
+- `only-allow` enforces Bun as package manager — good practice (uncommitted in working tree).
 - ⚠️ `prettier-plugin-tailwindcss` is included but Tailwind is not used anywhere.
 - ⚠️ `eslint-plugin-react-hooks` and `eslint-plugin-react-refresh` are referenced in `frontend/eslint.config.js` but not in `package.json` devDependencies.
 
@@ -264,16 +271,22 @@
 | Artifact | Severity | Status |
 |---|---|---|
 | `.aidd/spec.md` | Required | ❌ Missing — no formal spec document |
-| `CONTEXT.md` | Required | ❌ Missing — no context document |
 | `.aidd/assertions.md` | Recommended | ❌ Missing |
 | `.aidd/roadmap.json` | Recommended | ❌ Missing |
 | `.aidd/screen-map.md` | Recommended | ❌ Missing (not applicable — CLI tool, no screens) |
-| `.aidd/testing-scenarios.md` | Recommended | ❌ Missing |
-| `.aidd/project-structure.md` | Recommended | ✅ Fresh (0 days old) |
-| `.aidd/project.md` | Recommended | ✅ Fresh (21 days old) |
-| `.aidd/project-profile.json` | Recommended | ✅ Fresh (0 days old) |
+| `.aidd/testing-scenarios.md` | Recommended | ✅ Present — 10 scenarios covering all major features |
+| `.aidd/project-structure.md` | Recommended | ✅ Present |
+| `.aidd/project.md` | Recommended | ✅ Present |
+| `.aidd/project-profile.json` | Recommended | ✅ Present |
+| `.aidd/features/` | Recommended | ✅ 8 features, all completed |
+| `.aidd/CHANGELOG.md` | Required | ✅ Present and comprehensive |
+| `.aidd/audit-reports/` | Recommended | ✅ Prior report present |
 
-**Required items missing: 2 of 2** (`spec.md`, `CONTEXT.md`). For a small CLI utility like starsync, a full spec may be disproportionate, but at minimum a `spec.md` describing the intended behavior would formalize the project's contract.
+**Required items missing: 1** (`spec.md`). For a small CLI utility like starsync, a full spec may be disproportionate, but at minimum a `spec.md` describing the intended behavior would formalize the project's contract.
+
+**Improvement since prior report:**
+- `testing-scenarios.md` now exists (was missing in prior report).
+- 8 features tracked (was 0 in initial analysis, now all backfilled).
 
 ---
 
@@ -336,7 +349,7 @@
 13. Replace `dotenv` with Bun native env (L1)
 14. Add `--dry-run` to sync and `--ssh` flag (L3, L4)
 15. Add progress indicator (L2)
-16. Add rate-limit awareness (L7)
+16. Add rate-limit awareness (L6)
 
 ### Long-term (3-6 months)
 17. Add incremental sync / change detection
@@ -347,7 +360,7 @@
 
 ## Quality Validation Status
 
-> **Note:** Quality checks could not be executed in this session. The runtime environment (WSL 1 containerized agent) does not support the Bun runtime or Node.js. The following is a manual assessment based on thorough static code analysis.
+> **Note:** Quality checks could not be executed in this session. The runtime environment (WSL 1 containerized agent) does not have Bun or Node.js available on PATH. The following is a manual assessment based on thorough static code analysis.
 
 | Check | Expected Status | Notes |
 |---|---|---|
@@ -360,22 +373,16 @@
 
 ---
 
-## Security Note
-
-The `.env` file in the working directory contains a real GitHub Personal Access Token (`github_pat_` prefix, fine-grained PAT). This file is correctly listed in `.gitignore` and is not tracked by git. No exposure risk was identified in the codebase — the token is loaded via `dotenv` and passed directly to Octokit without being logged.
-
----
-
 ## Working Tree Advisory
 
 The following uncommitted changes exist in the working tree:
 
 | File | Change | Recommendation |
 |---|---|---|
-| `package.json` | Added `packageManager: "bun@1.3.14"`, `only-allow` devDep, `preinstall` script, `engines.node` | Commit, but remove or reconsider `engines.node` field |
+| `package.json` | Added `packageManager: "bun@1.3.14"`, `only-allow` devDep, `preinstall` script, tightened `engines.bun`, added `engines.node` | Commit, but remove or reconsider `engines.node` field — project is Bun-only |
 | `bun.lock` | Updated lockfile reflecting above | Commit alongside package.json |
 
-These changes should be committed to preserve the Bun enforcement configuration.
+These changes should be committed to preserve the Bun enforcement configuration. They have been uncommitted since at least the prior analysis (2026-06-10).
 
 ---
 
