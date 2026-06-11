@@ -127,6 +127,5 @@ test/
 1. `cloneOrPull` is private (not exported) — cannot be unit-tested without refactoring
 2. `stripQuotes` and `resolveTargetPath` are duplicated between `src/index.ts` and `scripts/set-folder-dates.ts`
 3. `cloneOrPull` uses name-only matching — no remote URL verification for existing directories
-4. Bare catch block in `set-folder-dates.ts` silently swallows errors
-5. `frontend/` directory is dead (only orphaned eslint config) — candidate for removal
-6. `.gitattributes` has duplicate entries
+4. `frontend/` directory is dead (only orphaned eslint config) — candidate for removal
+5. `.gitattributes` has duplicate entries

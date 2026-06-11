@@ -132,7 +132,8 @@ for (const entry of entries) {
 			oldTime,
 			status: args.dryRun ? 'would-update' : 'updated',
 		});
-	} catch {
+	} catch (err) {
+		console.warn(`Cannot process ${entry.name}: ${(err as Error).message}`);
 		results.push({ name: entry.name, newTime: oldTime, oldTime, status: 'skipped:no-commit' });
 	}
 }
