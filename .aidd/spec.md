@@ -114,8 +114,10 @@ set-folder-dates [options] [target-path]
 ```
 src/
   cli.ts        # CLI entrypoint — calls runStarsync, handles top-level errors
-  index.ts      # Core logic: parseArgs, resolveTargetPath, listFolders,
-                # cloneOrPull (private), runStarsync (exported)
+  index.ts      # Core logic: parseArgs, cloneOrPull, runStarsync (exported),
+                # re-exports stripQuotes and resolveTargetPath from lib/
+  lib/
+    cli-utils.ts  # Shared CLI utilities: stripQuotes, resolveTargetPath
 scripts/
   set-folder-dates.ts  # Companion: updates folder mtimes from git log
 test/
@@ -125,7 +127,6 @@ test/
 ## Known Limitations
 
 1. `cloneOrPull` is private (not exported) — cannot be unit-tested without refactoring
-2. `stripQuotes` and `resolveTargetPath` are duplicated between `src/index.ts` and `scripts/set-folder-dates.ts`
-3. `cloneOrPull` uses name-only matching — no remote URL verification for existing directories
-4. `frontend/` directory is dead (only orphaned eslint config) — candidate for removal
-5. `.gitattributes` has duplicate entries
+2. `cloneOrPull` uses name-only matching — no remote URL verification for existing directories
+3. `frontend/` directory is dead (only orphaned eslint config) — candidate for removal
+4. `.gitattributes` has duplicate entries

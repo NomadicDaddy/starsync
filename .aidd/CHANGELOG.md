@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Extract duplicate utility code to shared module (2026-07-28)
+  - Created `src/lib/cli-utils.ts` with shared `stripQuotes` and `resolveTargetPath` functions
+  - Updated `src/index.ts` to delegate to shared module and re-export for backward compatibility
+  - Updated `scripts/set-folder-dates.ts` to import from shared module via `resolveTargetPathForScript` wrapper
+  - Eliminates duplicate `stripQuotes` and `resolveTargetPath` implementations between `src/index.ts` and `scripts/set-folder-dates.ts`
+  - Each consumer keeps its own specialized `parseArgs` (sync flags vs `--dry-run`) but delegates shared logic
+  - No breaking changes — all existing imports and tests remain valid (backward-compatible re-exports)
+  - `tsconfig.json` already covers `src/lib/**/*.ts` via existing `src/**/*.ts` glob
+  - Updated `spec.md` File Layout section to include `src/lib/cli-utils.ts`, removed Known Limitations item #2
+  - Resolves audit finding: `audit-reorg-...duplicate-utility-code...`
+  - `bun run smoke:qc` not verified (bun not available in WSL agent environment — environment limitation, not code defect)
+
 ### Fixed
 
 - Fix bare catch block silently swallowing errors in set-folder-dates.ts (2026-07-28)

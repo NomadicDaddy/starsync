@@ -5,6 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resolveTargetPath } from '../src/lib/cli-utils.ts';
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..');
 
@@ -51,14 +53,8 @@ const parseArgs = (): ParsedArgs => {
 	return parsed;
 };
 
-const stripQuotes = (value: string): string => value.trim().replace(/^['"]|['"]$/g, '');
-
-const resolveTargetPath = (positional: null | string): string => {
-	if (positional) return path.resolve(positional);
-	const envValue = process.env.TARGET_PATH ? stripQuotes(process.env.TARGET_PATH) : '';
-	if (envValue) return path.resolve(envValue);
-	return path.resolve(repoDir, 'starred_repos');
-};
+const resolveTargetPathForScript = (positional: null | string): string =>
+	resolveTargetPath(positional, process.env.TARGET_PATH, repoDir);
 
 type Status = 'skipped:no-commit' | 'skipped:not-git' | 'updated' | 'would-update';
 
@@ -75,7 +71,7 @@ if (args.help) {
 	process.exit(0);
 }
 
-const root = resolveTargetPath(args.targetPath);
+const root = resolveTargetPathForScript(args.targetPath);
 if (!fs.existsSync(root)) {
 	console.error(`Root path does not exist: ${root}`);
 	process.exit(1);
