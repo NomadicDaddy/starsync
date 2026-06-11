@@ -1,19 +1,20 @@
 {
-	"id": "audit-architecture-1781133983-cloneorpull-function-is-private-and-untestable",
-	"title": "cloneOrPull function is private and untestable",
-	"description": "Verified: src/index.ts:85 — `const cloneOrPull = (repo, targetBase, existing): SyncResult` is declared as a module-level `const` (not exported). The function encapsulates the core git clone/pull logic but cannot be imported or unit-tested. The existing test file test/index.test.ts only tests the exported functions (parseArgs, resolveTargetPath, listFolders, stripQuotes). This is already noted in the starred-repo-sync feature.json notes: 'cloneOrPull is private (not exported) and cannot be unit-tested without refactoring.'",
-	"category": "Audit",
-	"dependencies": [],
-	"status": "backlog",
-	"passes": false,
-	"priority": 3,
-	"affectedFiles": [
-		"src/index.ts",
-		"test/index.test.ts"
-	],
-	"auditSeverity": "Medium",
-	"auditSource": "ARCHITECTURE",
-	"createdAt": "2026-06-10T23:26:23.062Z",
-	"spec": "1. Export the cloneOrPull function from src/index.ts by changing `const cloneOrPull` to `export const cloneOrPull`.\n2. Add unit tests in test/index.test.ts for cloneOrPull covering: successful clone (mock execFileSync returning exit code 0 for 'git clone'), successful pull (mock execFileSync returning exit code 0 for 'git pull'), clone failure (mock execFileSync throwing Error for nonexistent URL), pull failure (mock execFileSync throwing Error for merge conflict).\n3. Mock `node:child_process` module's `execFileSync` using `bun:test`'s `mock` function to avoid needing real git operations in tests.\n4. Verify `bun test` passes with all new cloneOrPull test cases.\n5. Verify `bun run smoke:qc` passes (typecheck confirms exported cloneOrPull has correct type signature SyncResult).\n6. Update starred-repo-sync feature.json spec to add: 'Verify cloneOrPull is exported from src/index.ts and has unit test coverage.' This prevents re-hiding the function during a feature-based rebuild.",
-	"updatedAt": "2026-06-10T23:41:43.000Z"
+  "id": "audit-architecture-1781133983-cloneorpull-function-is-private-and-untestable",
+  "title": "cloneOrPull function is private and untestable",
+  "description": "Verified: src/index.ts:85 — `const cloneOrPull = (repo, targetBase, existing): SyncResult` is declared as a module-level `const` (not exported). The function encapsulates the core git clone/pull logic but cannot be imported or unit-tested. The existing test file test/index.test.ts only tests the exported functions (parseArgs, resolveTargetPath, listFolders, stripQuotes). This is already noted in the starred-repo-sync feature.json notes: 'cloneOrPull is private (not exported) and cannot be unit-tested without refactoring.'",
+  "category": "Audit",
+  "dependencies": [],
+  "status": "completed",
+  "passes": true,
+  "priority": 3,
+  "auditSource": "ARCHITECTURE",
+  "affectedFiles": [
+    "src/index.ts",
+    "test/index.test.ts"
+  ],
+  "auditSeverity": "Medium",
+  "createdAt": "2026-06-10T23:26:23.062Z",
+  "spec": "1. Export the cloneOrPull function from src/index.ts by changing `const cloneOrPull` to `export const cloneOrPull`.\n2. Add unit tests in test/index.test.ts for cloneOrPull covering: successful clone (mock execFileSync returning exit code 0 for 'git clone'), successful pull (mock execFileSync returning exit code 0 for 'git pull'), clone failure (mock execFileSync throwing Error for nonexistent URL), pull failure (mock execFileSync throwing Error for merge conflict).\n3. Mock `node:child_process` module's `execFileSync` using `bun:test`'s `mock` function to avoid needing real git operations in tests.\n4. Verify `bun test` passes with all new cloneOrPull test cases.\n5. Verify `bun run smoke:qc` passes (typecheck confirms exported cloneOrPull has correct type signature SyncResult).\n6. Update starred-repo-sync feature.json spec to add: 'Verify cloneOrPull is exported from src/index.ts and has unit test coverage.' This prevents re-hiding the function during a feature-based rebuild.",
+  "notes": "Exported cloneOrPull and SyncResult type from src/index.ts. Added 5 unit tests (clone new, clone when folder exists without .git, pull existing, clone failure, pull failure) using bun:test mock for node:child_process. All 13 tests pass. smoke:qc passes. Updated starred-repo-sync feature.json note and spec.",
+  "updatedAt": "2026-07-28T00:00:00.000Z"
 }

@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Export cloneOrPull and add unit tests (2026-07-28)
+  - **Exported `cloneOrPull` function** from `src/index.ts` (changed `const` to `export const`)
+  - **Exported `SyncResult` type** from `src/index.ts` (changed `type` to `export type`)
+  - **Added 5 unit tests** in `test/index.test.ts` for `cloneOrPull`:
+    - Clone new repo when folder doesn't exist
+    - Clone repo when folder exists but lacks `.git/` directory
+    - Pull existing repo when folder has `.git/` directory
+    - Clone failure (mock `execFileSync` throwing error)
+    - Pull failure (mock `execFileSync` throwing error)
+  - Mocked `node:child_process` via `bun:test` `mock.module()` to avoid real git operations
+  - All 13 tests pass (8 original + 5 new)
+  - `bun run smoke:qc` passes (typecheck + lint + format:check)
+  - Updated `starred-repo-sync/feature.json` note and spec to reflect cloneOrPull export
+
 - Onboarding session (2026-07-27)
   - **Created `/.aidd/spec.md`** (required artifact missing since intake 2026-06-10)
     - Comprehensive app specification covering CLI interface, authentication, sync behavior, companion script behavior, data model, quality gate, technology constraints, file layout, and known limitations
