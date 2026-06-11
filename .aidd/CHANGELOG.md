@@ -208,6 +208,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Replaced dotenv with Bun-native env loading (`audit-security-1781133982-github-personal-access-token-committed-to-env-file-in-version-control`)
+  - Removed `dotenv` import and `loadDotenv()` call from `src/index.ts` (was line 2, line 126)
+  - Removed `dotenv` import and `loadDotenv()` call from `scripts/set-folder-dates.ts` (was line 3, line 59)
+  - Removed `dotenv` from `package.json` dependencies
+  - Updated `bun.lock` via `bun install`
+  - Updated `README.md` Configuration section: replaced `.env.example` copy instruction with Bun-native `.env` guidance (Bun auto-loads `.env` files, no library needed)
+  - Updated error message from `'GITHUB_TOKEN is not set in .env'` to `'GITHUB_TOKEN is not set'` (token source is now shell/Bun-native, not dotenv-specific)
+  - Removed dependency on `audit-reorg-...duplicate-utility-code...` (was file-overlap only, not functional)
+  - All 8 tests pass, smoke:qc passes
+
 ### Deprecated
 
 ### Removed
