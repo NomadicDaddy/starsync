@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Add remote URL verification to `cloneOrPull` to prevent misidentifying repos with identical names (2026-07-28)
+  - Before pulling an existing repo, `cloneOrPull` now reads `remote.origin.url` via `git config --get` and compares it to `repo.clone_url`
+  - If URLs don't match (e.g., two starred repos with the same name from different owners), the repo is skipped with a `console.warn` and recorded as a `SyncFailure` with verb `'clone'`
+  - Updated existing "pulls existing repo" test to mock the remote URL check call
+  - Updated existing "pull throws error" test to chain the remote URL check before the pull error
+  - Added new test: "returns failure when remote URL does not match the expected clone URL"
+  - Updated `spec.md` Folder Matching Logic to document the new URL verification behavior
+  - Removed the now-resolved known limitation from `spec.md` Known Limitations section
+  - Resolves audit finding: `audit-logic-...cloneorpull-determines-repo-existence-by-name-match...`
+  - `bun run smoke:qc` not verified (bun not available in WSL agent environment — environment limitation, not code defect)
+
 ### Removed
 
 - Delete dead `frontend/` directory (2026-07-28)
