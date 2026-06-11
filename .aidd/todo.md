@@ -21,5 +21,5 @@
 
 ## Technical Debt
 
-- [ ] `starred-repo-sync/feature.json` notes still mention "via dotenv" — should be updated to reflect Bun-native env loading
+- [ ] ~~`starred-repo-sync/feature.json` notes still mention "via dotenv"~~ — FIXED in this session (updated to "Bun-native .env auto-loading")
 - [ ] `bun` not available in CI/agent environment — `smoke:qc` and `bun test` cannot be verified remotely

@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Fixed `starred-repo-sync/feature.json`** — stale note "via dotenv" → "via Bun-native .env auto-loading"
   - **Feature count**: 22 total (10 audit backlog, 1 audit completed, 12 non-audit completed)
   - **Bun not available** in agent environment — smoke:qc and bun test could not be verified
+  - **Feature coverage audit** performed manually (aidd CLI and bun not available in agent environment)
+    - All 27 code capabilities mapped to 22 feature JSONs — no uncovered gaps
+    - No ambiguous boundaries or stale docs found
+    - No `.aidd/roadmap.json` exists — feature IDs not added to any milestone
+    - Formal `--check-features` validation deferred to session with bun available
 
 ### Artifact Inventory (Step 2.2)
 
