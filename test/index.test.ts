@@ -3,17 +3,36 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { cloneOrPull, listFolders, parseArgs, resolveTargetPath, stripQuotes } from '../src/index.ts';
+import { cloneOrPull, listFolders, parseArgs, resolveTargetPath, runStarsync, stripQuotes } from '../src/index.ts';
 import type { Repository, SyncResult } from '../src/index.ts';
 
-const mockExecFileSync = mock((_cmd: string, _args: string[]) => {});
+const mockExecFileSync = mock((_cmd: string, _args: string[]): string | undefined => undefined);
 
 mock.module('node:child_process', () => ({
 	execFileSync: mockExecFileSync,
 }));
 
+interface MockRepoResponse {
+	clone_url: string;
+	name: string;
+}
+
+const mockPaginate = mock((): Promise<MockRepoResponse[]> => Promise.resolve([]));
+
+mock.module('@octokit/rest', () => ({
+	Octokit: class MockOctokit {
+		rest = {
+			activity: {
+				listReposStarredByAuthenticatedUser: {},
+			},
+		};
+		paginate = mockPaginate;
+	},
+}));
+
 afterEach(() => {
 	mockExecFileSync.mockReset();
+	mockPaginate.mockReset();
 });
 
 describe('cloneOrPull', () => {
@@ -206,4 +225,92 @@ describe('folder discovery', () => {
 	test('returns an empty set for a missing path', () => {
 		expect(listFolders(path.join(tmpdir(), 'starsync-missing-path')).size).toBe(0);
 	});
+});
+
+describe('runStarsync', () => {
+	let savedToken: string | undefined;
+
+	const withToken = (fn: () => Promise<void> | void) => async () => {
+		savedToken = process.env.GITHUB_TOKEN;
+		process.env.GITHUB_TOKEN = 'test-token';
+		try {
+			await fn();
+		} finally {
+			if (savedToken === undefined) {
+				delete process.env.GITHUB_TOKEN;
+			} else {
+				process.env.GITHUB_TOKEN = savedToken;
+			}
+		}
+	};
+
+	test(
+		'returns exit code 1 when GITHUB_TOKEN is not set',
+		async () => {
+			delete process.env.GITHUB_TOKEN;
+			const exitCode = await runStarsync([]);
+			expect(exitCode).toBe(1);
+		}
+	);
+
+	test(
+		'returns exit code 0 for --help flag',
+		withToken(async () => {
+			const exitCode = await runStarsync(['--help']);
+			expect(exitCode).toBe(0);
+		})
+	);
+
+	test(
+		'returns exit code 2 for unknown argument',
+		withToken(async () => {
+			const exitCode = await runStarsync(['--unknown']);
+			expect(exitCode).toBe(2);
+		})
+	);
+
+	test(
+		'returns exit code 0 on successful sync with two repos',
+		withToken(async () => {
+			mockPaginate.mockResolvedValue([
+				{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+				{ clone_url: 'https://github.com/example/repo-b.git', name: 'repo-b' },
+			]);
+			mockExecFileSync.mockReturnValue(undefined);
+
+			const target = mkdtempSync(path.join(tmpdir(), 'starsync-sync-'));
+			try {
+				const exitCode = await runStarsync([target]);
+				expect(exitCode).toBe(0);
+				expect(mockExecFileSync).toHaveBeenCalledTimes(2);
+			} finally {
+				rmSync(target, { force: true, recursive: true });
+			}
+		})
+	);
+
+	test(
+		'returns exit code 1 when one clone fails (partial failure)',
+		withToken(async () => {
+			mockPaginate.mockResolvedValue([
+				{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+				{ clone_url: 'https://github.com/example/repo-b.git', name: 'repo-b' },
+			]);
+			// First clone succeeds, second clone throws
+			mockExecFileSync
+				.mockReturnValueOnce(undefined)
+				.mockImplementationOnce(() => {
+					throw new Error('fatal: repository not found');
+				});
+
+			const target = mkdtempSync(path.join(tmpdir(), 'starsync-sync-'));
+			try {
+				const exitCode = await runStarsync([target]);
+				expect(exitCode).toBe(1);
+				expect(mockExecFileSync).toHaveBeenCalledTimes(2);
+			} finally {
+				rmSync(target, { force: true, recursive: true });
+			}
+		})
+	);
 });

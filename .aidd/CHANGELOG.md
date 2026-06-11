@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Add test coverage for `runStarsync` orchestration function (2026-07-28)
+  - Added 5 unit tests in `test/index.test.ts` for the main `runStarsync` entry point:
+    - Missing `GITHUB_TOKEN` → exit code 1 with error message
+    - `--help` flag → exit code 0 with help text printed
+    - Unknown argument → exit code 2 with error message
+    - Successful sync with 2 mocked repos → exit code 0, "Succeeded: 2" summary
+    - Partial failure (one clone throws) → exit code 1 with failure summary
+  - Mocked `@octokit/rest` module via `bun:test` `mock.module()` with a mock `Octokit` class providing controlled `paginate` responses
+  - Fixed pre-existing TypeScript error: `mockExecFileSync` typed as returning `void` but used with `string` return values — changed to `string | undefined`
+  - All 19 tests pass (14 existing + 5 new)
+  - `bun run smoke:qc` passes (typecheck + lint + format:check)
+  - Resolves audit finding: `audit-testing-...no-test-coverage-for-runstarsync-orchestration-function...`
+
 - Add remote URL verification to `cloneOrPull` to prevent misidentifying repos with identical names (2026-07-28)
   - Before pulling an existing repo, `cloneOrPull` now reads `remote.origin.url` via `git config --get` and compares it to `repo.clone_url`
   - If URLs don't match (e.g., two starred repos with the same name from different owners), the repo is skipped with a `console.warn` and recorded as a `SyncFailure` with verb `'clone'`
