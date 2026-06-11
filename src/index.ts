@@ -89,15 +89,23 @@ export const cloneOrPull = (
 	const verb = isCloned ? 'pull' : 'clone';
 	try {
 		if (isCloned) {
-			const remoteUrl = execFileSync('git', ['-C', repoPath, 'config', '--get', 'remote.origin.url'], {
-				encoding: 'utf-8',
-			}).trim();
+			const remoteUrl = execFileSync(
+				'git',
+				['-C', repoPath, 'config', '--get', 'remote.origin.url'],
+				{
+					encoding: 'utf-8',
+				}
+			).trim();
 			if (remoteUrl !== repo.clone_url) {
 				console.warn(
 					`Skipping ${repo.name}: remote URL mismatch (expected ${repo.clone_url}, found ${remoteUrl})`
 				);
 				return {
-					failure: { message: `Remote URL mismatch (expected ${repo.clone_url}, found ${remoteUrl})`, name: repo.name, verb: 'clone' },
+					failure: {
+						message: `Remote URL mismatch (expected ${repo.clone_url}, found ${remoteUrl})`,
+						name: repo.name,
+						verb: 'clone',
+					},
 					ok: false,
 				};
 			}
