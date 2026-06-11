@@ -10,12 +10,14 @@
   "id": "target-path-resolution",
   "notes": [
     "Backfilled by feature-coverage-audit from current implementation evidence on 2026-06-10.",
-    "Duplication eliminated via src/lib/cli-utils.ts (folded reorg audit finding, consolidated 2026-06-11)."
+    "Duplication eliminated via src/lib/cli-utils.ts (folded reorg audit finding, consolidated 2026-06-11).",
+    "Revision 1.1.0 (2026-06-11): TARGET_PATH parsing unified (trim + quote strip) and default path standardized to <repo>/starred_repos for both scripts; stripQuotes/resolveTargetPath extracted to shared src/lib/cli-utils.ts."
   ],
   "passes": true,
   "priority": 2,
   "spec": "1. Verify a positional target-path argument overrides both TARGET_PATH env var and default.\n2. Verify TARGET_PATH env var (with surrounding quotes) is used when no positional argument is given.\n3. Verify the default path <repo>/starred_repos is used when neither positional argument nor env var is provided.\n4. Verify stripQuotes removes surrounding single quotes, double quotes, and leading/trailing whitespace.\n5. Verify stripQuotes and resolveTargetPath are implemented once in src/lib/cli-utils.ts and imported by both src/index.ts (which re-exports them for backward compatibility) and scripts/set-folder-dates.ts — do NOT duplicate these utilities.",
   "status": "completed",
   "title": "Target Path Resolution",
-  "updatedAt": "2026-06-11T23:30:00.000Z"
+  "updatedAt": "2026-06-11T23:35:00.000Z",
+  "shippedVersion": "1.1.0"
 }
