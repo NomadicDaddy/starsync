@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- Remote URL verification no longer reports false mismatches for cosmetic URL differences: comparison is now normalized (case-insensitive, trailing `.git` and slashes ignored), so repos like `Lissy93/web-check` vs `lissy93/web-check` or remotes saved without the `.git` suffix pull normally. Genuinely different remotes (different owner or repo path) are still skipped.
+
 ## [1.1.0] - 2026-06-11
 
 ### Added
