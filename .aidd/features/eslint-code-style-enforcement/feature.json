@@ -1,0 +1,13 @@
+{
+	"category": "DevEx",
+	"createdAt": "2026-07-27T12:00:00.000Z",
+	"dependencies": [],
+	"description": "ESLint code style enforcement with custom rules. Uses typescript-eslint, perfectionist (alphabetical sorting of imports, exports, interfaces, objects, enums, switch cases, union types), unused-imports plugin, and a custom no-default-export rule. Enforces named exports, catch variable naming (must be 'err'), eqeqeq, object-shorthand, prefer-const, and prefer-template.",
+	"id": "eslint-code-style-enforcement",
+	"passes": true,
+	"priority": 3,
+	"spec": "1. Verify `bun run lint` passes with no errors.\n2. Verify eslint.config.js enforces named exports (no-default-export rule).\n3. Verify eslint.config.js enforces catch variable naming via no-restricted-syntax selector.\n4. Verify perfectionist plugin sorts imports, exports, interfaces, objects alphabetically.\n5. Verify unused-imports plugin removes unused imports and warns on unused vars.\n6. Verify `@typescript-eslint/no-explicit-any` is set to error.",
+	"status": "completed",
+	"title": "ESLint Code Style Enforcement",
+	"updatedAt": "2026-07-27T12:00:00.000Z"
+}
