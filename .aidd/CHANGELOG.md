@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Deduplicate `.gitattributes` entries (2026-07-28)
+  - Removed 5 duplicate patterns: `*.md`, `*.json`, `*.yml`, `*.yaml`, `*.zip` each appeared twice
+  - Consolidated font (`*.otf`) and archive (`*.rar`) entries into the main binary section
+  - All patterns now appear exactly once in logical groupings
+  - Updated `spec.md` Known Limitations to remove the resolved `.gitattributes` duplicates item
+  - Resolves audit finding: `audit-code-quality-...duplicate-entries-in-gitattributes...`
+  - `bun run smoke:qc` not verified (bun not available in WSL agent environment — environment limitation, not code defect)
+
 - Add test coverage for `runStarsync` orchestration function (2026-07-28)
   - Added 5 unit tests in `test/index.test.ts` for the main `runStarsync` entry point:
     - Missing `GITHUB_TOKEN` → exit code 1 with error message

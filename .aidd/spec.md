@@ -126,4 +126,4 @@ test/
 
 ## Known Limitations
 
-1. `.gitattributes` has duplicate entries
+None.

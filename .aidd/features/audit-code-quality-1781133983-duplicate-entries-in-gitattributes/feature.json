@@ -1,18 +1,19 @@
 {
-	"id": "audit-code-quality-1781133983-duplicate-entries-in-gitattributes",
-	"title": "Duplicate entries in .gitattributes — housekeeping",
-	"description": "Verified: .gitattributes contains multiple duplicate entries: '*.json text eol=lf' appears at lines 13 and 36, '*.md text eol=lf' at lines 10 and 41, '*.yml text eol=lf' at lines 42 and 52, '*.yaml text eol=lf' at lines 43 and 53, '*.zip binary' at lines 69 and 90. Git processes the last matching entry, so duplicates are harmless but create maintenance confusion.",
-	"category": "Audit",
-	"dependencies": [],
-	"status": "backlog",
-	"passes": false,
-	"priority": 5,
-	"affectedFiles": [
-		".gitattributes"
-	],
-	"auditSeverity": "Low",
-	"auditSource": "CODE_QUALITY",
-	"createdAt": "2026-06-10T23:26:23.126Z",
-	"spec": "1. Deduplicate .gitattributes by keeping only one entry per file pattern.\n2. Organize entries into logical sections (text files, binary files) without duplication.\n3. Verify with `git check-attr -a -- src/index.ts` that the attributes still apply correctly after cleanup.",
-	"updatedAt": "2026-06-10T23:59:00.000Z"
+  "id": "audit-code-quality-1781133983-duplicate-entries-in-gitattributes",
+  "title": "Duplicate entries in .gitattributes — housekeeping",
+  "description": "Verified: .gitattributes contains multiple duplicate entries: '*.json text eol=lf' appears at lines 13 and 36, '*.md text eol=lf' at lines 10 and 41, '*.yml text eol=lf' at lines 42 and 52, '*.yaml text eol=lf' at lines 43 and 53, '*.zip binary' at lines 69 and 90. Git processes the last matching entry, so duplicates are harmless but create maintenance confusion.",
+  "category": "Audit",
+  "dependencies": [],
+  "status": "completed",
+  "passes": true,
+  "priority": 5,
+  "auditSource": "CODE_QUALITY",
+  "affectedFiles": [
+    ".gitattributes"
+  ],
+  "auditSeverity": "Low",
+  "createdAt": "2026-06-10T23:26:23.126Z",
+  "spec": "1. Deduplicate .gitattributes by keeping only one entry per file pattern.\n2. Organize entries into logical sections (text files, binary files) without duplication.\n3. Verify with `git check-attr -a -- src/index.ts` that the attributes still apply correctly after cleanup.",
+  "notes": "Removed 5 duplicate entries (*.md, *.json, *.yml, *.yaml, *.zip) from .gitattributes. Consolidated font/archive entries into the main binary section. All patterns now appear exactly once. Updated spec.md Known Limitations to remove the resolved item.",
+  "updatedAt": "2026-06-11T21:42:31.584Z"
 }
