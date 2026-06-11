@@ -1,21 +1,22 @@
 {
-	"id": "audit-dead-code-1781133983-entire-frontend-directory-is-dead-orphaned-eslint-config-js-with-no-source-files",
-	"title": "Dead frontend/ directory with orphaned eslint.config.js and React plugins — no source files",
-	"description": "Verified: frontend/ directory contains only eslint.config.js (138 lines). No package.json, no tsconfig.json, no src/ directory, no .tsx/.jsx/.ts files. The eslint config references eslint-plugin-react-hooks and eslint-plugin-react-refresh, neither of which is in the project's package.json devDependencies. `git status` shows frontend/ as untracked. The project structure doc (.aidd/project-structure.md:16) already notes: '[DEAD] Empty except for orphaned eslint config — candidate for removal'. The frontend/ directory is a fully unwired React eslint config with zero consumers — likely copied from a spernakit template and never cleaned up.",
-	"category": "Audit",
-	"dependencies": [],
-	"status": "backlog",
-	"passes": false,
-	"priority": 4,
-	"affectedFiles": [
-		"frontend/eslint.config.js"
-	],
-	"auditSeverity": "Low",
-	"auditSource": "DEAD_CODE",
-	"createdAt": "2026-06-10T23:26:23.270Z",
-	"spec": "1. Delete the entire `frontend/` directory: `rm -rf frontend/`.\n2. Verify deletion with `ls frontend/` — should report directory not found.\n3. Run `bun run smoke:qc` to confirm no breakage.",
-	"consolidatedFrom": [
-		"audit-feature-integration-1781133982-dead-frontend-directory-with-orphaned-eslint-config-js-containing-react-plugins"
-	],
-	"updatedAt": "2026-06-10T23:59:00.000Z"
+  "id": "audit-dead-code-1781133983-entire-frontend-directory-is-dead-orphaned-eslint-config-js-with-no-source-files",
+  "title": "Dead frontend/ directory with orphaned eslint.config.js and React plugins — no source files",
+  "description": "Verified: frontend/ directory contains only eslint.config.js (138 lines). No package.json, no tsconfig.json, no src/ directory, no .tsx/.jsx/.ts files. The eslint config references eslint-plugin-react-hooks and eslint-plugin-react-refresh, neither of which is in the project's package.json devDependencies. `git status` shows frontend/ as untracked. The project structure doc (.aidd/project-structure.md:16) already notes: '[DEAD] Empty except for orphaned eslint config — candidate for removal'. The frontend/ directory is a fully unwired React eslint config with zero consumers — likely copied from a spernakit template and never cleaned up.",
+  "category": "Audit",
+  "dependencies": [],
+  "status": "completed",
+  "passes": true,
+  "notes": "Deleted the entire frontend/ directory (only contained orphaned eslint.config.js with React plugins and zero source files). Updated spec.md (removed Technology Constraints frontend qualifier, removed Known Limitations #1 stale and #3 frontend). Updated project-structure.md (removed frontend/ entry, cleaned up stale Notes). Updated todo.md (removed completed items).",
+  "priority": 4,
+  "auditSource": "DEAD_CODE",
+  "affectedFiles": [
+    "frontend/eslint.config.js"
+  ],
+  "auditSeverity": "Low",
+  "createdAt": "2026-06-10T23:26:23.270Z",
+  "spec": "1. Delete the entire `frontend/` directory: `rm -rf frontend/`.\n2. Verify deletion with `ls frontend/` — should report directory not found.\n3. Run `bun run smoke:qc` to confirm no breakage.",
+  "consolidatedFrom": [
+    "audit-feature-integration-1781133982-dead-frontend-directory-with-orphaned-eslint-config-js-containing-react-plugins"
+  ],
+  "updatedAt": "2026-06-11T21:28:42.917Z"
 }
