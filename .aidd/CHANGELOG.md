@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Onboarding session (2026-07-27)
+  - **Created `/.aidd/spec.md`** (required artifact missing since intake 2026-06-10)
+    - Comprehensive app specification covering CLI interface, authentication, sync behavior, companion script behavior, data model, quality gate, technology constraints, file layout, and known limitations
+  - **Created `/.aidd/assertions.md`** (recommended artifact missing)
+    - 26 behavioral, data, and quality invariants organized by domain (CLI, sync engine, path resolution, auth, companion script, data, quality)
+  - **Created `/.aidd/todo.md`** (recommended artifact missing)
+    - 10 action items from audit backlog: 2 high priority, 7 medium priority, 1 low priority
+    - 2 technical debt items
+  - **Created 4 new feature JSONs** to meet minimum 20-feature threshold:
+    - `error-handling-and-exit-codes` (Core, completed) — systematic exit code semantics
+    - `typescript-strict-configuration` (DevEx, completed) — strict tsconfig enforcement
+    - `eslint-code-style-enforcement` (DevEx, completed) — ESLint rules with custom plugins
+    - `gitignore-and-environment-protection` (Security, completed) — .env exclusion, line endings
+  - **Fixed `starred-repo-sync/feature.json`** — stale note "via dotenv" → "via Bun-native .env auto-loading"
+  - **Feature count**: 22 total (10 audit backlog, 1 audit completed, 12 non-audit completed)
+  - **Bun not available** in agent environment — smoke:qc and bun test could not be verified
+
+### Artifact Inventory (Step 2.2)
+
+| Artifact                | Status      | Notes                                    |
+| ----------------------- | ----------- | ---------------------------------------- |
+| spec.md                 | ✓ created   | Was required-missing since intake        |
+| assertions.md           | ✓ created   | Was recommended-missing                  |
+| project-structure.md    | ✓ fresh     | Present, accurate                        |
+| project.md              | ✓ fresh     | Present, accurate                        |
+| project-profile.json    | ✓ fresh     | Present, verified accurate 2026-07-27    |
+| testing-scenarios.md    | ✓ fresh     | 20 scenarios, comprehensive coverage     |
+| roadmap.json            | ✗ missing   | Recommended — use `/update-roadmap`      |
+| screen-map.md           | ✗ missing   | Not applicable (CLI tool, no UI screens) |
+| questions.md            | ✗ missing   | Optional                                 |
+| responses.md            | ✗ missing   | Optional                                 |
+| CONTEXT.md              | ✗ missing   | Recommended — domain context file        |
+| todo.md                 | ✓ created   | 10 audit backlog items + 2 tech debt     |
+
+### Feature Coverage Summary
+
+- **Total features**: 22
+- **Completed (passes: true)**: 12 (8 original + 4 new)
+- **Backlog (passes: false)**: 10 (all audit-sourced)
+- **Categories covered**: Core (3), CLI (1), companion (1), quality (1), tooling (2), DevEx (2), Security (1), Audit (10)
+- **Audit features by status**: 1 completed (dotenv removal), 10 backlog
+- **Non-audit features by status**: 11 completed, 0 backlog
+
+### Next Steps
+
+- Session 2: Implement audit backlog items (priority order: export cloneOrPull → fix bare catch → extract utilities → delete dead files)
+- Run `/update-roadmap` to create `.aidd/roadmap.json` with milestone assignments
+- Consider whether `CONTEXT.md` and `screen-map.md` are needed for a CLI tool
+
+### Added
+
 - Intake report (2026-06-10) in `.aidd/reports/intake.md`
   - Detected stack: Bun/TypeScript CLI tool, no framework, no server runtime
   - Project profile: personal developer utility, low criticality, medium data sensitivity

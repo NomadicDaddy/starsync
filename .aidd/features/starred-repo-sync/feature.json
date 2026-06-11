@@ -12,7 +12,7 @@
 		"Backfilled by feature-coverage-audit from current implementation evidence on 2026-06-10.",
 		"cloneOrPull is private (not exported) and cannot be unit-tested without refactoring.",
 		"Uses execFileSync with argv arrays — no shell injection risk.",
-		"Authenticates via GITHUB_TOKEN loaded from .env via dotenv.",
+		"Authenticates via GITHUB_TOKEN loaded by Bun-native .env auto-loading.",
 		"Sequential clone/pull — no concurrency support."
 	],
 	"passes": true,

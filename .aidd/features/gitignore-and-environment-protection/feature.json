@@ -1,0 +1,13 @@
+{
+	"category": "Security",
+	"createdAt": "2026-07-27T12:00:00.000Z",
+	"dependencies": [],
+	"description": "Gitignore and environment protection ensuring GITHUB_TOKEN and other sensitive files are never committed. .gitignore excludes .env, node_modules/, dist/, and starred_repos/. .gitattributes enforces LF line endings and classifies binary files. Git history confirmed clean of .env via `git log --all -- .env`.",
+	"id": "gitignore-and-environment-protection",
+	"passes": true,
+	"priority": 2,
+	"spec": "1. Verify .gitignore excludes .env files.\n2. Verify .gitignore excludes node_modules/, dist/, and starred_repos/.\n3. Verify `git log --all -- .env` returns no results (token never committed).\n4. Verify .gitattributes sets LF line endings for text files.\n5. Verify .gitattributes marks binary files correctly.",
+	"status": "completed",
+	"title": "Gitignore and Environment Protection",
+	"updatedAt": "2026-07-27T12:00:00.000Z"
+}
