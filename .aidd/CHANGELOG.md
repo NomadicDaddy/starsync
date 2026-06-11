@@ -243,6 +243,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Reviewed
 
+- Document review (review-doc spec.md, 2026-07-27) in `.aidd/reports/review-doc-spec-2026-07-27.md`
+  - Reviewed `.aidd/spec.md` — **document does not exist** (required AIDD artifact)
+  - This is the 4th review confirming absence (flagged in intake 2026-06-10, feature-coverage-audit 2026-06-10, feature-coverage-audit 2026-07-14)
+  - Compensating artifacts partially cover the spec's role: 8 feature JSONs (all accurate), project-structure.md, project-profile.json, README.md, testing-scenarios.md
+  - Impact assessed as LOW risk currently (stable, complete CLI, no active development) but MEDIUM future risk for new features/backlog remediation
+  - Recommended spec content outlined: product definition, CLI interface, auth, sync behavior, companion script, quality gate, technology constraints
+  - Report saved to `.aidd/reports/review-doc-spec-2026-07-27.md`
+
 - Feature review (feature-review starsync, 2026-06-10 #2) in `.aidd/reports/feature-review-2026-06-10-starsync.md`
   - Reviewed all 8 feature.json files against codebase
   - 0 backlog features found (all 8 are completed with passes: true)
