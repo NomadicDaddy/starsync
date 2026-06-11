@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.1.0] - 2026-06-11
 
 ### Added
 
@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file. Format foll
 - All `git` subprocesses migrated from `execSync` (string interpolation) to `execFileSync` (argv array). Eliminates shell metacharacter handling in repo names and clone URLs.
 - Default target path is now consistently `<repo>/starred_repos` for both scripts (previously `index.ts` used `process.cwd()/starred_repos`, `set-folder-dates.ts` used `<repo>/starred_repos`).
 - `TARGET_PATH` env-var parsing is unified across both scripts: trim + strip surrounding quotes.
-- `.env` file is now resolved relative to the repo root (not cwd), so both scripts find it regardless of the directory the command is invoked from.
+- `GITHUB_TOKEN` is now loaded via Bun's native `.env` support; the `dotenv` dependency was removed entirely. The missing-token error message is now `GITHUB_TOKEN is not set`.
 - Error messages use the consistent `(error as Error).message` form.
 - `formatTable` is properly typed with generics; no more `any[]`.
 - `cloneOrPull` now verifies remote origin URL before pulling — prevents misidentifying repos with identical names from different owners.
@@ -24,6 +24,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 - `index.ts` no longer exits 0 when the GitHub fetch fails. Both fetch failures and per-repo clone/pull failures now propagate to a non-zero exit code so cron jobs can detect failures.
 - `set-folder-dates.ts` accepts only the canonical `--dry-run` spelling; the `--dryrun` and `-dryrun` aliases were removed.
+- `set-folder-dates.ts` no longer silently skips a folder when `git log` or `fs.utimesSync` fails — it now prints a warning with the folder name and the underlying error before marking it skipped.
+- Deduplicated `.gitattributes` so each file pattern appears exactly once, organized into text and binary sections.
+
+### Removed
+
+- Unused `prettier-plugin-tailwindcss` dev dependency (this CLI tool has no frontend or Tailwind usage).
 
 ### Security
 
