@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Delete dead `frontend/` directory (2026-07-28)
+  - Removed `frontend/eslint.config.js` — 138-line React ESLint config with zero source files to lint
+  - The config referenced `eslint-plugin-react-hooks` and `eslint-plugin-react-refresh`, neither installed in `package.json`
+  - No package.json, tsconfig.json, src/ directory, or any .tsx/.jsx/.ts files existed in `frontend/`
+  - Updated `spec.md` Technology Constraints to remove "despite a dead `frontend/` directory" qualifier
+  - Updated `spec.md` Known Limitations to remove resolved item #3 (dead frontend directory) and #1 (stale — cloneOrPull is now exported), renumbered remaining items
+  - Updated `project-structure.md` to remove frontend/ directory entry and clean up stale Notes/Gotchas (removed resolved items for cloneOrPull, duplicate utilities, frontend/, .nvmrc, prettier-plugin-tailwindcss)
+  - Updated `todo.md` to remove completed items (frontend removal, nvmrc, prettier-plugin, dotenv, bare catch, export cloneOrPull, extract utilities)
+  - Resolves audit finding: `audit-dead-code-...entire-frontend-directory...`
+  - `bun run smoke:qc` not verified (bun not available in WSL agent environment — environment limitation, not code defect)
+
 ### Changed
 
 - Extract duplicate utility code to shared module (2026-07-28)

@@ -107,7 +107,7 @@ set-folder-dates [options] [target-path]
 - **Package manager enforcement:** `only-allow bun` preinstall hook
 - **Formatting:** Prettier (tabs, 100 chars, single quotes)
 - **Linting:** ESLint with typescript-eslint, perfectionist, unused-imports
-- **No Tailwind, no CSS, no frontend** — despite a dead `frontend/` directory
+- **No Tailwind, no CSS, no frontend** — pure CLI tool
 
 ## File Layout
 
@@ -126,7 +126,5 @@ test/
 
 ## Known Limitations
 
-1. `cloneOrPull` is private (not exported) — cannot be unit-tested without refactoring
-2. `cloneOrPull` uses name-only matching — no remote URL verification for existing directories
-3. `frontend/` directory is dead (only orphaned eslint config) — candidate for removal
-4. `.gitattributes` has duplicate entries
+1. `cloneOrPull` uses name-only matching — no remote URL verification for existing directories
+2. `.gitattributes` has duplicate entries
