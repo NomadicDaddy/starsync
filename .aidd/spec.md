@@ -129,6 +129,5 @@ test/
 3. `cloneOrPull` uses name-only matching — no remote URL verification for existing directories
 4. Bare catch block in `set-folder-dates.ts` silently swallows errors
 5. `frontend/` directory is dead (only orphaned eslint config) — candidate for removal
-6. `.nvmrc` file says `24` but project uses Bun, not Node/nvm — misleading
-7. `prettier-plugin-tailwindcss` is a dead dependency — no Tailwind usage anywhere
-8. `.gitattributes` has duplicate entries
+6. `prettier-plugin-tailwindcss` is a dead dependency — no Tailwind usage anywhere
+7. `.gitattributes` has duplicate entries

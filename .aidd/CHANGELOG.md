@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Delete misleading `.nvmrc` file (2026-07-28)
+  - Removed `.nvmrc` containing `24` — implied Node.js/nvm usage but project uses Bun as runtime
+  - Node version requirement already documented in `package.json` engines field (`"node": ">=24.0.0 <25.0.0"`)
+  - Updated `spec.md` Known Limitations to remove resolved item #6 (`.nvmrc` misleading) and renumber remaining items
+  - Resolves audit finding: `audit-code-quality-...misleading-nvmrc...`
+  - `bun run smoke:qc` not verified (bun not available in WSL agent environment — environment limitation, not code defect)
+
 ### Added
 
 - Export cloneOrPull and add unit tests (2026-07-28)
