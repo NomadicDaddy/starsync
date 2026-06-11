@@ -18,7 +18,15 @@ The `preinstall` hook enforces Bun as the package manager — `npm install`, `ya
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set:
+Create a `.env` file in the project root (Bun auto-loads it) or set the variable in your shell:
+
+```sh
+# Option A: .env file (Bun loads it automatically)
+GITHUB_TOKEN=ghp_your_token_here
+
+# Option B: inline environment variable
+GITHUB_TOKEN=ghp_your_token_here bun run sync
+```
 
 | Variable       | Required | Description                                               |
 | -------------- | -------- | --------------------------------------------------------- |

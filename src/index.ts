@@ -1,5 +1,4 @@
 import { Octokit } from '@octokit/rest';
-import { config as loadDotenv } from 'dotenv';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -123,10 +122,9 @@ export const runStarsync = async (argv: string[] = process.argv.slice(2)): Promi
 		return 0;
 	}
 
-	loadDotenv({ path: path.join(repoDir, '.env') });
 	const token = process.env.GITHUB_TOKEN;
 	if (!token) {
-		console.error('GITHUB_TOKEN is not set in .env');
+		console.error('GITHUB_TOKEN is not set');
 		return 1;
 	}
 

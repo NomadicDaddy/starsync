@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-import { config as loadDotenv } from 'dotenv';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -56,7 +55,6 @@ const stripQuotes = (value: string): string => value.trim().replace(/^['"]|['"]$
 
 const resolveTargetPath = (positional: null | string): string => {
 	if (positional) return path.resolve(positional);
-	loadDotenv({ path: path.join(repoDir, '.env') });
 	const envValue = process.env.TARGET_PATH ? stripQuotes(process.env.TARGET_PATH) : '';
 	if (envValue) return path.resolve(envValue);
 	return path.resolve(repoDir, 'starred_repos');
