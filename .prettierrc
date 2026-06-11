@@ -8,8 +8,7 @@
 	"jsxSingleQuote": false,
 	"plugins": [
 		"prettier-plugin-organize-attributes",
-		"prettier-plugin-sort-json",
-		"prettier-plugin-tailwindcss"
+		"prettier-plugin-sort-json"
 	],
 	"printWidth": 100,
 	"semi": true,

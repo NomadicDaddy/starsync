@@ -107,7 +107,7 @@ set-folder-dates [options] [target-path]
 - **Package manager enforcement:** `only-allow bun` preinstall hook
 - **Formatting:** Prettier (tabs, 100 chars, single quotes)
 - **Linting:** ESLint with typescript-eslint, perfectionist, unused-imports
-- **No Tailwind, no CSS, no frontend** — despite a dead `frontend/` directory and orphaned `prettier-plugin-tailwindcss` reference
+- **No Tailwind, no CSS, no frontend** — despite a dead `frontend/` directory
 
 ## File Layout
 
@@ -129,5 +129,4 @@ test/
 3. `cloneOrPull` uses name-only matching — no remote URL verification for existing directories
 4. Bare catch block in `set-folder-dates.ts` silently swallows errors
 5. `frontend/` directory is dead (only orphaned eslint config) — candidate for removal
-6. `prettier-plugin-tailwindcss` is a dead dependency — no Tailwind usage anywhere
-7. `.gitattributes` has duplicate entries
+6. `.gitattributes` has duplicate entries
