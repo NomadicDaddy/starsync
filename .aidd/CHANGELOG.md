@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix bare catch block silently swallowing errors in set-folder-dates.ts (2026-07-28)
+  - Changed `} catch {` to `} catch (err)` at scripts/set-folder-dates.ts:135
+  - Added `console.warn` logging the error message before marking folder as skipped
+  - Error variable named `err` now satisfies ESLint catch-variable rule at eslint.config.js:59-61
+  - Pattern is consistent with other catch blocks in the same file (lines 90, 104)
+  - Resolves audit finding: `audit-code-quality-...bare-catch-block...`
+  - Updated `spec.md` Known Limitations to remove resolved item #4 (bare catch block) and renumber remaining items
+  - `bun run smoke:qc` not verified (bun not available in WSL agent environment — environment limitation, not code defect)
+
 ### Removed
 
 - Remove dead `prettier-plugin-tailwindcss` dependency (2026-07-28)

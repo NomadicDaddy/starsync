@@ -4,8 +4,9 @@
 	"description": "Verified: scripts/set-folder-dates.ts:137 — `} catch {` with no error variable and no logging. This catch block handles failures from both `execFileSync('git', [..., 'log', ...])` and `fs.utimesSync(...)`. When git log fails (e.g., corrupted .git directory) or utimesSync fails (e.g., permission denied), the error is silently swallowed and the folder is marked 'skipped:no-commit'. The root eslint.config.js at line 59-61 enforces catch variables named 'err' via selector `CatchClause > Identifier[name!='err']`, but the bare catch (no variable at all) bypasses this rule because there is no CatchClause Identifier to match.",
 	"category": "Audit",
 	"dependencies": [],
-	"status": "backlog",
-	"passes": false,
+	"status": "completed",
+	"passes": true,
+	"notes": "Changed bare catch at scripts/set-folder-dates.ts:135 to `catch (err)` with `console.warn` logging the error message. Error variable named `err` satisfies the ESLint catch-variable rule at eslint.config.js:59-61. Pattern matches existing catch blocks in the same file (lines 90, 104).",
 	"priority": 4,
 	"affectedFiles": [
 		"scripts/set-folder-dates.ts"
@@ -17,5 +18,5 @@
 	"consolidatedFrom": [
 		"audit-security-1781133982-bare-catch-block-silently-swallows-git-log-and-utimessync-errors-in-set-folder-d"
 	],
-	"updatedAt": "2026-06-10T23:41:43.000Z"
+	"updatedAt": "2026-06-11T21:21:05.364Z"
 }
