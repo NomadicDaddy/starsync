@@ -92,7 +92,9 @@ export const cloneOrPull = (
 ): SyncResult => {
 	console.log(`\n${repo.name}`);
 	const repoPath = path.join(targetBase, repo.name);
-	const isCloned = existing.has(repo.name) && fs.existsSync(path.join(repoPath, '.git'));
+	const isCloned =
+		(existing.has(repo.name) || fs.existsSync(repoPath)) &&
+		fs.existsSync(path.join(repoPath, '.git'));
 	const verb = isCloned ? 'pull' : 'clone';
 	try {
 		if (isCloned) {

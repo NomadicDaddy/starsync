@@ -145,6 +145,32 @@ describe('cloneOrPull', () => {
 		}
 	});
 
+	test('pulls when folder with .git exists on disk but its name is missing from the existing set', () => {
+		// Simulates a case-insensitive filesystem (Windows) where the folder is e.g.
+		// 'Test-Repo' but the GitHub repo name is 'test-repo' — the Set lookup misses,
+		// but the filesystem check must still detect the existing clone.
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
+		try {
+			mkdirSync(path.join(root, 'test-repo'));
+			mkdirSync(path.join(root, 'test-repo', '.git'));
+
+			mockExecFileSync
+				.mockReturnValueOnce('https://github.com/example/test-repo.git\n')
+				.mockReturnValueOnce(undefined);
+
+			const result: SyncResult = cloneOrPull(repo, root, new Set());
+
+			expect(result.ok).toBe(true);
+			expect(mockExecFileSync).toHaveBeenCalledTimes(2);
+			expect(mockExecFileSync).toHaveBeenNthCalledWith(2, 'git', ['pull'], {
+				cwd: path.join(root, 'test-repo'),
+				stdio: 'inherit',
+			});
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
 	test('pulls when remote URL differs only by owner casing', () => {
 		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
 		try {

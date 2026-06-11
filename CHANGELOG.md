@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file. Format foll
 ### Fixed
 
 - Remote URL verification no longer reports false mismatches for cosmetic URL differences: comparison is now normalized (case-insensitive, trailing `.git` and slashes ignored), so repos like `Lissy93/web-check` vs `lissy93/web-check` or remotes saved without the `.git` suffix pull normally. Genuinely different remotes (different owner or repo path) are still skipped.
+- Already-cloned detection now falls back to a filesystem check when the folder name's casing differs from the GitHub repo name (e.g. a local `Profilarr` folder for the `profilarr` repo on Windows). Previously the case-sensitive name lookup missed, and the resulting `git clone` failed against the existing directory.
 
 ## [1.1.0] - 2026-06-11
 
