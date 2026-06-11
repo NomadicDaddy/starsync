@@ -9,5 +9,9 @@
   "spec": "1. Verify .gitignore excludes .env files.\n2. Verify .gitignore excludes node_modules/, dist/, and starred_repos/.\n3. Verify `git log --all -- .env` returns no results (token never committed).\n4. Verify .gitattributes sets LF line endings for text files.\n5. Verify .gitattributes marks binary files correctly.\n6. Verify .gitattributes contains no duplicate file-pattern entries — each pattern appears exactly once, organized into logical sections (text files, binary files); confirm with `git check-attr -a -- src/index.ts`.\n7. Verify environment loading is Bun-native: no dotenv dependency in package.json and no dotenv import or loadDotenv() call in src/ or scripts/ — Bun auto-loads .env files natively. README Configuration section must document creating a .env with GITHUB_TOKEN (Bun auto-loads it) or setting GITHUB_TOKEN via the shell, NOT a dotenv-based workflow.",
   "status": "completed",
   "title": "Gitignore and Environment Protection",
-  "updatedAt": "2026-06-11T23:30:00.000Z"
+  "updatedAt": "2026-06-11T23:35:00.000Z",
+  "notes": [
+    "Revision 1.1.0 (2026-06-11): dotenv removed in favor of Bun-native .env auto-loading; .gitattributes deduplicated so each pattern appears exactly once."
+  ],
+  "shippedVersion": "1.1.0"
 }
