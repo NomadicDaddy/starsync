@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resolveTargetPath as resolveTargetPathImpl } from './lib/cli-utils.ts';
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..');
 
@@ -45,18 +47,13 @@ export const parseArgs = (argv: string[] = process.argv.slice(2)): ParsedArgs =>
 	return parsed;
 };
 
-export const stripQuotes = (value: string): string => value.trim().replace(/^['"]|['"]$/g, '');
+export { stripQuotes } from './lib/cli-utils.ts';
 
 export const resolveTargetPath = (
 	positional: null | string,
 	envTarget: string | undefined = process.env.TARGET_PATH,
 	baseDir: string = repoDir
-): string => {
-	if (positional) return path.resolve(positional);
-	const envValue = envTarget ? stripQuotes(envTarget) : '';
-	if (envValue) return path.resolve(envValue);
-	return path.resolve(baseDir, 'starred_repos');
-};
+): string => resolveTargetPathImpl(positional, envTarget, baseDir);
 
 export const listFolders = (dirPath: string): Set<string> => {
 	if (!fs.existsSync(dirPath)) return new Set();
