@@ -3,7 +3,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { cloneOrPull, listFolders, parseArgs, resolveTargetPath, runStarsync, stripQuotes } from '../src/index.ts';
+import {
+	cloneOrPull,
+	listFolders,
+	parseArgs,
+	resolveTargetPath,
+	runStarsync,
+	stripQuotes,
+} from '../src/index.ts';
 import type { Repository, SyncResult } from '../src/index.ts';
 
 const mockExecFileSync = mock((_cmd: string, _args: string[]): string | undefined => undefined);
@@ -36,7 +43,10 @@ afterEach(() => {
 });
 
 describe('cloneOrPull', () => {
-	const repo: Repository = { clone_url: 'https://github.com/example/test-repo.git', name: 'test-repo' };
+	const repo: Repository = {
+		clone_url: 'https://github.com/example/test-repo.git',
+		name: 'test-repo',
+	};
 
 	test('clones a new repository when folder does not exist', () => {
 		mockExecFileSync.mockReturnValue(undefined);
@@ -121,11 +131,60 @@ describe('cloneOrPull', () => {
 				expect(result.failure.verb).toBe('clone');
 				expect(result.failure.name).toBe('test-repo');
 				expect(result.failure.message).toContain('Remote URL mismatch');
-				expect(result.failure.message).toContain('https://github.com/other-user/test-repo.git');
-				expect(result.failure.message).toContain('https://github.com/example/test-repo.git');
+				expect(result.failure.message).toContain(
+					'https://github.com/other-user/test-repo.git'
+				);
+				expect(result.failure.message).toContain(
+					'https://github.com/example/test-repo.git'
+				);
 			}
 			// Should only have called execFileSync once (the remote URL check), not git pull
 			expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('pulls when remote URL differs only by owner casing', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
+		try {
+			mkdirSync(path.join(root, 'test-repo'));
+			mkdirSync(path.join(root, 'test-repo', '.git'));
+
+			// GitHub owner names are case-insensitive: Example vs example is the same repo
+			mockExecFileSync
+				.mockReturnValueOnce('https://github.com/Example/test-repo.git\n')
+				.mockReturnValueOnce(undefined);
+
+			const existing = new Set(['test-repo']);
+			const result: SyncResult = cloneOrPull(repo, root, existing);
+
+			expect(result.ok).toBe(true);
+			expect(mockExecFileSync).toHaveBeenCalledTimes(2);
+			expect(mockExecFileSync).toHaveBeenNthCalledWith(2, 'git', ['pull'], {
+				cwd: path.join(root, 'test-repo'),
+				stdio: 'inherit',
+			});
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('pulls when remote URL differs only by a missing .git suffix', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
+		try {
+			mkdirSync(path.join(root, 'test-repo'));
+			mkdirSync(path.join(root, 'test-repo', '.git'));
+
+			mockExecFileSync
+				.mockReturnValueOnce('https://github.com/example/test-repo\n')
+				.mockReturnValueOnce(undefined);
+
+			const existing = new Set(['test-repo']);
+			const result: SyncResult = cloneOrPull(repo, root, existing);
+
+			expect(result.ok).toBe(true);
+			expect(mockExecFileSync).toHaveBeenCalledTimes(2);
 		} finally {
 			rmSync(root, { force: true, recursive: true });
 		}
@@ -244,14 +303,11 @@ describe('runStarsync', () => {
 		}
 	};
 
-	test(
-		'returns exit code 1 when GITHUB_TOKEN is not set',
-		async () => {
-			delete process.env.GITHUB_TOKEN;
-			const exitCode = await runStarsync([]);
-			expect(exitCode).toBe(1);
-		}
-	);
+	test('returns exit code 1 when GITHUB_TOKEN is not set', async () => {
+		delete process.env.GITHUB_TOKEN;
+		const exitCode = await runStarsync([]);
+		expect(exitCode).toBe(1);
+	});
 
 	test(
 		'returns exit code 0 for --help flag',
@@ -297,11 +353,9 @@ describe('runStarsync', () => {
 				{ clone_url: 'https://github.com/example/repo-b.git', name: 'repo-b' },
 			]);
 			// First clone succeeds, second clone throws
-			mockExecFileSync
-				.mockReturnValueOnce(undefined)
-				.mockImplementationOnce(() => {
-					throw new Error('fatal: repository not found');
-				});
+			mockExecFileSync.mockReturnValueOnce(undefined).mockImplementationOnce(() => {
+				throw new Error('fatal: repository not found');
+			});
 
 			const target = mkdtempSync(path.join(tmpdir(), 'starsync-sync-'));
 			try {

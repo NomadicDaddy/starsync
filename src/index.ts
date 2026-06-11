@@ -78,6 +78,13 @@ export interface SyncFailure {
 
 export type SyncResult = { failure: null; ok: true } | { failure: SyncFailure; ok: false };
 
+export const normalizeRepoUrl = (url: string): string =>
+	url
+		.trim()
+		.toLowerCase()
+		.replace(/\.git$/, '')
+		.replace(/\/+$/, '');
+
 export const cloneOrPull = (
 	repo: Repository,
 	targetBase: string,
@@ -96,7 +103,7 @@ export const cloneOrPull = (
 					encoding: 'utf-8',
 				}
 			).trim();
-			if (remoteUrl !== repo.clone_url) {
+			if (normalizeRepoUrl(remoteUrl) !== normalizeRepoUrl(repo.clone_url)) {
 				console.warn(
 					`Skipping ${repo.name}: remote URL mismatch (expected ${repo.clone_url}, found ${remoteUrl})`
 				);
