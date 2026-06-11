@@ -79,9 +79,13 @@ export interface SyncFailure {
 	verb: 'clone' | 'pull';
 }
 
-type SyncResult = { failure: null; ok: true } | { failure: SyncFailure; ok: false };
+export type SyncResult = { failure: null; ok: true } | { failure: SyncFailure; ok: false };
 
-const cloneOrPull = (repo: Repository, targetBase: string, existing: Set<string>): SyncResult => {
+export const cloneOrPull = (
+	repo: Repository,
+	targetBase: string,
+	existing: Set<string>
+): SyncResult => {
 	console.log(`\n${repo.name}`);
 	const repoPath = path.join(targetBase, repo.name);
 	const isCloned = existing.has(repo.name) && fs.existsSync(path.join(repoPath, '.git'));

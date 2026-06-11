@@ -10,14 +10,14 @@
 	"id": "starred-repo-sync",
 	"notes": [
 		"Backfilled by feature-coverage-audit from current implementation evidence on 2026-06-10.",
-		"cloneOrPull is private (not exported) and cannot be unit-tested without refactoring.",
+		"cloneOrPull is exported from src/index.ts and has unit test coverage.",
 		"Uses execFileSync with argv arrays — no shell injection risk.",
 		"Authenticates via GITHUB_TOKEN loaded by Bun-native .env auto-loading.",
 		"Sequential clone/pull — no concurrency support."
 	],
 	"passes": true,
 	"priority": 1,
-	"spec": "1. Verify `bun run sync` fetches all starred repos via GitHub API and clones missing repos / pulls existing repos to the target directory.\n2. Verify exit code is 0 when all operations succeed.\n3. Verify exit code is 1 when the GitHub API fetch fails.\n4. Verify exit code is 1 when any individual clone or pull operation fails.\n5. Verify exit code is 2 when unknown CLI arguments are provided.\n6. Verify a per-repo success/failure summary is printed after sync.\n7. Verify GITHUB_TOKEN is required and the tool exits with an error message when it is missing.",
+	"spec": "1. Verify `bun run sync` fetches all starred repos via GitHub API and clones missing repos / pulls existing repos to the target directory.\n2. Verify exit code is 0 when all operations succeed.\n3. Verify exit code is 1 when the GitHub API fetch fails.\n4. Verify exit code is 1 when any individual clone or pull operation fails.\n5. Verify exit code is 2 when unknown CLI arguments are provided.\n6. Verify a per-repo success/failure summary is printed after sync.\n7. Verify GITHUB_TOKEN is required and the tool exits with an error message when it is missing.\n8. Verify cloneOrPull is exported from src/index.ts and has unit test coverage.",
 	"status": "completed",
 	"title": "Starred Repo Sync Engine",
 	"updatedAt": "2026-06-10T22:28:23.000Z"

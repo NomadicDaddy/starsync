@@ -1,9 +1,115 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { listFolders, parseArgs, resolveTargetPath, stripQuotes } from '../src/index.ts';
+import { cloneOrPull, listFolders, parseArgs, resolveTargetPath, stripQuotes } from '../src/index.ts';
+import type { Repository, SyncResult } from '../src/index.ts';
+
+const mockExecFileSync = mock((_cmd: string, _args: string[]) => {});
+
+mock.module('node:child_process', () => ({
+	execFileSync: mockExecFileSync,
+}));
+
+afterEach(() => {
+	mockExecFileSync.mockReset();
+});
+
+describe('cloneOrPull', () => {
+	const repo: Repository = { clone_url: 'https://github.com/example/test-repo.git', name: 'test-repo' };
+
+	test('clones a new repository when folder does not exist', () => {
+		mockExecFileSync.mockReturnValue(undefined);
+		const result: SyncResult = cloneOrPull(repo, '/tmp/target', new Set());
+
+		expect(result.ok).toBe(true);
+		expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+		expect(mockExecFileSync).toHaveBeenCalledWith('git', ['clone', repo.clone_url], {
+			cwd: '/tmp/target',
+			stdio: 'inherit',
+		});
+	});
+
+	test('clones a repository when folder exists but lacks .git directory', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
+		try {
+			mkdirSync(path.join(root, 'test-repo'));
+			mockExecFileSync.mockReturnValue(undefined);
+
+			const existing = new Set(['test-repo']);
+			const result: SyncResult = cloneOrPull(repo, root, existing);
+
+			expect(result.ok).toBe(true);
+			expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+			expect(mockExecFileSync).toHaveBeenCalledWith('git', ['clone', repo.clone_url], {
+				cwd: root,
+				stdio: 'inherit',
+			});
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('pulls an existing repository when folder has .git directory', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
+		try {
+			mkdirSync(path.join(root, 'test-repo'));
+			mkdirSync(path.join(root, 'test-repo', '.git'));
+			mockExecFileSync.mockReturnValue(undefined);
+
+			const existing = new Set(['test-repo']);
+			const result: SyncResult = cloneOrPull(repo, root, existing);
+
+			expect(result.ok).toBe(true);
+			expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+			expect(mockExecFileSync).toHaveBeenCalledWith('git', ['pull'], {
+				cwd: path.join(root, 'test-repo'),
+				stdio: 'inherit',
+			});
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('returns failure when clone throws an error', () => {
+		mockExecFileSync.mockImplementation(() => {
+			throw new Error('fatal: repository not found');
+		});
+
+		const result: SyncResult = cloneOrPull(repo, '/tmp/target', new Set());
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.failure.verb).toBe('clone');
+			expect(result.failure.name).toBe('test-repo');
+			expect(result.failure.message).toContain('fatal: repository not found');
+		}
+	});
+
+	test('returns failure when pull throws an error', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
+		try {
+			mkdirSync(path.join(root, 'test-repo'));
+			mkdirSync(path.join(root, 'test-repo', '.git'));
+			mockExecFileSync.mockImplementation(() => {
+				throw new Error('CONFLICT: merge conflict in file.ts');
+			});
+
+			const existing = new Set(['test-repo']);
+			const result: SyncResult = cloneOrPull(repo, root, existing);
+
+			expect(result.ok).toBe(false);
+			if (!result.ok) {
+				expect(result.failure.verb).toBe('pull');
+				expect(result.failure.name).toBe('test-repo');
+				expect(result.failure.message).toContain('CONFLICT');
+			}
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+});
 
 describe('argument parsing', () => {
 	test('accepts help flags and an optional target path', () => {
