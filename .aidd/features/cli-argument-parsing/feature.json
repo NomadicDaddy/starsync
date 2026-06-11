@@ -1,21 +1,21 @@
 {
-	"affectedFiles": [
-		"src/index.ts",
-		"scripts/set-folder-dates.ts"
-	],
-	"category": "cli",
-	"createdAt": "2026-06-10T22:28:23.000Z",
-	"dependencies": [],
-	"description": "CLI argument parsing for both the main sync command and the set-folder-dates companion script. Supports --help/-h flags, positional target-path arguments, --dry-run (set-folder-dates only), and rejects unknown arguments with usage text and exit code 2.",
-	"id": "cli-argument-parsing",
-	"notes": [
-		"Backfilled by feature-coverage-audit from current implementation evidence on 2026-06-10.",
-		"parseArgs is implemented independently in both src/index.ts and scripts/set-folder-dates.ts with different flag sets — potential future extraction target."
-	],
-	"passes": true,
-	"priority": 2,
-	"spec": "1. Verify --help and -h display usage text and exit with code 0 for both sync and set-folder-dates.\n2. Verify an optional positional target-path argument is accepted.\n3. Verify unknown flags produce an error message with usage text and exit code 2.\n4. Verify --dry-run is accepted by set-folder-dates but rejected by the sync command.\n5. Verify repeated positional arguments are rejected.",
-	"status": "completed",
-	"title": "CLI Argument Parsing",
-	"updatedAt": "2026-06-10T22:28:23.000Z"
+  "affectedFiles": [
+    "src/index.ts",
+    "scripts/set-folder-dates.ts"
+  ],
+  "category": "cli",
+  "createdAt": "2026-06-10T22:28:23.000Z",
+  "dependencies": [],
+  "description": "CLI argument parsing for both the main sync command and the set-folder-dates companion script. Supports --help/-h flags, positional target-path arguments, --dry-run (set-folder-dates only), and rejects unknown arguments with usage text and exit code 2.",
+  "id": "cli-argument-parsing",
+  "notes": [
+    "Backfilled by feature-coverage-audit from current implementation evidence on 2026-06-10.",
+    "Shared logic extracted to src/lib/cli-utils.ts via folded reorg audit finding (consolidated 2026-06-11)."
+  ],
+  "passes": true,
+  "priority": 2,
+  "spec": "1. Verify --help and -h display usage text and exit with code 0 for both sync and set-folder-dates.\n2. Verify an optional positional target-path argument is accepted.\n3. Verify unknown flags produce an error message with usage text and exit code 2.\n4. Verify --dry-run is accepted by set-folder-dates but rejected by the sync command.\n5. Verify repeated positional arguments are rejected.\n6. Verify shared CLI utilities (stripQuotes, resolveTargetPath) live in src/lib/cli-utils.ts and are imported by both src/index.ts and scripts/set-folder-dates.ts; each consumer keeps its own specialized parseArgs (sync flags vs --dry-run) but delegates shared logic — do NOT duplicate utility functions between the two entry points.",
+  "status": "completed",
+  "title": "CLI Argument Parsing",
+  "updatedAt": "2026-06-11T23:30:00.000Z"
 }
