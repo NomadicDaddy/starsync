@@ -1,21 +1,21 @@
 {
-	"affectedFiles": [
-		"src/index.ts",
-		"scripts/set-folder-dates.ts"
-	],
-	"category": "cli",
-	"createdAt": "2026-06-10T22:28:23.000Z",
-	"dependencies": [],
-	"description": "Resolves the target directory for repo synchronization and folder date operations. Priority: positional CLI argument > TARGET_PATH env var (with quote stripping) > default <repo>/starred_repos. Shared stripQuotes utility removes surrounding quotes and whitespace from env var values.",
-	"id": "target-path-resolution",
-	"notes": [
-		"Backfilled by feature-coverage-audit from current implementation evidence on 2026-06-10.",
-		"stripQuotes and resolveTargetPath are duplicated between src/index.ts and scripts/set-folder-dates.ts."
-	],
-	"passes": true,
-	"priority": 2,
-	"spec": "1. Verify a positional target-path argument overrides both TARGET_PATH env var and default.\n2. Verify TARGET_PATH env var (with surrounding quotes) is used when no positional argument is given.\n3. Verify the default path <repo>/starred_repos is used when neither positional argument nor env var is provided.\n4. Verify stripQuotes removes surrounding single quotes, double quotes, and leading/trailing whitespace.",
-	"status": "completed",
-	"title": "Target Path Resolution",
-	"updatedAt": "2026-06-10T22:28:23.000Z"
+  "affectedFiles": [
+    "src/index.ts",
+    "scripts/set-folder-dates.ts"
+  ],
+  "category": "cli",
+  "createdAt": "2026-06-10T22:28:23.000Z",
+  "dependencies": [],
+  "description": "Resolves the target directory for repo synchronization and folder date operations. Priority: positional CLI argument > TARGET_PATH env var (with quote stripping) > default <repo>/starred_repos. Shared stripQuotes utility removes surrounding quotes and whitespace from env var values.",
+  "id": "target-path-resolution",
+  "notes": [
+    "Backfilled by feature-coverage-audit from current implementation evidence on 2026-06-10.",
+    "Duplication eliminated via src/lib/cli-utils.ts (folded reorg audit finding, consolidated 2026-06-11)."
+  ],
+  "passes": true,
+  "priority": 2,
+  "spec": "1. Verify a positional target-path argument overrides both TARGET_PATH env var and default.\n2. Verify TARGET_PATH env var (with surrounding quotes) is used when no positional argument is given.\n3. Verify the default path <repo>/starred_repos is used when neither positional argument nor env var is provided.\n4. Verify stripQuotes removes surrounding single quotes, double quotes, and leading/trailing whitespace.\n5. Verify stripQuotes and resolveTargetPath are implemented once in src/lib/cli-utils.ts and imported by both src/index.ts (which re-exports them for backward compatibility) and scripts/set-folder-dates.ts — do NOT duplicate these utilities.",
+  "status": "completed",
+  "title": "Target Path Resolution",
+  "updatedAt": "2026-06-11T23:30:00.000Z"
 }

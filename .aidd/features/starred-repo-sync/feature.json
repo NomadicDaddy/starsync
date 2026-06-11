@@ -1,24 +1,24 @@
 {
-	"affectedFiles": [
-		"src/index.ts",
-		"src/cli.ts"
-	],
-	"category": "core",
-	"createdAt": "2026-06-10T22:28:23.000Z",
-	"dependencies": [],
-	"description": "Core sync engine that fetches all starred GitHub repositories via the authenticated GitHub REST API (Octokit, paginated at 100/page), then clones new repos and pulls existing ones to the target directory. Reports per-repo success/failure summary at the end of each run. Exits with code 0 on full success, code 1 on any fetch or clone/pull failure, and code 2 on usage errors.",
-	"id": "starred-repo-sync",
-	"notes": [
-		"Backfilled by feature-coverage-audit from current implementation evidence on 2026-06-10.",
-		"cloneOrPull is exported from src/index.ts and has unit test coverage.",
-		"Uses execFileSync with argv arrays — no shell injection risk.",
-		"Authenticates via GITHUB_TOKEN loaded by Bun-native .env auto-loading.",
-		"Sequential clone/pull — no concurrency support."
-	],
-	"passes": true,
-	"priority": 1,
-	"spec": "1. Verify `bun run sync` fetches all starred repos via GitHub API and clones missing repos / pulls existing repos to the target directory.\n2. Verify exit code is 0 when all operations succeed.\n3. Verify exit code is 1 when the GitHub API fetch fails.\n4. Verify exit code is 1 when any individual clone or pull operation fails.\n5. Verify exit code is 2 when unknown CLI arguments are provided.\n6. Verify a per-repo success/failure summary is printed after sync.\n7. Verify GITHUB_TOKEN is required and the tool exits with an error message when it is missing.\n8. Verify cloneOrPull is exported from src/index.ts and has unit test coverage.",
-	"status": "completed",
-	"title": "Starred Repo Sync Engine",
-	"updatedAt": "2026-06-10T22:28:23.000Z"
+  "affectedFiles": [
+    "src/index.ts",
+    "src/cli.ts"
+  ],
+  "category": "core",
+  "createdAt": "2026-06-10T22:28:23.000Z",
+  "dependencies": [],
+  "description": "Core sync engine that fetches all starred GitHub repositories via the authenticated GitHub REST API (Octokit, paginated at 100/page), then clones new repos and pulls existing ones to the target directory. Reports per-repo success/failure summary at the end of each run. Exits with code 0 on full success, code 1 on any fetch or clone/pull failure, and code 2 on usage errors.",
+  "id": "starred-repo-sync",
+  "notes": [
+    "Backfilled by feature-coverage-audit from current implementation evidence on 2026-06-10.",
+    "cloneOrPull is exported from src/index.ts and has unit test coverage.",
+    "Uses execFileSync with argv arrays — no shell injection risk.",
+    "Authenticates via GITHUB_TOKEN loaded by Bun-native .env auto-loading.",
+    "Sequential clone/pull — no concurrency support."
+  ],
+  "passes": true,
+  "priority": 1,
+  "spec": "1. Verify `bun run sync` fetches all starred repos via GitHub API and clones missing repos / pulls existing repos to the target directory.\n2. Verify exit code is 0 when all operations succeed.\n3. Verify exit code is 1 when the GitHub API fetch fails.\n4. Verify exit code is 1 when any individual clone or pull operation fails.\n5. Verify exit code is 2 when unknown CLI arguments are provided.\n6. Verify a per-repo success/failure summary is printed after sync.\n7. Verify GITHUB_TOKEN is required and the tool exits with an error message when it is missing.\n8. Verify cloneOrPull is exported from src/index.ts and has unit test coverage.\n9. Verify cloneOrPull verifies the remote URL before pulling: read remote.origin.url via execFileSync('git', ['-C', repoPath, 'config', '--get', 'remote.origin.url']) and compare it to repo.clone_url; on mismatch, log a console.warn (`Skipping ${repo.name}: remote URL mismatch (expected ${repo.clone_url})`) and record a SyncFailure with verb 'clone' and message 'Remote URL mismatch' — do NOT pull a same-named directory whose remote points to a different repo.",
+  "status": "completed",
+  "title": "Starred Repo Sync Engine",
+  "updatedAt": "2026-06-11T23:30:00.000Z"
 }
