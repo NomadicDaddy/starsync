@@ -5,7 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2026-06-11
+
+### Changed
+
+- Feature metadata consolidation (2026-06-11)
+  - Folded 10 completed audit findings into the specs of 9 base features via /consolidate-features
+  - Deleted the 10 standalone `audit-*` feature directories; 12 base features remain
+  - Cleaned stale feature notes and removed resolved audit references from `.aidd/todo.md`
+  - Deleted regressed working-tree artifacts `.nvmrc` and `frontend/` (re-applying completed audit fixes)
+  - Validation: `--check-features` PASS (12/12 feature files valid)
 
 ### Fixed
 
