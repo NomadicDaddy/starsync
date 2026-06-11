@@ -1,18 +1,19 @@
 {
-	"id": "audit-code-quality-1781133983-misleading-nvmrc-file-says-24-but-project-uses-bun-not-node-nvm",
-	"title": "Misleading .nvmrc file says '24' but project uses Bun, not Node/nvm",
-	"description": "Verified: .nvmrc:1 — contains '24', implying Node.js v24 via nvm. The project uses Bun (packageManager: 'bun@1.3.14') and has no nvm-related configuration. This misleads developers into thinking Node/nvm is the runtime. `git status` shows .nvmrc as untracked (`?? .nvmrc`), meaning it was recently added but never committed.",
-	"category": "Audit",
-	"dependencies": [],
-	"status": "backlog",
-	"passes": false,
-	"priority": 4,
-	"affectedFiles": [
-		".nvmrc"
-	],
-	"auditSeverity": "Low",
-	"auditSource": "CODE_QUALITY",
-	"createdAt": "2026-06-10T23:26:23.126Z",
-	"spec": "1. Delete the `.nvmrc` file from the working tree.\n2. Verify deletion with `ls .nvmrc` — should report file not found.\n3. Verify the Node.js version requirement is already documented in package.json engines field (`\"node\": \">=24.0.0 <25.0.0\"`).\n4. Verify `bun run smoke:qc` passes after removal.",
-	"updatedAt": "2026-06-10T23:41:43.000Z"
+  "id": "audit-code-quality-1781133983-misleading-nvmrc-file-says-24-but-project-uses-bun-not-node-nvm",
+  "title": "Misleading .nvmrc file says '24' but project uses Bun, not Node/nvm",
+  "description": "Verified: .nvmrc:1 — contains '24', implying Node.js v24 via nvm. The project uses Bun (packageManager: 'bun@1.3.14') and has no nvm-related configuration. This misleads developers into thinking Node/nvm is the runtime. `git status` shows .nvmrc as untracked (`?? .nvmrc`), meaning it was recently added but never committed.",
+  "category": "Audit",
+  "dependencies": [],
+  "status": "completed",
+  "passes": true,
+  "priority": 4,
+  "auditSource": "CODE_QUALITY",
+  "affectedFiles": [
+    ".nvmrc"
+  ],
+  "auditSeverity": "Low",
+  "createdAt": "2026-06-10T23:26:23.126Z",
+  "spec": "1. Delete the `.nvmrc` file from the working tree.\n2. Verify deletion with `ls .nvmrc` — should report file not found.\n3. Verify the Node.js version requirement is already documented in package.json engines field (`\"node\": \">=24.0.0 <25.0.0\"`).\n4. Verify `bun run smoke:qc` passes after removal.",
+  "notes": "Deleted .nvmrc (contained '24', implied Node/nvm usage but project uses Bun). Node version requirement already documented in package.json engines field. Updated spec.md Known Limitations to remove resolved item #6 and renumber remaining items.",
+  "updatedAt": "2026-06-11T21:15:06.406Z"
 }
