@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Remove dead `prettier-plugin-tailwindcss` dependency (2026-07-28)
+  - Removed `prettier-plugin-tailwindcss` from `.prettierrc` plugins array
+  - Removed `prettier-plugin-tailwindcss` from `package.json` devDependencies
+  - This CLI tool has no Tailwind, no CSS, no HTML/JSX — the plugin was a no-op adding unnecessary dependency weight
+  - Updated `spec.md` Known Limitations to remove resolved item #6 (tailwindcss dead dependency) and renumber remaining items, updated Technology Constraints to remove tailwindcss reference
+  - Resolves audit finding: `audit-code-quality-...prettier-plugin-tailwindcss...`
+  - `bun run smoke:qc` not verified (bun not available in WSL agent environment — environment limitation, not code defect)
+  - `bun install` needed on next session with bun available to update lockfile
+
 - Delete misleading `.nvmrc` file (2026-07-28)
   - Removed `.nvmrc` containing `24` — implied Node.js/nvm usage but project uses Bun as runtime
   - Node version requirement already documented in `package.json` engines field (`"node": ">=24.0.0 <25.0.0"`)
