@@ -33,12 +33,10 @@
 *.config text eol=lf
 *.conf text eol=lf
 *.ini text eol=lf
-*.json text eol=lf
 
 # Text files
 *.txt text eol=lf
 *.log text eol=lf
-*.md text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 
@@ -47,10 +45,6 @@
 
 # XML files
 *.xml text eol=lf
-
-# YAML files
-*.yml text eol=lf
-*.yaml text eol=lf
 
 # Shell scripts (if any)
 *.sh text eol=lf
@@ -81,13 +75,8 @@ Dockerfile text eol=lf
 *.ttf binary
 *.eot binary
 *.lockb binary
-
-# Font files
 *.otf binary
-
-# Archive files
 *.rar binary
-*.zip binary
 
 # Ignore files
 .gitignore text eol=lf
