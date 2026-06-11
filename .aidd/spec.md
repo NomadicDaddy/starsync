@@ -66,7 +66,7 @@ set-folder-dates [options] [target-path]
 
 - Existing folders are matched by name (case-sensitive) AND presence of `.git/` subdirectory
 - If a folder exists but lacks `.git/`, it is treated as a new clone target
-- **Known limitation:** Two repos with identical names from different owners will collide (name-only matching, no remote URL verification)
+- When a folder has `.git/`, the remote origin URL is verified against the expected `clone_url` — a mismatch results in a sync failure instead of an incorrect `git pull`
 
 ## Companion Script Behavior (set-folder-dates)
 
@@ -126,5 +126,4 @@ test/
 
 ## Known Limitations
 
-1. `cloneOrPull` uses name-only matching — no remote URL verification for existing directories
-2. `.gitattributes` has duplicate entries
+1. `.gitattributes` has duplicate entries

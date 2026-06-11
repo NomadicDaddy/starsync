@@ -1,18 +1,19 @@
 {
-	"id": "audit-logic-1781133983-cloneorpull-determines-repo-existence-by-name-match-but-doesn-t-verify-git-integ",
-	"title": "cloneOrPull uses name-only matching — could misidentify repos with identical names",
-	"description": "Verified: src/index.ts:88 — `const isCloned = existing.has(repo.name) && fs.existsSync(path.join(repoPath, '.git'))`. If two different GitHub repos have the same name (e.g., forked repos from different owners), the tool will treat the existing directory as the same repo and attempt `git pull` instead of cloning the new repo. This is a rare edge case (requires starring two repos with identical names from different owners) but would result in incorrect sync behavior.",
-	"category": "Audit",
-	"dependencies": [],
-	"status": "backlog",
-	"passes": false,
-	"priority": 4,
-	"affectedFiles": [
-		"src/index.ts"
-	],
-	"auditSeverity": "Medium",
-	"auditSource": "LOGIC",
-	"createdAt": "2026-06-10T23:26:23.466Z",
-	"spec": "1. After confirming isCloned at src/index.ts:88, add a remote URL check: read the current remote origin URL from the existing repo via `execFileSync('git', ['-C', repoPath, 'config', '--get', 'remote.origin.url'])` and compare it to `repo.clone_url`.\n2. If the URLs don't match, skip the repo with a `console.warn` message: `console.warn(`Skipping ${repo.name}: remote URL mismatch (expected ${repo.clone_url})`)`, and record it as a SyncFailure with verb 'clone' and message 'Remote URL mismatch'.\n3. Verify `bun test` passes after the change.\n4. Verify `bun run smoke:qc` passes.",
-	"updatedAt": "2026-06-10T23:41:43.000Z"
+  "id": "audit-logic-1781133983-cloneorpull-determines-repo-existence-by-name-match-but-doesn-t-verify-git-integ",
+  "title": "cloneOrPull uses name-only matching — could misidentify repos with identical names",
+  "description": "Verified: src/index.ts:88 — `const isCloned = existing.has(repo.name) && fs.existsSync(path.join(repoPath, '.git'))`. If two different GitHub repos have the same name (e.g., forked repos from different owners), the tool will treat the existing directory as the same repo and attempt `git pull` instead of cloning the new repo. This is a rare edge case (requires starring two repos with identical names from different owners) but would result in incorrect sync behavior.",
+  "category": "Audit",
+  "dependencies": [],
+  "status": "completed",
+  "passes": true,
+  "priority": 4,
+  "auditSource": "LOGIC",
+  "affectedFiles": [
+    "src/index.ts"
+  ],
+  "auditSeverity": "Medium",
+  "createdAt": "2026-06-10T23:26:23.466Z",
+  "spec": "1. After confirming isCloned at src/index.ts:88, add a remote URL check: read the current remote origin URL from the existing repo via `execFileSync('git', ['-C', repoPath, 'config', '--get', 'remote.origin.url'])` and compare it to `repo.clone_url`.\n2. If the URLs don't match, skip the repo with a `console.warn` message: `console.warn(`Skipping ${repo.name}: remote URL mismatch (expected ${repo.clone_url})`)`, and record it as a SyncFailure with verb 'clone' and message 'Remote URL mismatch'.\n3. Verify `bun test` passes after the change.\n4. Verify `bun run smoke:qc` passes.",
+  "updatedAt": "2026-07-28T21:32:58.596Z",
+  "notes": "Added remote URL verification in cloneOrPull: before pulling, reads remote.origin.url via `git config --get` and compares to repo.clone_url. On mismatch, logs a console.warn and returns a SyncFailure with verb 'clone'. Updated existing pull test to mock the remote URL check, added new test for URL mismatch case. Updated spec.md to reflect the new behavior and remove the resolved known limitation."
 }

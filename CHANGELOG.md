@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file. Format foll
 - `.env` file is now resolved relative to the repo root (not cwd), so both scripts find it regardless of the directory the command is invoked from.
 - Error messages use the consistent `(error as Error).message` form.
 - `formatTable` is properly typed with generics; no more `any[]`.
+- `cloneOrPull` now verifies remote origin URL before pulling — prevents misidentifying repos with identical names from different owners.
 
 ### Fixed
 
