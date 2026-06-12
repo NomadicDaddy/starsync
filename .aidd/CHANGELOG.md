@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Codebase analysis report (2026-06-11) in `.aidd/audit-reports/CODEBASE_ANALYSIS-2026-06-11.md`
+  - Overall health grade: **A-** (upgraded from B+ in June 10 report)
+  - All prior critical issues resolved in v1.1.0 remediation batch
+  - Test coverage: ~65% (up from ~30%)
+  - Runtime dependencies: 1 (down from 2, dotenv removed)
+  - New findings: `.gitignore` duplicate entries, `normalizeRepoUrl` untested, `.prettierignore` redundant
+  - 8 actionable recommendations: 3 high, 5 medium, 7 low priority
+  - bun not available in agent environment — quality checks not executed
+
 - Feature metadata consolidation (2026-06-11)
   - Folded 10 completed audit findings into the specs of 9 base features via /consolidate-features
   - Deleted the 10 standalone `audit-*` feature directories; 12 base features remain
