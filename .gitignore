@@ -3,6 +3,8 @@ node_modules/
 
 # generated
 .claude/
+.agents/
+AGENTS.md
 CLAUDE.md
 .aidd/
 .claude/
