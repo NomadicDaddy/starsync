@@ -1,0 +1,3 @@
+# Keep a programmatic API
+
+StarSync remains both a command-line tool and an importable TypeScript library for Bun. The 1.2 release deprecates low-level exports tied to the current implementation, and 2.0 replaces them with command-level archive operations that return structured results without exiting the process. A CLI-only package was rejected because the existing package already advertises an importable API and the same archive operations are useful to schedulers and other local tooling without subprocess parsing. Node.js runtime support was rejected because it would add a second runtime contract and test matrix to a Bun-only project.
