@@ -10,7 +10,7 @@ import { resolveTargetPath } from '../src/lib/cli-utils.ts';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..');
 
-const HELP_TEXT = `set-folder-dates - set each repo folder's mtime to its latest commit time.
+const HELP_TEXT = `set-folder-dates (deprecated alias for 'starsync dates') - set each repo folder's mtime to its latest commit time.
 
 Usage:
   bun scripts/set-folder-dates.ts [options] [target-path]
@@ -70,6 +70,8 @@ if (args.help) {
 	console.log(HELP_TEXT);
 	process.exit(0);
 }
+
+console.warn('Warning: set-folder-dates is deprecated; use \'starsync dates\' instead.');
 
 const root = resolveTargetPathForScript(args.targetPath);
 if (!fs.existsSync(root)) {

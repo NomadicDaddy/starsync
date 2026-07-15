@@ -12,3 +12,10 @@ export const resolveTargetPath = (
 	if (envValue) return path.resolve(envValue);
 	return path.resolve(baseDir, 'starred_repos');
 };
+
+export const SUBCOMMANDS = ['dates', 'init', 'migrate', 'sync', 'unlock', 'verify'] as const;
+
+export type Subcommand = (typeof SUBCOMMANDS)[number];
+
+export const isSubcommand = (arg: string): arg is Subcommand =>
+	(SUBCOMMANDS as readonly string[]).includes(arg);

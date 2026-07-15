@@ -260,10 +260,10 @@ describe('cloneOrPull', () => {
 
 describe('argument parsing', () => {
 	test('accepts help flags and an optional target path', () => {
-		expect(parseArgs([])).toEqual({ help: false, targetPath: null });
-		expect(parseArgs(['--help'])).toEqual({ help: true, targetPath: null });
-		expect(parseArgs(['-h'])).toEqual({ help: true, targetPath: null });
-		expect(parseArgs(['repos'])).toEqual({ help: false, targetPath: 'repos' });
+		expect(parseArgs([])).toEqual({ dryRun: false, help: false, targetPath: null });
+		expect(parseArgs(['--help'])).toEqual({ dryRun: false, help: true, targetPath: null });
+		expect(parseArgs(['-h'])).toEqual({ dryRun: false, help: true, targetPath: null });
+		expect(parseArgs(['repos'])).toEqual({ dryRun: false, help: false, targetPath: 'repos' });
 	});
 
 	test('rejects unknown flags and repeated target paths', () => {
@@ -393,4 +393,190 @@ describe('runStarsync', () => {
 			}
 		})
 	);
+});
+
+describe('sync --dry-run', () => {
+	let savedToken: string | undefined;
+
+	afterEach(() => {
+		if (savedToken === undefined) {
+			delete process.env.GITHUB_TOKEN;
+		} else {
+			process.env.GITHUB_TOKEN = savedToken;
+		}
+	});
+
+	test(
+		'queries stars and reports would-clone without calling git',
+		async () => {
+			savedToken = process.env.GITHUB_TOKEN;
+			process.env.GITHUB_TOKEN = 'test-token';
+			mockPaginate.mockResolvedValue([
+				{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+			]);
+			mockExecFileSync.mockReturnValue(undefined);
+
+			const target = mkdtempSync(path.join(tmpdir(), 'starsync-dryrun-'));
+			try {
+				const exitCode = await runStarsync([target, '--dry-run']);
+				expect(exitCode).toBe(0);
+				// In dry-run mode, no git clone/pull should be called
+				expect(mockExecFileSync).not.toHaveBeenCalled();
+			} finally {
+				rmSync(target, { force: true, recursive: true });
+			}
+		}
+	);
+
+	test(
+		'reports would-pull for existing repos without calling git pull',
+		async () => {
+			savedToken = process.env.GITHUB_TOKEN;
+			process.env.GITHUB_TOKEN = 'test-token';
+			mockPaginate.mockResolvedValue([
+				{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+			]);
+
+			const target = mkdtempSync(path.join(tmpdir(), 'starsync-dryrun-'));
+			try {
+				mkdirSync(path.join(target, 'repo-a'));
+				mkdirSync(path.join(target, 'repo-a', '.git'));
+
+				const exitCode = await runStarsync([target, '--dry-run']);
+				expect(exitCode).toBe(0);
+				// In dry-run mode, no git operations at all
+				expect(mockExecFileSync).not.toHaveBeenCalled();
+			} finally {
+				rmSync(target, { force: true, recursive: true });
+			}
+		}
+	);
+});
+
+describe('parseArgs --dry-run', () => {
+	test('accepts --dry-run flag', () => {
+		expect(parseArgs(['--dry-run'])).toEqual({
+			dryRun: true,
+			help: false,
+			targetPath: null,
+		});
+		expect(parseArgs(['--dry-run', 'repos'])).toEqual({
+			dryRun: true,
+			help: false,
+			targetPath: 'repos',
+		});
+	});
+});
+
+describe('subcommand dispatch', () => {
+	test('isSubcommand recognizes all six subcommands', async () => {
+		const { isSubcommand } = await import('../src/lib/cli-utils.ts');
+		expect(isSubcommand('sync')).toBe(true);
+		expect(isSubcommand('verify')).toBe(true);
+		expect(isSubcommand('migrate')).toBe(true);
+		expect(isSubcommand('dates')).toBe(true);
+		expect(isSubcommand('init')).toBe(true);
+		expect(isSubcommand('unlock')).toBe(true);
+	});
+
+	test('isSubcommand rejects non-subcommand strings', async () => {
+		const { isSubcommand } = await import('../src/lib/cli-utils.ts');
+		expect(isSubcommand('pull')).toBe(false);
+		expect(isSubcommand('--help')).toBe(false);
+		expect(isSubcommand('')).toBe(false);
+		expect(isSubcommand('target-path')).toBe(false);
+	});
+
+	test('dispatchVerify exits 1 with not-available message', async () => {
+		const { dispatchVerify } = await import('../src/lib/subcommands.ts');
+		const exitCode = dispatchVerify([]);
+		expect(exitCode).toBe(1);
+	});
+
+	test('dispatchVerify --help exits 0', async () => {
+		const { dispatchVerify } = await import('../src/lib/subcommands.ts');
+		const exitCode = dispatchVerify(['--help']);
+		expect(exitCode).toBe(0);
+	});
+
+	test('dispatchVerify rejects unknown flags with exit 2', async () => {
+		const { dispatchVerify } = await import('../src/lib/subcommands.ts');
+		const exitCode = dispatchVerify(['--bogus']);
+		expect(exitCode).toBe(2);
+	});
+
+	test('dispatchMigrate exits 1 with not-available message', async () => {
+		const { dispatchMigrate } = await import('../src/lib/subcommands.ts');
+		const exitCode = dispatchMigrate([]);
+		expect(exitCode).toBe(1);
+	});
+
+	test('dispatchMigrate --apply exits 1 with not-available message', async () => {
+		const { dispatchMigrate } = await import('../src/lib/subcommands.ts');
+		const exitCode = dispatchMigrate(['--apply']);
+		expect(exitCode).toBe(1);
+	});
+
+	test('dispatchMigrate --help exits 0', async () => {
+		const { dispatchMigrate } = await import('../src/lib/subcommands.ts');
+		const exitCode = dispatchMigrate(['--help']);
+		expect(exitCode).toBe(0);
+	});
+
+	test('dispatchInit exits 1 with not-available message', async () => {
+		const { dispatchInit } = await import('../src/lib/subcommands.ts');
+		const exitCode = dispatchInit([]);
+		expect(exitCode).toBe(1);
+	});
+
+	test('dispatchInit --help exits 0', async () => {
+		const { dispatchInit } = await import('../src/lib/subcommands.ts');
+		const exitCode = dispatchInit(['--help']);
+		expect(exitCode).toBe(0);
+	});
+
+	test('dispatchUnlock exits 1 with not-available message', async () => {
+		const { dispatchUnlock } = await import('../src/lib/subcommands.ts');
+		const exitCode = dispatchUnlock([]);
+		expect(exitCode).toBe(1);
+	});
+
+	test('dispatchUnlock --help exits 0', async () => {
+		const { dispatchUnlock } = await import('../src/lib/subcommands.ts');
+		const exitCode = dispatchUnlock(['--help']);
+		expect(exitCode).toBe(0);
+	});
+
+	test('dispatchDates exits 1 for nonexistent target path', async () => {
+		const { dispatchDates } = await import('../src/lib/subcommands.ts');
+		const exitCode = dispatchDates(['./nonexistent-test-dir-xyz']);
+		expect(exitCode).toBe(1);
+	});
+
+	test('dispatchDates --help exits 0', async () => {
+		const { dispatchDates } = await import('../src/lib/subcommands.ts');
+		const exitCode = dispatchDates(['--help']);
+		expect(exitCode).toBe(0);
+	});
+
+	test('dispatchDates processes git repos in --dry-run mode', async () => {
+		const { dispatchDates } = await import('../src/lib/subcommands.ts');
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-subcmd-'));
+		try {
+			mkdirSync(path.join(target, 'repo-a'));
+			mkdirSync(path.join(target, 'repo-a', '.git'));
+			mkdirSync(path.join(target, 'repo-b'));
+
+			const exitCode = dispatchDates([target, '--dry-run']);
+			expect(exitCode).toBe(0);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('dispatchSync --help exits 0', async () => {
+		const { dispatchSync } = await import('../src/lib/subcommands.ts');
+		const exitCode = await dispatchSync(['--help']);
+		expect(exitCode).toBe(0);
+	});
 });

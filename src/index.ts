@@ -9,14 +9,16 @@ import { resolveTargetPath as resolveTargetPathImpl } from './lib/cli-utils.ts';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..');
 
-export const HELP_TEXT = `starsync - clone or pull every starred GitHub repository.
+export const HELP_TEXT = `starsync sync - clone or pull every starred GitHub repository.
 
 Usage:
-  starsync [options] [target-path]
-  bun src/cli.ts [options] [target-path]
+  starsync sync [options] [target-path]
+  bun src/cli.ts sync [options] [target-path]
 
 Options:
   --help, -h        Show this help
+  --dry-run         Query stars and inspect the archive without cloning, pulling,
+                    renaming, or modifying any Git data, folder names, or timestamps
 
 Environment:
   GITHUB_TOKEN      Required. Personal access token with repo + read:user scopes.
@@ -26,15 +28,18 @@ A positional target-path argument overrides TARGET_PATH.
 Default target: <repo>/starred_repos.`;
 
 export interface ParsedArgs {
+	dryRun: boolean;
 	help: boolean;
 	targetPath: null | string;
 }
 
 export const parseArgs = (argv: string[] = process.argv.slice(2)): ParsedArgs => {
-	const parsed: ParsedArgs = { help: false, targetPath: null };
+	const parsed: ParsedArgs = { dryRun: false, help: false, targetPath: null };
 	for (const arg of argv) {
 		if (arg === '--help' || arg === '-h') {
 			parsed.help = true;
+		} else if (arg === '--dry-run') {
+			parsed.dryRun = true;
 		} else if (!arg.startsWith('-')) {
 			if (parsed.targetPath !== null) {
 				throw new Error(`Unexpected positional argument: ${arg}`);
@@ -159,7 +164,9 @@ export const runStarsync = async (argv: string[] = process.argv.slice(2)): Promi
 	}
 
 	const targetBase = resolveTargetPath(args.targetPath);
-	fs.mkdirSync(targetBase, { recursive: true });
+	if (!args.dryRun) {
+		fs.mkdirSync(targetBase, { recursive: true });
+	}
 	console.log(`Target: ${targetBase}`);
 
 	const existing = listFolders(targetBase);
@@ -178,9 +185,22 @@ export const runStarsync = async (argv: string[] = process.argv.slice(2)): Promi
 		return 1;
 	}
 
+	if (args.dryRun) {
+		console.log('\n--dry-run: querying stars and inspecting the archive without changes.');
+	}
+
 	let succeeded = 0;
 	const failures: SyncFailure[] = [];
 	for (const repo of repos) {
+		if (args.dryRun) {
+			const repoPath = path.join(targetBase, repo.name);
+			const isCloned =
+				(existing.has(repo.name) || fs.existsSync(repoPath)) &&
+				fs.existsSync(path.join(repoPath, '.git'));
+			console.log(`\n${repo.name} — would ${isCloned ? 'pull' : 'clone'}`);
+			succeeded++;
+			continue;
+		}
 		const result = cloneOrPull(repo, targetBase, existing);
 		if (result.ok) {
 			succeeded++;
