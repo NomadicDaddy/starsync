@@ -4,10 +4,16 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-07-14
+
 ### Fixed
 
-- Remote URL verification no longer reports false mismatches for cosmetic URL differences: comparison is now normalized (case-insensitive, trailing `.git` and slashes ignored), so repos like `Lissy93/web-check` vs `lissy93/web-check` or remotes saved without the `.git` suffix pull normally. Genuinely different remotes (different owner or repo path) are still skipped.
-- Already-cloned detection now falls back to a filesystem check when the folder name's casing differs from the GitHub repo name (e.g. a local `Profilarr` folder for the `profilarr` repo on Windows). Previously the case-sensitive name lookup missed, and the resulting `git clone` failed against the existing directory.
+- Remote checks now accept cosmetic URL differences such as owner casing, a missing `.git`
+  suffix, or trailing slashes. Repositories with genuinely different owners or names are still
+  skipped.
+- Existing clones are now found on case-insensitive filesystems even when the folder and GitHub
+  repository use different capitalization. This prevents StarSync from trying to clone over the
+  existing directory.
 
 ## [1.1.0] - 2026-06-11
 
