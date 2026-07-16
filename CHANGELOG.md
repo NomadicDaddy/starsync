@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Added
 
+- Added a read-only `migrate` preview for legacy archives. It resolves stable repository identities,
+  proposes `repository--owner` folder names, classifies blocked and failed checkouts, detects
+  collisions and unsafe origins, and emits complete human or schema-versioned JSON reports without
+  changing the archive.
+- Legacy and incompatible managed archives are now protected from `sync` and `dates` mutations
+  until explicit migration support ships.
 - Added `--json` to every subcommand with a stable schema-versioned report, separate checkout
   lifecycle and run outcome fields, severity-classified findings, predictable exit codes, and
   partial results after a first interruption.

@@ -3,6 +3,12 @@ import { fileURLToPath } from 'node:url';
 
 import type { Finding } from './reporting.ts';
 
+import {
+	createGitHubRepositoryResolver,
+	getArchiveModificationFinding,
+	previewArchiveMigration,
+	type MigrationPreviewResult,
+} from './archive-migration.ts';
 import { resolveTargetPath, stripQuotes, type Subcommand } from './cli-utils.ts';
 import { formatDatesTables, runDatesCommand } from './dates-command.ts';
 import {
@@ -13,6 +19,7 @@ import {
 	VERIFY_HELP_TEXT,
 } from './help-text.ts';
 import { createCommandReport, createCommandReporter, createFinding } from './reporting.ts';
+import { sanitizeMessage } from './secret-safety.ts';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..', '..');
@@ -131,7 +138,7 @@ export const dispatchVerify = (argv: string[]): number => {
 	return emitUnavailable('verify', args, 'Verify is not available in this release.', true);
 };
 
-export const dispatchMigrate = (argv: string[]): number => {
+export const dispatchMigrate = async (argv: string[]): Promise<number> => {
 	let args: ParsedSubcommandArgs;
 	try {
 		args = parseSubcommandArgs(argv);
@@ -139,10 +146,92 @@ export const dispatchMigrate = (argv: string[]): number => {
 		return emitUsageError('migrate', argv, MIGRATE_HELP_TEXT, err);
 	}
 	if (args.help) return emitHelp('migrate', args.json, MIGRATE_HELP_TEXT);
-	const message = args.apply
-		? 'Migrate --apply is not available in this release.'
-		: 'Migrate is not available in this release.';
-	return emitUnavailable('migrate', args, message, true);
+	if (args.apply) {
+		return emitUnavailable(
+			'migrate',
+			args,
+			'Migrate --apply is not available in this release.',
+			true
+		);
+	}
+
+	const targetPath = resolveTargetPath(args.targetPath, process.env.TARGET_PATH, repoDir);
+	const reporter = createCommandReporter(args.json);
+	const token = process.env.GITHUB_TOKEN;
+	if (!token) {
+		reporter.emit(
+			createCommandReport({
+				command: 'migrate',
+				dryRun: true,
+				exitCode: 1,
+				findings: [
+					...fallbackFinding(args.targetPath),
+					createFinding(
+						'error',
+						'missing-token',
+						'GITHUB_TOKEN is required to resolve repository identities.'
+					),
+				],
+				targetPath,
+			})
+		);
+		return 1;
+	}
+
+	reporter.progress(`Archive: ${targetPath}`);
+	reporter.progress('Migration preview is read-only; no archive data will be changed.');
+	let interruptionLevel = 0;
+	const sigintHandler = () => {
+		interruptionLevel++;
+		if (interruptionLevel === 1) {
+			reporter.diagnostic(
+				'Interrupt received — finishing the current checkout and reporting partial results.'
+			);
+		} else {
+			reporter.diagnostic('Second interrupt — stopping immediately.');
+			process.exit(130);
+		}
+	};
+	process.on('SIGINT', sigintHandler);
+	let result: MigrationPreviewResult;
+	try {
+		result = await previewArchiveMigration(targetPath, createGitHubRepositoryResolver(token), {
+			isInterruptionRequested: () => interruptionLevel > 0,
+			onProgress: reporter.progress,
+		});
+	} catch (err) {
+		reporter.emit(
+			createCommandReport({
+				command: 'migrate',
+				dryRun: true,
+				exitCode: 1,
+				findings: [
+					...fallbackFinding(args.targetPath),
+					createFinding(
+						'error',
+						'migration-preview-failed',
+						`Migration preview failed: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`
+					),
+				],
+				targetPath,
+			})
+		);
+		return 1;
+	} finally {
+		process.removeListener('SIGINT', sigintHandler);
+	}
+	reporter.emit(
+		createCommandReport({
+			checkouts: result.checkouts,
+			command: 'migrate',
+			dryRun: true,
+			exitCode: result.exitCode,
+			findings: [...fallbackFinding(args.targetPath), ...result.findings],
+			interrupted: result.interrupted,
+			targetPath,
+		})
+	);
+	return result.exitCode;
 };
 
 export const dispatchDates = (argv: string[]): number => {
@@ -156,6 +245,19 @@ export const dispatchDates = (argv: string[]): number => {
 
 	const targetPath = resolveTargetPath(args.targetPath, process.env.TARGET_PATH, repoDir);
 	const reporter = createCommandReporter(args.json);
+	const archiveRestriction = getArchiveModificationFinding(targetPath);
+	if (archiveRestriction) {
+		reporter.emit(
+			createCommandReport({
+				command: 'dates',
+				dryRun: args.dryRun,
+				exitCode: 1,
+				findings: [...fallbackFinding(args.targetPath), archiveRestriction],
+				targetPath,
+			})
+		);
+		return 1;
+	}
 	reporter.progress(`Root: ${targetPath}`);
 	const result = runDatesCommand(targetPath, { dryRun: args.dryRun });
 	reporter.emit(

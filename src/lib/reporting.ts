@@ -7,6 +7,16 @@ export type CommandExitCode = 0 | 1 | 130 | 2;
 export type CommandOutcome = 'added' | 'current' | 'failed' | 'skipped' | 'updated';
 export type FindingSeverity = 'error' | 'info' | 'warning';
 
+export type MigrationClassification =
+	'adopted-but-blocked' | 'failed' | 'pending-rename' | 'safely-migratable';
+
+export interface MigrationPreview {
+	classification: MigrationClassification;
+	proposedName: null | string;
+	repositoryId: null | number;
+	repositorySlug: null | string;
+}
+
 export interface Finding {
 	code: string;
 	message: string;
@@ -16,6 +26,7 @@ export interface Finding {
 export interface CheckoutReport {
 	findings: Finding[];
 	lifecycle: CheckoutLifecycle | null;
+	migration?: MigrationPreview;
 	name: string;
 	outcome: CommandOutcome;
 	pendingRename: boolean;
@@ -148,7 +159,15 @@ const renderHumanReport = (report: CommandReport): void => {
 		const lifecycle = checkout.lifecycle === null ? 'not-created' : checkout.lifecycle;
 		const planned = checkout.plannedOutcome ? `, planned ${checkout.plannedOutcome}` : '';
 		const rename = checkout.pendingRename ? ', pending rename' : '';
-		console.log(`- ${checkout.name}: ${lifecycle}, ${checkout.outcome}${planned}${rename}`);
+		const migration = checkout.migration
+			? `, migration ${checkout.migration.classification}` +
+				` (identity ${checkout.migration.repositoryId ?? 'unresolved'}, ` +
+				`slug ${checkout.migration.repositorySlug ?? 'unresolved'}, ` +
+				`proposed ${checkout.migration.proposedName ?? 'unresolved'})`
+			: '';
+		console.log(
+			`- ${checkout.name}: ${lifecycle}, ${checkout.outcome}${planned}${rename}${migration}`
+		);
 		for (const finding of checkout.findings) writeFinding(finding);
 	}
 

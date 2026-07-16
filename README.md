@@ -64,9 +64,18 @@ bun src/cli.ts init [options] [target-path]
 bun src/cli.ts unlock [options] [target-path]
 ```
 
-`sync` and `dates` are available now. `verify`, `migrate`, `init`, and `unlock` are recognized but
-exit with code 1 until their behavior ships. Bare `starsync [target-path]` remains a deprecated
+`sync`, `dates`, and the read-only `migrate` preview are available now. `verify`, `init`, and
+`unlock` are recognized but exit with code 1 until their behavior ships. `migrate --apply` is
+reserved for 2.0 and exits with code 1 in 1.x. Bare `starsync [target-path]` remains a deprecated
 alias for `sync` during the 1.x transition.
+
+A configless, non-empty directory containing GitHub.com checkouts is recognized as a legacy
+archive. During the 1.x transition, `sync` and `dates` refuse to modify legacy archives. The
+read-only `migrate` preview is available now; `verify` will share this inspection boundary when its
+behavior ships. The migration preview resolves each checkout's stable GitHub repository ID and
+current slug, proposes the canonical `repository--owner` folder, and reports dirty or unverifiable
+state, name collisions, invalid or credential-bearing origins, duplicate identities, and pending
+renames without writing to the archive.
 
 Common options:
 

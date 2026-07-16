@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import type { CheckoutReport, Finding } from './lib/reporting.ts';
 
 import { withApiRetry } from './lib/api-retry.ts';
+import { getArchiveModificationFinding } from './lib/archive-migration.ts';
 import { resolveTargetPath as resolveTargetPathImpl, stripQuotes } from './lib/cli-utils.ts';
 import { processRepository, runSyncPool, type RefreshResult } from './lib/refresh.ts';
 import { createCommandReport, createCommandReporter, createFinding } from './lib/reporting.ts';
@@ -96,6 +97,12 @@ export const parseArgs = (argv: string[] = process.argv.slice(2)): ParsedArgs =>
 };
 
 export { stripQuotes };
+export {
+	createGitHubRepositoryResolver,
+	inspectArchive,
+	parseGitHubRepositorySlug,
+	previewArchiveMigration,
+} from './lib/archive-migration.ts';
 
 export const resolveTargetPath = (
 	positional: null | string,
@@ -362,6 +369,22 @@ export const runStarsync = async (argv: string[] = process.argv.slice(2)): Promi
 	}
 
 	const targetBase = resolveTargetPath(args.targetPath);
+	const archiveRestriction = fs.existsSync(targetBase)
+		? getArchiveModificationFinding(targetBase)
+		: null;
+	if (archiveRestriction) {
+		reporter.emit(
+			createCommandReport({
+				command: 'sync',
+				dryRun: args.dryRun,
+				exitCode: 1,
+				findings: [...getFallbackFindings(args.targetPath), archiveRestriction],
+				targetPath: targetBase,
+			})
+		);
+		return 1;
+	}
+
 	try {
 		if (!args.dryRun) fs.mkdirSync(targetBase, { recursive: true });
 	} catch (err) {
