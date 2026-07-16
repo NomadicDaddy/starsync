@@ -20,7 +20,7 @@ const MIGRATION_PREVIEW_CONCURRENCY = 4;
 type ArchiveKind =
 	'current-managed' | 'invalid' | 'legacy' | 'newer-managed' | 'older-managed' | 'uninitialized';
 
-interface ArchiveEntry {
+export interface ArchiveEntry {
 	gitError: null | string;
 	isGitCheckout: boolean;
 	name: string;
@@ -337,7 +337,9 @@ export const parseGitHubRepositorySlug = (
 	let pathname: string;
 	if (/^https?:\/\//i.test(sanitized) || /^ssh:\/\//i.test(sanitized)) {
 		try {
-			pathname = new URL(sanitized).pathname;
+			const parsed = new URL(sanitized);
+			if (parsed.search || parsed.hash) return null;
+			pathname = parsed.pathname;
 		} catch {
 			return null;
 		}

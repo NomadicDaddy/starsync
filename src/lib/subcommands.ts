@@ -9,6 +9,7 @@ import {
 	previewArchiveMigration,
 	type MigrationPreviewResult,
 } from './archive-migration.ts';
+import { verifyArchive, type ArchiveVerificationResult } from './archive-verification.ts';
 import { resolveTargetPath, stripQuotes, type Subcommand } from './cli-utils.ts';
 import { formatDatesTables, runDatesCommand } from './dates-command.ts';
 import {
@@ -127,7 +128,7 @@ export const dispatchSync = async (argv: string[]): Promise<number> => {
 	return runStarsync(argv);
 };
 
-export const dispatchVerify = (argv: string[]): number => {
+export const dispatchVerify = async (argv: string[]): Promise<number> => {
 	let args: ParsedSubcommandArgs;
 	try {
 		args = parseSubcommandArgs(argv);
@@ -135,7 +136,63 @@ export const dispatchVerify = (argv: string[]): number => {
 		return emitUsageError('verify', argv, VERIFY_HELP_TEXT, err);
 	}
 	if (args.help) return emitHelp('verify', args.json, VERIFY_HELP_TEXT);
-	return emitUnavailable('verify', args, 'Verify is not available in this release.', true);
+
+	const targetPath = resolveTargetPath(args.targetPath, process.env.TARGET_PATH, repoDir);
+	const reporter = createCommandReporter(args.json);
+	reporter.progress(`Archive: ${targetPath}`);
+	reporter.progress('Verification is read-only; no archive data will be changed.');
+	let interruptionLevel = 0;
+	const sigintHandler = () => {
+		interruptionLevel++;
+		if (interruptionLevel === 1) {
+			reporter.diagnostic(
+				'Interrupt received — finishing in-flight checks and reporting partial results.'
+			);
+		} else {
+			reporter.diagnostic('Second interrupt — stopping immediately.');
+			process.exit(130);
+		}
+	};
+	process.on('SIGINT', sigintHandler);
+	let result: ArchiveVerificationResult;
+	try {
+		result = await verifyArchive(targetPath, {
+			isInterruptionRequested: () => interruptionLevel > 0,
+			onProgress: reporter.progress,
+		});
+	} catch (err) {
+		reporter.emit(
+			createCommandReport({
+				command: 'verify',
+				exitCode: 1,
+				findings: [
+					...fallbackFinding(args.targetPath),
+					createFinding(
+						'error',
+						'archive-verification-failed',
+						`Archive verification failed: ${sanitizeMessage(
+							err instanceof Error ? err.message : String(err)
+						)}`
+					),
+				],
+				targetPath,
+			})
+		);
+		return 1;
+	} finally {
+		process.removeListener('SIGINT', sigintHandler);
+	}
+	reporter.emit(
+		createCommandReport({
+			checkouts: result.checkouts,
+			command: 'verify',
+			exitCode: result.exitCode,
+			findings: [...fallbackFinding(args.targetPath), ...result.findings],
+			interrupted: result.interrupted,
+			targetPath,
+		})
+	);
+	return result.exitCode;
 };
 
 export const dispatchMigrate = async (argv: string[]): Promise<number> => {

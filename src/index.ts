@@ -103,6 +103,11 @@ export {
 	parseGitHubRepositorySlug,
 	previewArchiveMigration,
 } from './lib/archive-migration.ts';
+export {
+	REPOSITORY_ID_KEY,
+	REPOSITORY_SLUG_KEY,
+	verifyArchive,
+} from './lib/archive-verification.ts';
 
 export const resolveTargetPath = (
 	positional: null | string,

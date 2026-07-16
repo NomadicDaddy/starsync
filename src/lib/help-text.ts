@@ -61,7 +61,8 @@ Environment:
   TARGET_PATH       Optional. Used if no positional target-path is given.
 
 A positional target-path argument overrides TARGET_PATH.
-Default target: <repo>/starred_repos.`;
+Default target: <repo>/starred_repos.
+Verification is local and read-only; it does not use GITHUB_TOKEN or network access.`;
 
 export const MIGRATE_HELP_TEXT = `starsync migrate - preview migration of a legacy archive.
 

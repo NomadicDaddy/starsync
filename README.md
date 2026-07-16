@@ -64,18 +64,26 @@ bun src/cli.ts init [options] [target-path]
 bun src/cli.ts unlock [options] [target-path]
 ```
 
-`sync`, `dates`, and the read-only `migrate` preview are available now. `verify`, `init`, and
+`sync`, `verify`, `dates`, and the read-only `migrate` preview are available now. `init` and
 `unlock` are recognized but exit with code 1 until their behavior ships. `migrate --apply` is
 reserved for 2.0 and exits with code 1 in 1.x. Bare `starsync [target-path]` remains a deprecated
 alias for `sync` during the 1.x transition.
 
 A configless, non-empty directory containing GitHub.com checkouts is recognized as a legacy
 archive. During the 1.x transition, `sync` and `dates` refuse to modify legacy archives. The
-read-only `migrate` preview is available now; `verify` will share this inspection boundary when its
-behavior ships. The migration preview resolves each checkout's stable GitHub repository ID and
-current slug, proposes the canonical `repository--owner` folder, and reports dirty or unverifiable
-state, name collisions, invalid or credential-bearing origins, duplicate identities, and pending
-renames without writing to the archive.
+read-only `migrate` preview and `verify` are available now. The migration preview resolves each
+checkout's stable GitHub repository ID and current slug, proposes the canonical
+`repository--owner` folder, and reports dirty or unverifiable state, name collisions, invalid or
+credential-bearing origins, duplicate identities, and pending renames without writing to the
+archive.
+
+`verify` is fully local and does not require `GITHUB_TOKEN` or network access. It runs Git object
+integrity checks, validates origins and checkout state, detects duplicate identities and pending
+renames, and verifies managed archive owner binding. Managed archive config records
+`owner: { id, login }`; checkout-local Git config records `starsync.repository-id` and
+`starsync.repository-slug`. Missing identity metadata is an expected warning for legacy archives
+and an error for managed archives. Verification never repairs Git data, writes metadata, renames
+folders, or updates timestamps.
 
 Common options:
 

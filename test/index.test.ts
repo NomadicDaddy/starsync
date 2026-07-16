@@ -631,21 +631,21 @@ describe('subcommand dispatch', () => {
 		expect(isSubcommand('target-path')).toBe(false);
 	});
 
-	test('dispatchVerify exits 1 with not-available message', async () => {
+	test('dispatchVerify exits 1 for a missing target', async () => {
 		const { dispatchVerify } = await import('../src/lib/subcommands.ts');
-		const exitCode = dispatchVerify([]);
+		const exitCode = await dispatchVerify(['./nonexistent-test-dir-xyz']);
 		expect(exitCode).toBe(1);
 	});
 
 	test('dispatchVerify --help exits 0', async () => {
 		const { dispatchVerify } = await import('../src/lib/subcommands.ts');
-		const exitCode = dispatchVerify(['--help']);
+		const exitCode = await dispatchVerify(['--help']);
 		expect(exitCode).toBe(0);
 	});
 
 	test('dispatchVerify rejects unknown flags with exit 2', async () => {
 		const { dispatchVerify } = await import('../src/lib/subcommands.ts');
-		const exitCode = dispatchVerify(['--bogus']);
+		const exitCode = await dispatchVerify(['--bogus']);
 		expect(exitCode).toBe(2);
 	});
 
@@ -1617,8 +1617,8 @@ describe('structured command reporting', () => {
 	});
 
 	test('unavailable commands emit their JSON result before exit 1', async () => {
-		const { dispatchVerify } = await import('../src/lib/subcommands.ts');
-		const captured = await captureConsole(() => dispatchVerify(['--json', 'C:/archive']));
+		const { dispatchInit } = await import('../src/lib/subcommands.ts');
+		const captured = await captureConsole(() => dispatchInit(['--json', 'C:/archive']));
 		const report = parseReport(captured.stdout);
 
 		expect(captured.result).toBe(1);
