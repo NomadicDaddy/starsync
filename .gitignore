@@ -6,7 +6,7 @@ node_modules/
 .agents/
 AGENTS.md
 CLAUDE.md
-.aidd/
+/.aidd/
 .windsurf/
 opencode.json
 dist/
