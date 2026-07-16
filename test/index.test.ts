@@ -8,14 +8,19 @@ import type { CommandReport } from '../src/lib/reporting.ts';
 
 import {
 	cloneOrPull,
+	initArchive,
 	inspectArchive,
 	listFolders,
+	migrateArchive,
+	normalizeArchiveDates,
 	parseArgs,
 	parseGitHubRepositorySlug,
 	previewArchiveMigration,
 	resolveTargetPath,
 	runStarsync,
 	stripQuotes,
+	syncArchive,
+	verifyArchive,
 } from '../src/index.ts';
 import { createCommandReport, createFinding } from '../src/lib/reporting.ts';
 import {
@@ -440,6 +445,140 @@ describe('folder discovery', () => {
 	});
 });
 
+describe('programmatic archive API', () => {
+	test('syncArchive uses only explicit options and returns the JSON report model', async () => {
+		mockPaginate.mockResolvedValue([
+			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+		]);
+		const savedArgv = process.argv;
+		const savedToken = process.env.GITHUB_TOKEN;
+		process.argv = ['bun', 'unexpected-cli-argument'];
+		delete process.env.GITHUB_TOKEN;
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-api-sync-'));
+		const progress: string[] = [];
+		try {
+			const captured = await captureConsole(() =>
+				syncArchive({
+					concurrency: 1,
+					dryRun: true,
+					onProgress: (message) => progress.push(message),
+					targetPath: target,
+					token: 'explicit-test-token',
+				})
+			);
+
+			expect(captured.stdout).toEqual([]);
+			expect(captured.stderr).toEqual([]);
+			expect(captured.result.schemaVersion).toBe(1);
+			expect(captured.result.command).toBe('sync');
+			expect(captured.result.exitCode).toBe(0);
+			expect(captured.result.checkouts[0]).toEqual(
+				expect.objectContaining({ name: 'repo-a', plannedOutcome: 'added' })
+			);
+			expect(progress.some((message) => message.includes('Syncing 1/1'))).toBe(true);
+		} finally {
+			process.argv = savedArgv;
+			if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
+			else process.env.GITHUB_TOKEN = savedToken;
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('all archive operations return reports without writing process output', async () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-api-operations-'));
+		try {
+			const captured = await captureConsole(async () => [
+				initArchive({ targetPath: target, token: 'test-token' }),
+				await migrateArchive({ apply: true, targetPath: target, token: 'test-token' }),
+				normalizeArchiveDates({ dryRun: true, targetPath: target }),
+				await verifyArchive({ targetPath: path.join(target, 'missing') }),
+			]);
+
+			expect(captured.stdout).toEqual([]);
+			expect(captured.stderr).toEqual([]);
+			expect(captured.result.map((report) => report.command)).toEqual([
+				'init',
+				'migrate',
+				'dates',
+				'verify',
+			]);
+			for (const report of captured.result) expect(report.schemaVersion).toBe(1);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('an already-aborted signal returns an interrupted report before work starts', async () => {
+		const controller = new AbortController();
+		controller.abort();
+		const report = await syncArchive({
+			signal: controller.signal,
+			targetPath: 'C:/archive',
+			token: 'test-token',
+		});
+
+		expect(report.exitCode).toBe(130);
+		expect(report.interrupted).toBe(true);
+		expect(report.findings).toContainEqual(
+			expect.objectContaining({ code: 'interrupted', severity: 'warning' })
+		);
+		expect(mockPaginate).not.toHaveBeenCalled();
+	});
+
+	test('aborting from progress stops sync before a repository operation starts', async () => {
+		mockPaginate.mockResolvedValue([
+			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+		]);
+		const controller = new AbortController();
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-api-abort-'));
+		try {
+			const report = await syncArchive({
+				concurrency: 1,
+				onProgress: (message) => {
+					if (message.includes('Syncing 1/1')) controller.abort();
+				},
+				signal: controller.signal,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(130);
+			expect(report.interrupted).toBe(true);
+			expect(report.checkouts[0]).toEqual(
+				expect.objectContaining({ name: 'repo-a', outcome: 'skipped' })
+			);
+			expect(mockExecFile).not.toHaveBeenCalled();
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('aborting from dry-run progress stops before repository inspection', async () => {
+		mockPaginate.mockResolvedValue([
+			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+		]);
+		const controller = new AbortController();
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-api-dry-abort-'));
+		try {
+			const report = await syncArchive({
+				dryRun: true,
+				onProgress: (message) => {
+					if (message.includes('Syncing 1/1')) controller.abort();
+				},
+				signal: controller.signal,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(130);
+			expect(report.checkouts[0]?.findings[0]?.code).toBe('interrupted-before-inspection');
+			expect(report.checkouts[0]?.plannedOutcome).toBeUndefined();
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+});
+
 describe('runStarsync', () => {
 	let savedToken: string | undefined;
 
@@ -459,8 +598,9 @@ describe('runStarsync', () => {
 
 	test('returns exit code 1 when GITHUB_TOKEN is not set', async () => {
 		delete process.env.GITHUB_TOKEN;
-		const exitCode = await runStarsync([]);
-		expect(exitCode).toBe(1);
+		const captured = await captureConsole(() => runStarsync([]));
+		expect(captured.result).toBe(1);
+		expect(captured.stderr).toContain('ERROR [missing-token]: GITHUB_TOKEN is not set.');
 	});
 
 	test(

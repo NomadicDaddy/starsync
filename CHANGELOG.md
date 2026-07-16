@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Added
 
+- Added a Bun-only programmatic archive API with explicit options, progress callbacks,
+  `AbortSignal` cancellation, and schema-versioned `CommandReport` results for sync, verify,
+  migration, date normalization, and initialization operations. The CLI now delegates to these
+  operations, while process-coupled low-level exports are deprecated for the 1.x transition.
 - Added a read-only `migrate` preview for legacy archives. It resolves stable repository identities,
   proposes `repository--owner` folder names, classifies blocked and failed checkouts, detects
   collisions and unsafe origins, and emits complete human or schema-versioned JSON reports without

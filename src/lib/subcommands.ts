@@ -1,17 +1,17 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { Finding } from './reporting.ts';
+import type { Finding, CommandReport } from './reporting.ts';
 
+import { HELP_TEXT, parseArgs } from '../index.ts';
 import {
-	createGitHubRepositoryResolver,
-	getArchiveModificationFinding,
-	previewArchiveMigration,
-	type MigrationPreviewResult,
-} from './archive-migration.ts';
-import { verifyArchive, type ArchiveVerificationResult } from './archive-verification.ts';
+	initArchive,
+	migrateArchive,
+	normalizeArchiveDates,
+	syncArchive,
+	verifyArchive,
+} from './archive-api.ts';
 import { resolveTargetPath, stripQuotes, type Subcommand } from './cli-utils.ts';
-import { formatDatesTables, runDatesCommand } from './dates-command.ts';
 import {
 	DATES_HELP_TEXT,
 	INIT_HELP_TEXT,
@@ -20,7 +20,6 @@ import {
 	VERIFY_HELP_TEXT,
 } from './help-text.ts';
 import { createCommandReport, createCommandReporter, createFinding } from './reporting.ts';
-import { sanitizeMessage } from './secret-safety.ts';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..', '..');
@@ -123,9 +122,79 @@ const emitUnavailable = (
 	return 1;
 };
 
+const addCliFindings = (report: CommandReport, findings: Finding[]): CommandReport => {
+	if (findings.length === 0) return report;
+	return createCommandReport({
+		checkouts: report.checkouts,
+		command: report.command,
+		dryRun: report.dryRun,
+		exitCode: report.exitCode,
+		findings: [...findings, ...report.findings],
+		...(report.helpText === undefined ? {} : { helpText: report.helpText }),
+		interrupted: report.interrupted,
+		targetPath: report.targetPath,
+	});
+};
+
+interface InterruptControl {
+	dispose: () => void;
+	signal: AbortSignal;
+}
+
+const createInterruptControl = (
+	reporter: ReturnType<typeof createCommandReporter>,
+	firstMessage: string
+): InterruptControl => {
+	const controller = new AbortController();
+	let interruptionLevel = 0;
+	const handler = () => {
+		interruptionLevel++;
+		if (interruptionLevel === 1) {
+			reporter.diagnostic(firstMessage);
+			controller.abort();
+		} else {
+			reporter.diagnostic('Second interrupt — stopping immediately.');
+			process.exit(130);
+		}
+	};
+	process.on('SIGINT', handler);
+	return {
+		dispose: () => process.removeListener('SIGINT', handler),
+		signal: controller.signal,
+	};
+};
+
 export const dispatchSync = async (argv: string[]): Promise<number> => {
-	const { runStarsync } = await import('../index.ts');
-	return runStarsync(argv);
+	const reporter = createCommandReporter(argv.includes('--json'));
+	let args;
+	try {
+		args = parseArgs(argv);
+	} catch (err) {
+		return emitUsageError('sync', argv, HELP_TEXT, err);
+	}
+	if (args.help) return emitHelp('sync', args.json, HELP_TEXT);
+
+	const targetPath = resolveTargetPath(args.targetPath, process.env.TARGET_PATH, repoDir);
+	const interrupt = createInterruptControl(
+		reporter,
+		'Interrupt received — finishing in-flight operations and reporting partial results.'
+	);
+	let report: CommandReport;
+	try {
+		report = await syncArchive({
+			concurrency: args.concurrency,
+			dryRun: args.dryRun,
+			onProgress: reporter.progress,
+			signal: interrupt.signal,
+			targetPath,
+			token: process.env.GITHUB_TOKEN ?? '',
+		});
+	} finally {
+		interrupt.dispose();
+	}
+	report = addCliFindings(report, fallbackFinding(args.targetPath));
+	reporter.emit(report);
+	return report.exitCode;
 };
 
 export const dispatchVerify = async (argv: string[]): Promise<number> => {
@@ -139,60 +208,23 @@ export const dispatchVerify = async (argv: string[]): Promise<number> => {
 
 	const targetPath = resolveTargetPath(args.targetPath, process.env.TARGET_PATH, repoDir);
 	const reporter = createCommandReporter(args.json);
-	reporter.progress(`Archive: ${targetPath}`);
-	reporter.progress('Verification is read-only; no archive data will be changed.');
-	let interruptionLevel = 0;
-	const sigintHandler = () => {
-		interruptionLevel++;
-		if (interruptionLevel === 1) {
-			reporter.diagnostic(
-				'Interrupt received — finishing in-flight checks and reporting partial results.'
-			);
-		} else {
-			reporter.diagnostic('Second interrupt — stopping immediately.');
-			process.exit(130);
-		}
-	};
-	process.on('SIGINT', sigintHandler);
-	let result: ArchiveVerificationResult;
-	try {
-		result = await verifyArchive(targetPath, {
-			isInterruptionRequested: () => interruptionLevel > 0,
-			onProgress: reporter.progress,
-		});
-	} catch (err) {
-		reporter.emit(
-			createCommandReport({
-				command: 'verify',
-				exitCode: 1,
-				findings: [
-					...fallbackFinding(args.targetPath),
-					createFinding(
-						'error',
-						'archive-verification-failed',
-						`Archive verification failed: ${sanitizeMessage(
-							err instanceof Error ? err.message : String(err)
-						)}`
-					),
-				],
-				targetPath,
-			})
-		);
-		return 1;
-	} finally {
-		process.removeListener('SIGINT', sigintHandler);
-	}
-	reporter.emit(
-		createCommandReport({
-			checkouts: result.checkouts,
-			command: 'verify',
-			exitCode: result.exitCode,
-			findings: [...fallbackFinding(args.targetPath), ...result.findings],
-			interrupted: result.interrupted,
-			targetPath,
-		})
+	const interrupt = createInterruptControl(
+		reporter,
+		'Interrupt received — finishing in-flight checks and reporting partial results.'
 	);
-	return result.exitCode;
+	let report: CommandReport;
+	try {
+		report = await verifyArchive({
+			onProgress: reporter.progress,
+			signal: interrupt.signal,
+			targetPath,
+		});
+	} finally {
+		interrupt.dispose();
+	}
+	report = addCliFindings(report, fallbackFinding(args.targetPath));
+	reporter.emit(report);
+	return report.exitCode;
 };
 
 export const dispatchMigrate = async (argv: string[]): Promise<number> => {
@@ -203,92 +235,27 @@ export const dispatchMigrate = async (argv: string[]): Promise<number> => {
 		return emitUsageError('migrate', argv, MIGRATE_HELP_TEXT, err);
 	}
 	if (args.help) return emitHelp('migrate', args.json, MIGRATE_HELP_TEXT);
-	if (args.apply) {
-		return emitUnavailable(
-			'migrate',
-			args,
-			'Migrate --apply is not available in this release.',
-			true
-		);
-	}
-
 	const targetPath = resolveTargetPath(args.targetPath, process.env.TARGET_PATH, repoDir);
 	const reporter = createCommandReporter(args.json);
-	const token = process.env.GITHUB_TOKEN;
-	if (!token) {
-		reporter.emit(
-			createCommandReport({
-				command: 'migrate',
-				dryRun: true,
-				exitCode: 1,
-				findings: [
-					...fallbackFinding(args.targetPath),
-					createFinding(
-						'error',
-						'missing-token',
-						'GITHUB_TOKEN is required to resolve repository identities.'
-					),
-				],
-				targetPath,
-			})
-		);
-		return 1;
-	}
-
-	reporter.progress(`Archive: ${targetPath}`);
-	reporter.progress('Migration preview is read-only; no archive data will be changed.');
-	let interruptionLevel = 0;
-	const sigintHandler = () => {
-		interruptionLevel++;
-		if (interruptionLevel === 1) {
-			reporter.diagnostic(
-				'Interrupt received — finishing the current checkout and reporting partial results.'
-			);
-		} else {
-			reporter.diagnostic('Second interrupt — stopping immediately.');
-			process.exit(130);
-		}
-	};
-	process.on('SIGINT', sigintHandler);
-	let result: MigrationPreviewResult;
-	try {
-		result = await previewArchiveMigration(targetPath, createGitHubRepositoryResolver(token), {
-			isInterruptionRequested: () => interruptionLevel > 0,
-			onProgress: reporter.progress,
-		});
-	} catch (err) {
-		reporter.emit(
-			createCommandReport({
-				command: 'migrate',
-				dryRun: true,
-				exitCode: 1,
-				findings: [
-					...fallbackFinding(args.targetPath),
-					createFinding(
-						'error',
-						'migration-preview-failed',
-						`Migration preview failed: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`
-					),
-				],
-				targetPath,
-			})
-		);
-		return 1;
-	} finally {
-		process.removeListener('SIGINT', sigintHandler);
-	}
-	reporter.emit(
-		createCommandReport({
-			checkouts: result.checkouts,
-			command: 'migrate',
-			dryRun: true,
-			exitCode: result.exitCode,
-			findings: [...fallbackFinding(args.targetPath), ...result.findings],
-			interrupted: result.interrupted,
-			targetPath,
-		})
+	const interrupt = createInterruptControl(
+		reporter,
+		'Interrupt received — finishing the current checkout and reporting partial results.'
 	);
-	return result.exitCode;
+	let report: CommandReport;
+	try {
+		report = await migrateArchive({
+			apply: args.apply,
+			onProgress: reporter.progress,
+			signal: interrupt.signal,
+			targetPath,
+			token: process.env.GITHUB_TOKEN ?? '',
+		});
+	} finally {
+		interrupt.dispose();
+	}
+	report = addCliFindings(report, fallbackFinding(args.targetPath));
+	reporter.emit(report);
+	return report.exitCode;
 };
 
 export const dispatchDates = (argv: string[]): number => {
@@ -302,35 +269,24 @@ export const dispatchDates = (argv: string[]): number => {
 
 	const targetPath = resolveTargetPath(args.targetPath, process.env.TARGET_PATH, repoDir);
 	const reporter = createCommandReporter(args.json);
-	const archiveRestriction = getArchiveModificationFinding(targetPath);
-	if (archiveRestriction) {
-		reporter.emit(
-			createCommandReport({
-				command: 'dates',
-				dryRun: args.dryRun,
-				exitCode: 1,
-				findings: [...fallbackFinding(args.targetPath), archiveRestriction],
-				targetPath,
-			})
-		);
-		return 1;
-	}
-	reporter.progress(`Root: ${targetPath}`);
-	const result = runDatesCommand(targetPath, { dryRun: args.dryRun });
-	reporter.emit(
-		createCommandReport({
-			checkouts: result.checkouts,
-			command: 'dates',
-			dryRun: args.dryRun,
-			exitCode: result.exitCode,
-			findings: [...fallbackFinding(args.targetPath), ...result.findings],
-			targetPath,
-		})
+	const interrupt = createInterruptControl(
+		reporter,
+		'Interrupt received — finishing the current checkout and reporting partial results.'
 	);
-	if (!args.json) {
-		for (const line of formatDatesTables(result.displayRows)) reporter.progress(line);
+	let report: CommandReport;
+	try {
+		report = normalizeArchiveDates({
+			dryRun: args.dryRun,
+			onProgress: reporter.progress,
+			signal: interrupt.signal,
+			targetPath,
+		});
+	} finally {
+		interrupt.dispose();
 	}
-	return result.exitCode;
+	report = addCliFindings(report, fallbackFinding(args.targetPath));
+	reporter.emit(report);
+	return report.exitCode;
 };
 
 export const dispatchInit = (argv: string[]): number => {
@@ -341,7 +297,15 @@ export const dispatchInit = (argv: string[]): number => {
 		return emitUsageError('init', argv, INIT_HELP_TEXT, err);
 	}
 	if (args.help) return emitHelp('init', args.json, INIT_HELP_TEXT);
-	return emitUnavailable('init', args, 'Init is not available in this release.', false);
+	const targetPath = resolveTargetPath(args.targetPath, process.env.TARGET_PATH, repoDir);
+	const reporter = createCommandReporter(args.json);
+	const report = initArchive({
+		onProgress: reporter.progress,
+		targetPath,
+		token: process.env.GITHUB_TOKEN ?? '',
+	});
+	reporter.emit(report);
+	return report.exitCode;
 };
 
 export const dispatchUnlock = (argv: string[]): number => {

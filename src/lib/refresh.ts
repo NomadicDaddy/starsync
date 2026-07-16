@@ -221,8 +221,8 @@ export const processRepository = async (
  */
 export interface SyncPoolOptions {
 	concurrency: number;
-	onDiagnostic?: (message: string) => void;
 	onProgress?: (message: string) => void;
+	signal?: AbortSignal;
 	totalCount: number;
 }
 
@@ -232,21 +232,12 @@ export interface SyncPoolResult {
 }
 
 /**
- * Shared interruption state that allows the pool to signal workers
- * and individual repository processors that an interrupt was received.
- */
-interface InterruptionState {
-	level: number;
-}
-
-/**
  * A bound-concurrency pool that processes repositories concurrently.
  *
  * - Default concurrency is 4; can be set 1–8 via --concurrency.
  * - --concurrency 1 is fully deterministic (sequential).
  * - Prints "Syncing N/Total" progress for each repository.
- * - On first interruption: stops scheduling new work and lets in-flight
- *   operations finish. A second interruption terminates immediately.
+ * - An aborted signal stops scheduling new work and lets in-flight operations finish.
  *
  * The processFn receives an `isInterruptionRequested` callback so it can
  * check whether a Ctrl+C was received before starting long operations.
@@ -258,56 +249,36 @@ export const runSyncPool = async (
 ): Promise<SyncPoolResult> => {
 	const results: RefreshResult[] = new Array(repos.length);
 	let nextIndex = 0;
-	const interruption: InterruptionState = { level: 0 };
-	const onDiagnostic = options.onDiagnostic ?? ((message: string) => console.warn(message));
 	const onProgress = options.onProgress ?? ((message: string) => console.log(message));
 
-	const isInterruptionRequested = (): boolean => interruption.level >= 1;
+	const isInterruptionRequested = (): boolean => options.signal?.aborted ?? false;
 
 	const worker = async (): Promise<void> => {
 		while (true) {
 			// On first interruption, stop picking up new work
-			if (interruption.level >= 1) return;
+			if (isInterruptionRequested()) return;
 
 			const index = nextIndex++;
 			if (index >= repos.length) return;
 
 			const repo = repos[index]!;
 			onProgress(`Syncing ${index + 1}/${options.totalCount} — ${repo.name}`);
+			if (isInterruptionRequested()) return;
 
 			const result = await processFn(repo, isInterruptionRequested);
 			results[index] = result;
 		}
 	};
 
-	// Set up signal handler for graceful interruption
-	const sigintHandler = () => {
-		interruption.level++;
-		if (interruption.level === 1) {
-			onDiagnostic(
-				'Interrupt received — finishing in-flight operations. Press Ctrl+C again to stop immediately.'
-			);
-		} else {
-			onDiagnostic('Second interrupt — stopping immediately.');
-			process.exit(130);
-		}
-	};
-
-	process.on('SIGINT', sigintHandler);
-
-	try {
-		const workers: Promise<void>[] = [];
-		const workerCount = Math.min(options.concurrency, repos.length);
-		for (let i = 0; i < workerCount; i++) {
-			workers.push(worker());
-		}
-		await Promise.all(workers);
-	} finally {
-		process.removeListener('SIGINT', sigintHandler);
+	const workers: Promise<void>[] = [];
+	const workerCount = Math.min(options.concurrency, repos.length);
+	for (let i = 0; i < workerCount; i++) {
+		workers.push(worker());
 	}
+	await Promise.all(workers);
 
 	return {
-		interrupted: interruption.level > 0,
+		interrupted: isInterruptionRequested(),
 		results: results.filter((result) => result !== undefined),
 	};
 };

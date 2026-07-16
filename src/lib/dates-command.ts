@@ -8,6 +8,8 @@ import { createFinding } from './reporting.ts';
 
 interface DatesOptions {
 	dryRun: boolean;
+	onProgress?: (message: string) => void;
+	signal?: AbortSignal;
 }
 
 type DatesStatus = 'skipped:no-commit' | 'skipped:not-git' | 'updated' | 'would-update';
@@ -24,6 +26,7 @@ export interface DatesResult {
 	displayRows: DatesDisplayRow[];
 	exitCode: CommandExitCode;
 	findings: Finding[];
+	interrupted: boolean;
 }
 
 const formatTable = <T extends Record<string, string>>(
@@ -103,6 +106,7 @@ export const runDatesCommand = (target: string, options: DatesOptions): DatesRes
 			findings: [
 				createFinding('error', 'target-not-found', `Root path does not exist: ${target}`),
 			],
+			interrupted: false,
 		};
 	}
 
@@ -118,13 +122,35 @@ export const runDatesCommand = (target: string, options: DatesOptions): DatesRes
 			findings: [
 				createFinding('error', 'target-read-failed', `Cannot read ${target}: ${message}`),
 			],
+			interrupted: false,
 		};
 	}
 
 	const checkouts: CheckoutReport[] = [];
 	const displayRows: DatesDisplayRow[] = [];
-	for (const entry of entries) {
-		if (!entry.isDirectory()) continue;
+	const directories = entries.filter((entry) => entry.isDirectory());
+	for (const [index, entry] of directories.entries()) {
+		if (options.signal?.aborted) {
+			for (const interruptedEntry of directories.slice(index)) {
+				checkouts.push({
+					findings: [
+						createFinding(
+							'warning',
+							'interrupted-before-date-normalization',
+							'Checkout was not processed because interruption was requested.'
+						),
+					],
+					lifecycle: fs.existsSync(path.join(target, interruptedEntry.name, '.git'))
+						? 'active'
+						: null,
+					name: interruptedEntry.name,
+					outcome: 'skipped',
+					pendingRename: false,
+				});
+			}
+			break;
+		}
+		options.onProgress?.(`Normalizing ${index + 1}/${directories.length} — ${entry.name}`);
 
 		const repoPath = path.join(target, entry.name);
 		let oldTime: Date;
@@ -217,5 +243,20 @@ export const runDatesCommand = (target: string, options: DatesOptions): DatesRes
 	const hasErrors = checkouts.some((checkout) =>
 		checkout.findings.some((finding) => finding.severity === 'error')
 	);
-	return { checkouts, displayRows, exitCode: hasErrors ? 1 : 0, findings: [] };
+	const interrupted = options.signal?.aborted ?? false;
+	return {
+		checkouts,
+		displayRows,
+		exitCode: interrupted ? 130 : hasErrors ? 1 : 0,
+		findings: interrupted
+			? [
+					createFinding(
+						'warning',
+						'interrupted',
+						'Date normalization was interrupted; results are partial.'
+					),
+				]
+			: [],
+		interrupted,
+	};
 };

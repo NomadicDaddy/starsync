@@ -8,7 +8,8 @@ Bun + TypeScript CLI plus a companion script for normalizing folder timestamps.
 
 ## Install
 
-Requires [Bun](https://bun.sh) >= 1.3.14.
+Requires [Bun](https://bun.sh) >= 1.3.14. Node.js is not a supported runtime. StarSync
+supports Windows, macOS, and Linux where Bun and Git are available.
 
 ```sh
 bun install
@@ -119,6 +120,46 @@ All subcommands use the same exit contract: 0 when there are no errors, 1 for an
 failure or blocked request, 2 for invalid usage, and 130 after user interruption. On the first
 interrupt, StarSync stops scheduling new work, lets in-flight Git operations finish, and emits the
 partial result.
+
+### Programmatic API
+
+StarSync is also an importable Bun library. The supported operations accept explicit options and
+return the same `CommandReport` shape emitted by CLI JSON mode. They do not read command-line
+arguments, write to process streams, or exit the process. Progress is available only through the
+optional callback, and cancellation uses a standard `AbortSignal`.
+
+```ts
+import { syncArchive } from 'starsync';
+
+const controller = new AbortController();
+const report = await syncArchive({
+	concurrency: 4,
+	onProgress: (message) => console.log(message),
+	signal: controller.signal,
+	targetPath: 'D:/archives/stars',
+	token: Bun.env.GITHUB_TOKEN ?? '',
+});
+
+if (report.exitCode !== 0) {
+	// Inspect report.findings and report.checkouts without parsing subprocess output.
+}
+```
+
+The public entry point exports:
+
+| Operation               | Purpose                                      |
+| ----------------------- | -------------------------------------------- |
+| `syncArchive`           | Synchronize or preview an archive refresh    |
+| `verifyArchive`         | Run read-only local archive verification     |
+| `migrateArchive`        | Preview archive migration                    |
+| `normalizeArchiveDates` | Preview or normalize checkout folder dates   |
+| `initArchive`           | Initialize an archive when v2 support ships  |
+
+`initArchive` and `migrateArchive({ apply: true })` currently return a structured
+`command-unavailable` report because those mutation features have not shipped. The deprecated
+low-level exports remain during the 1.x transition for compatibility; consumers should migrate
+from `runStarsync`, argument parsing, checkout discovery, and direct clone/pull helpers to these
+command-level operations before 2.0.
 
 ## Scripts
 
