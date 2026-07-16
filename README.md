@@ -84,10 +84,10 @@ Both commands exit with code 2 on unknown arguments and code 1 on runtime errors
 | `bun run build`            | `bun build ./src/cli.ts --target=bun` |
 | `bun run compile`          | standalone binary in `dist/`        |
 | `bun run typecheck`        | `tsc --noEmit`                      |
-| `bun run lint`             | `eslint "**/*.ts"`                  |
+| `bun run lint`             | `eslint "src/**/*.ts"`              |
 | `bun run smoke:qc`         | typecheck, lint, format check       |
-| `bun run format`           | `prettier --write "**/*.ts" "*.json"` |
-| `bun run format:check`     | `prettier --check "**/*.ts" "*.json"` |
+| `bun run format`           | `prettier --write "src/**/*.ts"` |
+| `bun run format:check`     | `prettier --check "src/**/*.ts"` |
 
 ## Scheduling
 
