@@ -4,7 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { withApiRetry } from './lib/api-retry.ts';
 import { resolveTargetPath as resolveTargetPathImpl } from './lib/cli-utils.ts';
+import { processRepository, runSyncPool } from './lib/refresh.ts';
 import {
 	isGitAuthError,
 	isGitHubDotComUrl,
@@ -23,30 +25,56 @@ Usage:
   bun src/cli.ts sync [options] [target-path]
 
 Options:
-  --help, -h        Show this help
-  --dry-run         Query stars and inspect the archive without cloning, pulling,
-                    renaming, or modifying any Git data, folder names, or timestamps
+  --help, -h          Show this help
+  --dry-run           Query stars and inspect the archive without cloning, pulling,
+                      renaming, or modifying any Git data, folder names, or timestamps
+  --concurrency=N     Number of repositories to process concurrently (default: 4,
+                      range: 1-8; --concurrency=1 is sequential and deterministic)
 
 Environment:
-  GITHUB_TOKEN      Required. Personal access token with repo + read:user scopes.
-  TARGET_PATH       Optional. Used if no positional target-path is given.
+  GITHUB_TOKEN        Required. Personal access token with repo + read:user scopes.
+  TARGET_PATH         Optional. Used if no positional target-path is given.
 
 A positional target-path argument overrides TARGET_PATH.
 Default target: <repo>/starred_repos.`;
 
 export interface ParsedArgs {
+	concurrency: number;
 	dryRun: boolean;
 	help: boolean;
 	targetPath: null | string;
 }
 
+export const DEFAULT_CONCURRENCY = 4;
+const MAX_CONCURRENCY = 8;
+const MIN_CONCURRENCY = 1;
+
+const parseConcurrency = (value: string): number => {
+	const num = Number(value);
+	if (!Number.isInteger(num) || num < MIN_CONCURRENCY || num > MAX_CONCURRENCY) {
+		throw new Error(
+			`--concurrency must be an integer from ${MIN_CONCURRENCY} to ${MAX_CONCURRENCY}, got: ${value}`
+		);
+	}
+	return num;
+};
+
 export const parseArgs = (argv: string[] = process.argv.slice(2)): ParsedArgs => {
-	const parsed: ParsedArgs = { dryRun: false, help: false, targetPath: null };
+	const parsed: ParsedArgs = {
+		concurrency: DEFAULT_CONCURRENCY,
+		dryRun: false,
+		help: false,
+		targetPath: null,
+	};
 	for (const arg of argv) {
 		if (arg === '--help' || arg === '-h') {
 			parsed.help = true;
 		} else if (arg === '--dry-run') {
 			parsed.dryRun = true;
+		} else if (arg.startsWith('--concurrency=')) {
+			parsed.concurrency = parseConcurrency(arg.slice('--concurrency='.length));
+		} else if (arg === '--concurrency') {
+			throw new Error('--concurrency requires a value: use --concurrency=N');
 		} else if (!arg.startsWith('-')) {
 			if (parsed.targetPath !== null) {
 				throw new Error(`Unexpected positional argument: ${arg}`);
@@ -208,9 +236,12 @@ export const runStarsync = async (argv: string[] = process.argv.slice(2)): Promi
 	let repos: Repository[];
 	try {
 		console.log('\nFetching starred repos...');
-		const response = await octokit.paginate(
-			octokit.rest.activity.listReposStarredByAuthenticatedUser,
-			{ per_page: 100 }
+		const response = await withApiRetry(
+			() =>
+				octokit.paginate(octokit.rest.activity.listReposStarredByAuthenticatedUser, {
+					per_page: 100,
+				}),
+			{ maxRetries: 2 }
 		);
 		repos = response.map((r) => ({ clone_url: r.clone_url, name: r.name }));
 	} catch (err) {
@@ -222,31 +253,122 @@ export const runStarsync = async (argv: string[] = process.argv.slice(2)): Promi
 		console.log('\n--dry-run: querying stars and inspecting the archive without changes.');
 	}
 
-	let succeeded = 0;
-	const failures: SyncFailure[] = [];
-	for (const repo of repos) {
-		if (args.dryRun) {
+	// Track retained checkouts (existing folders not in the starred list)
+	const starredNames = new Set(repos.map((r) => r.name));
+	const retained: string[] = [];
+	for (const folderName of existing) {
+		if (!starredNames.has(folderName)) {
+			const gitPath = path.join(targetBase, folderName, '.git');
+			if (fs.existsSync(gitPath)) {
+				retained.push(folderName);
+			}
+		}
+	}
+
+	if (args.dryRun) {
+		let dryRunSucceeded = 0;
+		for (let i = 0; i < repos.length; i++) {
+			const repo = repos[i]!;
 			const repoPath = path.join(targetBase, repo.name);
 			const isCloned =
 				(existing.has(repo.name) || fs.existsSync(repoPath)) &&
 				fs.existsSync(path.join(repoPath, '.git'));
-			console.log(`\n${repo.name} — would ${isCloned ? 'pull' : 'clone'}`);
-			succeeded++;
-			continue;
+			console.log(
+				`\nSyncing ${i + 1}/${repos.length} — ${repo.name} — would ${isCloned ? 'refresh' : 'clone'}`
+			);
+			dryRunSucceeded++;
 		}
-		const result = cloneOrPull(repo, targetBase, existing);
-		if (result.ok) {
-			succeeded++;
+		if (retained.length > 0) {
+			console.log(`\nRetained checkouts (${retained.length}):`);
+			for (const name of retained) {
+				console.log(`  ${name}`);
+			}
+		}
+		console.log(`\nSync complete (dry-run). Succeeded: ${dryRunSucceeded}. Failed: 0.`);
+		return 0;
+	}
+
+	// Validate GitHub.com origins before processing
+	const validRepos: Repository[] = [];
+	const invalidFailures: { message: string; name: string }[] = [];
+	for (const repo of repos) {
+		if (!isGitHubDotComUrl(repo.clone_url)) {
+			const sanitized = sanitizeUrl(repo.clone_url);
+			const msg = `Repository origin is not GitHub.com: ${sanitized}`;
+			console.warn(`Skipping ${repo.name}: ${msg}`);
+			invalidFailures.push({ message: msg, name: repo.name });
 		} else {
-			failures.push(result.failure);
+			validRepos.push(repo);
 		}
 	}
 
-	console.log(`\nSync complete. Succeeded: ${succeeded}. Failed: ${failures.length}.`);
+	console.log(`\nConcurrency: ${args.concurrency}`);
+
+	const refreshResults = await runSyncPool(
+		validRepos,
+		(repo, isInterruptionRequested) =>
+			processRepository(repo, targetBase, isInterruptionRequested),
+		{ concurrency: args.concurrency, totalCount: validRepos.length }
+	);
+
+	// Tally outcomes
+	let added = 0;
+	let updated = 0;
+	let current = 0;
+	let blocked = 0;
+	let skipped = 0;
+	const failures: { message: string; name: string }[] = [...invalidFailures];
+
+	for (const result of refreshResults) {
+		switch (result.outcome) {
+			case 'added':
+				added++;
+				break;
+			case 'blocked': {
+				blocked++;
+				console.warn(
+					`- ${result.name}: blocked — ${result.message ?? 'local state would be overwritten'}`
+				);
+				break;
+			}
+			case 'current':
+				current++;
+				break;
+			case 'failed': {
+				failures.push({ message: result.message ?? 'unknown error', name: result.name });
+				console.error(`- ${result.name}: failed — ${result.message ?? 'unknown error'}`);
+				break;
+			}
+			case 'skipped': {
+				skipped++;
+				console.warn(`- ${result.name}: skipped — ${result.message ?? 'interrupted'}`);
+				break;
+			}
+			case 'updated':
+				updated++;
+				break;
+			default:
+				break;
+		}
+	}
+
+	const succeeded = added + updated + current;
+	console.log(
+		`\nSync complete. Added: ${added}. Updated: ${updated}. Current: ${current}. Blocked: ${blocked}. Skipped: ${skipped}. Retained: ${retained.length}. Failed: ${failures.length}.`
+	);
+	console.log(`Succeeded: ${succeeded}.`);
+
+	if (retained.length > 0) {
+		console.log('Retained checkouts (no longer starred):');
+		for (const name of retained) {
+			console.log(`  ${name}`);
+		}
+	}
+
 	if (failures.length > 0) {
 		console.error('\nFailed repositories:');
 		for (const failure of failures) {
-			console.error(`- ${failure.name} (${failure.verb}): ${failure.message}`);
+			console.error(`- ${failure.name}: ${failure.message}`);
 		}
 		return 1;
 	}

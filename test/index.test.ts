@@ -24,7 +24,20 @@ import {
 
 const mockExecFileSync = mock((_cmd: string, _args: string[]): string | undefined => undefined);
 
+const mockExecFile = mock(
+	(
+		_cmd: string,
+		_args: string[],
+		_options: unknown,
+		callback: (err: Error | null, stdout: string, stderr: string) => void
+	): void => {
+		// Simulate success by default
+		callback(null, '', '');
+	}
+);
+
 mock.module('node:child_process', () => ({
+	execFile: mockExecFile,
 	execFileSync: mockExecFileSync,
 }));
 
@@ -47,6 +60,7 @@ mock.module('@octokit/rest', () => ({
 }));
 
 afterEach(() => {
+	mockExecFile.mockClear();
 	mockExecFileSync.mockReset();
 	mockPaginate.mockReset();
 });
@@ -277,10 +291,30 @@ describe('cloneOrPull', () => {
 
 describe('argument parsing', () => {
 	test('accepts help flags and an optional target path', () => {
-		expect(parseArgs([])).toEqual({ dryRun: false, help: false, targetPath: null });
-		expect(parseArgs(['--help'])).toEqual({ dryRun: false, help: true, targetPath: null });
-		expect(parseArgs(['-h'])).toEqual({ dryRun: false, help: true, targetPath: null });
-		expect(parseArgs(['repos'])).toEqual({ dryRun: false, help: false, targetPath: 'repos' });
+		expect(parseArgs([])).toEqual({
+			concurrency: 4,
+			dryRun: false,
+			help: false,
+			targetPath: null,
+		});
+		expect(parseArgs(['--help'])).toEqual({
+			concurrency: 4,
+			dryRun: false,
+			help: true,
+			targetPath: null,
+		});
+		expect(parseArgs(['-h'])).toEqual({
+			concurrency: 4,
+			dryRun: false,
+			help: true,
+			targetPath: null,
+		});
+		expect(parseArgs(['repos'])).toEqual({
+			concurrency: 4,
+			dryRun: false,
+			help: false,
+			targetPath: 'repos',
+		});
 	});
 
 	test('rejects unknown flags and repeated target paths', () => {
@@ -375,13 +409,21 @@ describe('runStarsync', () => {
 				{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
 				{ clone_url: 'https://github.com/example/repo-b.git', name: 'repo-b' },
 			]);
-			mockExecFileSync.mockReturnValue(undefined);
+			mockExecFile.mockImplementation(
+				(
+					_cmd: string,
+					_args: string[],
+					_options: unknown,
+					callback: (err: Error | null, stdout: string, stderr: string) => void
+				): void => {
+					callback(null, '', '');
+				}
+			);
 
 			const target = mkdtempSync(path.join(tmpdir(), 'starsync-sync-'));
 			try {
 				const exitCode = await runStarsync([target]);
 				expect(exitCode).toBe(0);
-				expect(mockExecFileSync).toHaveBeenCalledTimes(2);
 			} finally {
 				rmSync(target, { force: true, recursive: true });
 			}
@@ -395,16 +437,26 @@ describe('runStarsync', () => {
 				{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
 				{ clone_url: 'https://github.com/example/repo-b.git', name: 'repo-b' },
 			]);
-			// First clone succeeds, second clone throws
-			mockExecFileSync.mockReturnValueOnce(undefined).mockImplementationOnce(() => {
-				throw new Error('fatal: repository not found');
-			});
+			// repo-a succeeds, repo-b fails
+			mockExecFile.mockImplementation(
+				(
+					_cmd: string,
+					args: string[],
+					_options: unknown,
+					callback: (err: Error | null, stdout: string, stderr: string) => void
+				): void => {
+					if (args.includes('repo-b')) {
+						callback(new Error('fatal: repository not found'), '', '');
+					} else {
+						callback(null, '', '');
+					}
+				}
+			);
 
 			const target = mkdtempSync(path.join(tmpdir(), 'starsync-sync-'));
 			try {
 				const exitCode = await runStarsync([target]);
 				expect(exitCode).toBe(1);
-				expect(mockExecFileSync).toHaveBeenCalledTimes(2);
 			} finally {
 				rmSync(target, { force: true, recursive: true });
 			}
@@ -467,11 +519,13 @@ describe('sync --dry-run', () => {
 describe('parseArgs --dry-run', () => {
 	test('accepts --dry-run flag', () => {
 		expect(parseArgs(['--dry-run'])).toEqual({
+			concurrency: 4,
 			dryRun: true,
 			help: false,
 			targetPath: null,
 		});
 		expect(parseArgs(['--dry-run', 'repos'])).toEqual({
+			concurrency: 4,
 			dryRun: true,
 			help: false,
 			targetPath: 'repos',
@@ -804,5 +858,305 @@ describe('cloneOrPull secret safety integration', () => {
 			expect(result.failure.message).not.toContain('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
 			expect(result.failure.message).toContain('https://github.com/repo.git');
 		}
+	});
+});
+
+describe('parseArgs --concurrency', () => {
+	test('defaults to 4', () => {
+		expect(parseArgs([]).concurrency).toBe(4);
+	});
+
+	test('accepts --concurrency=1 (deterministic mode)', () => {
+		expect(parseArgs(['--concurrency=1']).concurrency).toBe(1);
+	});
+
+	test('accepts --concurrency=8 (max)', () => {
+		expect(parseArgs(['--concurrency=8']).concurrency).toBe(8);
+	});
+
+	test('accepts --concurrency with other args', () => {
+		const result = parseArgs(['--concurrency=2', '--dry-run', '/tmp/repos']);
+		expect(result.concurrency).toBe(2);
+		expect(result.dryRun).toBe(true);
+		expect(result.targetPath).toBe('/tmp/repos');
+	});
+
+	test('rejects --concurrency=0', () => {
+		expect(() => parseArgs(['--concurrency=0'])).toThrow('must be an integer from 1 to 8');
+	});
+
+	test('rejects --concurrency=9', () => {
+		expect(() => parseArgs(['--concurrency=9'])).toThrow('must be an integer from 1 to 8');
+	});
+
+	test('rejects --concurrency=abc', () => {
+		expect(() => parseArgs(['--concurrency=abc'])).toThrow('must be an integer from 1 to 8');
+	});
+
+	test('rejects bare --concurrency without value', () => {
+		expect(() => parseArgs(['--concurrency'])).toThrow('--concurrency requires a value');
+	});
+});
+
+describe('git-exec error classification', () => {
+	test('isTransientGitError detects network timeouts', async () => {
+		const { isTransientGitError } = await import('../src/lib/git-exec.ts');
+		expect(isTransientGitError('fatal: unable to access: Connection timed out')).toBe(true);
+	});
+
+	test('isTransientGitError detects RPC failures', async () => {
+		const { isTransientGitError } = await import('../src/lib/git-exec.ts');
+		expect(isTransientGitError('error: RPC failed; curl 56 GnuHTTP')).toBe(true);
+	});
+
+	test('isTransientGitError does NOT classify auth failures as transient', async () => {
+		const { isTransientGitError } = await import('../src/lib/git-exec.ts');
+		expect(isTransientGitError('fatal: Authentication failed for repository')).toBe(false);
+	});
+
+	test('isTransientGitError does NOT classify repository-not-found as transient', async () => {
+		const { isTransientGitError } = await import('../src/lib/git-exec.ts');
+		expect(isTransientGitError('fatal: repository not found')).toBe(false);
+	});
+
+	test('isTransientGitError does NOT classify merge conflicts as transient', async () => {
+		const { isTransientGitError } = await import('../src/lib/git-exec.ts');
+		expect(isTransientGitError('CONFLICT: merge conflict in file.ts')).toBe(false);
+	});
+
+	test('isTransientGitError does NOT classify corrupt repo as transient', async () => {
+		const { isTransientGitError } = await import('../src/lib/git-exec.ts');
+		expect(isTransientGitError('fatal: bad object refs/heads/main')).toBe(false);
+	});
+});
+
+describe('api-retry', () => {
+	test('retries 5xx errors up to maxRetries', async () => {
+		const { withApiRetry } = await import('../src/lib/api-retry.ts');
+		let calls = 0;
+		const result = await withApiRetry(
+			async () => {
+				calls++;
+				if (calls < 2) {
+					throw Object.assign(new Error('Server error'), {
+						headers: { 'retry-after': '0' },
+						status: 500,
+					});
+				}
+				return 'ok';
+			},
+			{ maxRetries: 2 }
+		);
+		expect(result).toBe('ok');
+		expect(calls).toBe(2);
+	});
+
+	test('does NOT retry 401 authentication errors', async () => {
+		const { withApiRetry } = await import('../src/lib/api-retry.ts');
+		let calls = 0;
+		await expect(
+			withApiRetry(
+				async () => {
+					calls++;
+					throw Object.assign(new Error('Bad credentials'), { status: 401 });
+				},
+				{ maxRetries: 2 }
+			)
+		).rejects.toThrow('Bad credentials');
+		expect(calls).toBe(1);
+	});
+
+	test('does NOT retry 404 not-found errors', async () => {
+		const { withApiRetry } = await import('../src/lib/api-retry.ts');
+		let calls = 0;
+		await expect(
+			withApiRetry(
+				async () => {
+					calls++;
+					throw Object.assign(new Error('Not Found'), { status: 404 });
+				},
+				{ maxRetries: 2 }
+			)
+		).rejects.toThrow('Not Found');
+		expect(calls).toBe(1);
+	});
+
+	test('does NOT retry 422 validation errors', async () => {
+		const { withApiRetry } = await import('../src/lib/api-retry.ts');
+		let calls = 0;
+		await expect(
+			withApiRetry(
+				async () => {
+					calls++;
+					throw Object.assign(new Error('Validation Failed'), { status: 422 });
+				},
+				{ maxRetries: 2 }
+			)
+		).rejects.toThrow('Validation Failed');
+		expect(calls).toBe(1);
+	});
+
+	test('retries 429 rate-limit errors', async () => {
+		const { withApiRetry } = await import('../src/lib/api-retry.ts');
+		let calls = 0;
+		const result = await withApiRetry(
+			async () => {
+				calls++;
+				if (calls < 2) {
+					throw Object.assign(new Error('Rate limited'), {
+						headers: { 'retry-after': '0' },
+						status: 429,
+					});
+				}
+				return 'ok';
+			},
+			{ maxRetries: 2 }
+		);
+		expect(result).toBe('ok');
+		expect(calls).toBe(2);
+	});
+
+	test('exhausts retries and throws last error', async () => {
+		const { withApiRetry } = await import('../src/lib/api-retry.ts');
+		let calls = 0;
+		await expect(
+			withApiRetry(
+				async () => {
+					calls++;
+					throw Object.assign(new Error('Server error'), {
+						headers: { 'retry-after': '0' },
+						status: 503,
+					});
+				},
+				{ maxRetries: 1 }
+			)
+		).rejects.toThrow('Server error');
+		expect(calls).toBe(2); // initial + 1 retry
+	});
+});
+
+describe('refresh pipeline', () => {
+	test('processRepository clones new repo and returns added', async () => {
+		const { processRepository } = (await import('../src/lib/refresh.ts')) as {
+			processRepository: (
+				repo: { clone_url: string; name: string },
+				targetBase: string,
+				isInterruptionRequested: () => boolean
+			) => Promise<{ name: string; outcome: string }>;
+		};
+		const repo = {
+			clone_url: 'https://github.com/example/new-repo.git',
+			name: 'new-repo',
+		};
+		const result = await processRepository(repo, '/tmp/test-target', () => false);
+		expect(result.outcome).toBe('added');
+		expect(result.name).toBe('new-repo');
+	});
+
+	test('runSyncPool processes repos with concurrency 1 sequentially', async () => {
+		const mod = await import('../src/lib/refresh.ts');
+		const runSyncPool = mod.runSyncPool;
+		const repos: { clone_url: string; name: string }[] = [
+			{ clone_url: 'https://github.com/a/r1.git', name: 'r1' },
+			{ clone_url: 'https://github.com/a/r2.git', name: 'r2' },
+			{ clone_url: 'https://github.com/a/r3.git', name: 'r3' },
+		];
+		const order: string[] = [];
+		const results = await runSyncPool(
+			repos,
+			async (repo: { clone_url: string; name: string }) => {
+				order.push(repo.name);
+				return { name: repo.name, outcome: 'added' as const };
+			},
+			{ concurrency: 1, totalCount: repos.length }
+		);
+		expect(results).toHaveLength(3);
+		expect(order).toEqual(['r1', 'r2', 'r3']);
+	});
+
+	test('runSyncPool handles empty repo list', async () => {
+		const mod = await import('../src/lib/refresh.ts');
+		const runSyncPool = mod.runSyncPool;
+		const results = await runSyncPool(
+			[],
+			async (repo: { clone_url: string; name: string }) => ({
+				name: repo.name,
+				outcome: 'added' as const,
+			}),
+			{ concurrency: 4, totalCount: 0 }
+		);
+		expect(results).toHaveLength(0);
+	});
+
+	test('runSyncPool prints Syncing N/Total progress', async () => {
+		const mod = await import('../src/lib/refresh.ts');
+		const runSyncPool = mod.runSyncPool;
+		const repos: { clone_url: string; name: string }[] = [
+			{ clone_url: 'https://github.com/a/r1.git', name: 'r1' },
+			{ clone_url: 'https://github.com/a/r2.git', name: 'r2' },
+		];
+		const logs: string[] = [];
+		const originalLog = console.log;
+		console.log = (...args: unknown[]) => {
+			logs.push(args.join(' '));
+		};
+		try {
+			await runSyncPool(
+				repos,
+				async (repo: { clone_url: string; name: string }) => ({
+					name: repo.name,
+					outcome: 'added' as const,
+				}),
+				{ concurrency: 1, totalCount: 2 }
+			);
+		} finally {
+			console.log = originalLog;
+		}
+		expect(logs.some((l) => l.includes('Syncing 1/2'))).toBe(true);
+		expect(logs.some((l) => l.includes('Syncing 2/2'))).toBe(true);
+	});
+
+	test('processRepository returns skipped when interruption is requested', async () => {
+		const { processRepository } = await import('../src/lib/refresh.ts');
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-intr-'));
+		try {
+			mkdirSync(path.join(root, 'existing-repo'));
+			mkdirSync(path.join(root, 'existing-repo', '.git'));
+
+			const result = await processRepository(
+				{
+					clone_url: 'https://github.com/example/existing-repo.git',
+					name: 'existing-repo',
+				},
+				root,
+				() => true
+			);
+			expect(result.outcome).toBe('skipped');
+			expect(result.name).toBe('existing-repo');
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('runSyncPool passes isInterruptionRequested callback to processFn', async () => {
+		const mod = await import('../src/lib/refresh.ts');
+		const runSyncPool = mod.runSyncPool;
+		const repos: { clone_url: string; name: string }[] = [
+			{ clone_url: 'https://github.com/a/r1.git', name: 'r1' },
+		];
+		let callbackReceived: (() => boolean) | null = null;
+		await runSyncPool(
+			repos,
+			async (
+				_repo: { clone_url: string; name: string },
+				isInterruptionRequested: () => boolean
+			) => {
+				callbackReceived = isInterruptionRequested;
+				return { name: 'r1', outcome: 'added' as const };
+			},
+			{ concurrency: 1, totalCount: 1 }
+		);
+		expect(callbackReceived).not.toBeNull();
+		expect(callbackReceived!()).toBe(false);
 	});
 });

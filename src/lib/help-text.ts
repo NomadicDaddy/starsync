@@ -16,6 +16,7 @@ Commands:
 Options:
   --help, -h        Show help (use after a subcommand for subcommand help)
   --dry-run         Sync only: query stars and inspect without changing anything
+  --concurrency=N   Sync only: concurrent repository processing (default: 4, range: 1-8)
   --apply           Migrate only: apply migration (not available in 1.x)
 
 Environment:
@@ -31,13 +32,15 @@ Usage:
   bun src/cli.ts sync [options] [target-path]
 
 Options:
-  --help, -h        Show this help
-  --dry-run         Query stars and inspect the archive without cloning, pulling,
-                    renaming, or modifying any Git data, folder names, or timestamps
+  --help, -h          Show this help
+  --dry-run           Query stars and inspect the archive without cloning, pulling,
+                      renaming, or modifying any Git data, folder names, or timestamps
+  --concurrency=N     Number of repositories to process concurrently (default: 4,
+                      range: 1-8; --concurrency=1 is sequential and deterministic)
 
 Environment:
-  GITHUB_TOKEN      Required. Personal access token with repo + read:user scopes.
-  TARGET_PATH       Optional. Used if no positional target-path is given.
+  GITHUB_TOKEN        Required. Personal access token with repo + read:user scopes.
+  TARGET_PATH         Optional. Used if no positional target-path is given.
 
 A positional target-path argument overrides TARGET_PATH.
 Default target: <repo>/starred_repos.`;
