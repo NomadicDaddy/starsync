@@ -34,7 +34,7 @@
 		"lint": "eslint \"src/**/*.ts\" \"scripts/**/*.ts\" \"test/**/*.ts\"",
 		"lint:fix": "eslint --fix \"src/**/*.ts\" \"scripts/**/*.ts\" \"test/**/*.ts\"",
 		"set-folder-dates": "bun ./scripts/set-folder-dates.ts",
-		"smoke:qc": "bun run typecheck && bun run lint && bun run format:check",
+		"smoke:qc": "bun run typecheck && bun run lint && bun run format:check && bun test",
 		"start": "bun src/cli.ts",
 		"sync": "bun ./src/cli.ts",
 		"test": "bun test",

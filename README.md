@@ -85,7 +85,7 @@ Both commands exit with code 2 on unknown arguments and code 1 on runtime errors
 | `bun run compile`          | standalone binary in `dist/`        |
 | `bun run typecheck`        | `tsc --noEmit`                      |
 | `bun run lint`             | `eslint "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
-| `bun run smoke:qc`         | typecheck, lint, format check       |
+| `bun run smoke:qc`         | typecheck, lint, format check, test |
 | `bun run format`           | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
 | `bun run format:check`     | `prettier --check "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
 
