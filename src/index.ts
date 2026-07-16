@@ -5,6 +5,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { resolveTargetPath as resolveTargetPathImpl } from './lib/cli-utils.ts';
+import {
+	isGitAuthError,
+	isGitHubDotComUrl,
+	sanitizeMessage,
+	sanitizeUrl,
+	CREDENTIAL_GUIDANCE,
+} from './lib/secret-safety.ts';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..');
@@ -96,6 +103,22 @@ export const cloneOrPull = (
 	existing: Set<string>
 ): SyncResult => {
 	console.log(`\n${repo.name}`);
+
+	// Validate that the repository origin is GitHub.com (reject GHE and other hosts)
+	if (!isGitHubDotComUrl(repo.clone_url)) {
+		const sanitized = sanitizeUrl(repo.clone_url);
+		const msg = `Repository origin is not GitHub.com: ${sanitized}`;
+		console.warn(`Skipping ${repo.name}: ${msg}`);
+		return {
+			failure: {
+				message: msg,
+				name: repo.name,
+				verb: 'clone',
+			},
+			ok: false,
+		};
+	}
+
 	const repoPath = path.join(targetBase, repo.name);
 	const isCloned =
 		(existing.has(repo.name) || fs.existsSync(repoPath)) &&
@@ -111,12 +134,13 @@ export const cloneOrPull = (
 				}
 			).trim();
 			if (normalizeRepoUrl(remoteUrl) !== normalizeRepoUrl(repo.clone_url)) {
-				console.warn(
-					`Skipping ${repo.name}: remote URL mismatch (expected ${repo.clone_url}, found ${remoteUrl})`
-				);
+				const expectedSanitized = sanitizeUrl(repo.clone_url);
+				const foundSanitized = sanitizeUrl(remoteUrl);
+				const msg = `Remote URL mismatch (expected ${expectedSanitized}, found ${foundSanitized})`;
+				console.warn(`Skipping ${repo.name}: ${msg}`);
 				return {
 					failure: {
-						message: `Remote URL mismatch (expected ${repo.clone_url}, found ${remoteUrl})`,
+						message: msg,
 						name: repo.name,
 						verb: 'clone',
 					},
@@ -124,17 +148,26 @@ export const cloneOrPull = (
 				};
 			}
 			console.log('Repository is already available -> pulling');
-			execFileSync('git', ['pull'], { cwd: repoPath, stdio: 'inherit' });
+			execFileSync('git', ['-c', 'core.askPass=', 'pull'], {
+				cwd: repoPath,
+				env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+				stdio: 'inherit',
+			});
 		} else {
 			console.log('Repository not available -> cloning');
-			execFileSync('git', ['clone', repo.clone_url], {
+			execFileSync('git', ['-c', 'core.askPass=', 'clone', repo.clone_url], {
 				cwd: targetBase,
+				env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
 				stdio: 'inherit',
 			});
 		}
 		return { failure: null, ok: true };
 	} catch (err) {
-		const message = (err as Error).message;
+		const rawMessage = (err as Error).message;
+		let message = sanitizeMessage(rawMessage);
+		if (isGitAuthError(rawMessage)) {
+			message = `${message}\n${CREDENTIAL_GUIDANCE}`;
+		}
 		console.error(`Failed to ${verb} ${repo.name}: ${message}`);
 		return { failure: { message, name: repo.name, verb }, ok: false };
 	}

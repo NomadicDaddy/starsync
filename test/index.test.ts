@@ -12,6 +12,14 @@ import {
 	stripQuotes,
 } from '../src/index.ts';
 import type { Repository, SyncResult } from '../src/index.ts';
+import {
+	hasEmbeddedCredentials,
+	isGitAuthError,
+	isGitHubDotComUrl,
+	sanitizeMessage,
+	sanitizeUrl,
+	extractHost,
+} from '../src/lib/secret-safety.ts';
 
 const mockExecFileSync = mock((_cmd: string, _args: string[]): string | undefined => undefined);
 
@@ -54,10 +62,11 @@ describe('cloneOrPull', () => {
 
 		expect(result.ok).toBe(true);
 		expect(mockExecFileSync).toHaveBeenCalledTimes(1);
-		expect(mockExecFileSync).toHaveBeenCalledWith('git', ['clone', repo.clone_url], {
-			cwd: '/tmp/target',
-			stdio: 'inherit',
-		});
+		expect(mockExecFileSync).toHaveBeenCalledWith(
+			'git',
+			['-c', 'core.askPass=', 'clone', repo.clone_url],
+			expect.objectContaining({ cwd: '/tmp/target', stdio: 'inherit' })
+		);
 	});
 
 	test('clones a repository when folder exists but lacks .git directory', () => {
@@ -71,10 +80,11 @@ describe('cloneOrPull', () => {
 
 			expect(result.ok).toBe(true);
 			expect(mockExecFileSync).toHaveBeenCalledTimes(1);
-			expect(mockExecFileSync).toHaveBeenCalledWith('git', ['clone', repo.clone_url], {
-				cwd: root,
-				stdio: 'inherit',
-			});
+			expect(mockExecFileSync).toHaveBeenCalledWith(
+				'git',
+				['-c', 'core.askPass=', 'clone', repo.clone_url],
+				expect.objectContaining({ cwd: root, stdio: 'inherit' })
+			);
 		} finally {
 			rmSync(root, { force: true, recursive: true });
 		}
@@ -102,10 +112,12 @@ describe('cloneOrPull', () => {
 				['-C', path.join(root, 'test-repo'), 'config', '--get', 'remote.origin.url'],
 				{ encoding: 'utf-8' }
 			);
-			expect(mockExecFileSync).toHaveBeenNthCalledWith(2, 'git', ['pull'], {
-				cwd: path.join(root, 'test-repo'),
-				stdio: 'inherit',
-			});
+			expect(mockExecFileSync).toHaveBeenNthCalledWith(
+				2,
+				'git',
+				['-c', 'core.askPass=', 'pull'],
+				expect.objectContaining({ cwd: path.join(root, 'test-repo'), stdio: 'inherit' })
+			);
 		} finally {
 			rmSync(root, { force: true, recursive: true });
 		}
@@ -162,10 +174,12 @@ describe('cloneOrPull', () => {
 
 			expect(result.ok).toBe(true);
 			expect(mockExecFileSync).toHaveBeenCalledTimes(2);
-			expect(mockExecFileSync).toHaveBeenNthCalledWith(2, 'git', ['pull'], {
-				cwd: path.join(root, 'test-repo'),
-				stdio: 'inherit',
-			});
+			expect(mockExecFileSync).toHaveBeenNthCalledWith(
+				2,
+				'git',
+				['-c', 'core.askPass=', 'pull'],
+				expect.objectContaining({ cwd: path.join(root, 'test-repo'), stdio: 'inherit' })
+			);
 		} finally {
 			rmSync(root, { force: true, recursive: true });
 		}
@@ -187,10 +201,12 @@ describe('cloneOrPull', () => {
 
 			expect(result.ok).toBe(true);
 			expect(mockExecFileSync).toHaveBeenCalledTimes(2);
-			expect(mockExecFileSync).toHaveBeenNthCalledWith(2, 'git', ['pull'], {
-				cwd: path.join(root, 'test-repo'),
-				stdio: 'inherit',
-			});
+			expect(mockExecFileSync).toHaveBeenNthCalledWith(
+				2,
+				'git',
+				['-c', 'core.askPass=', 'pull'],
+				expect.objectContaining({ cwd: path.join(root, 'test-repo'), stdio: 'inherit' })
+			);
 		} finally {
 			rmSync(root, { force: true, recursive: true });
 		}
@@ -578,5 +594,219 @@ describe('subcommand dispatch', () => {
 		const { dispatchSync } = await import('../src/lib/subcommands.ts');
 		const exitCode = await dispatchSync(['--help']);
 		expect(exitCode).toBe(0);
+	});
+});
+
+describe('secret safety', () => {
+	test('hasEmbeddedCredentials detects user:password@ in HTTPS URLs', () => {
+		expect(hasEmbeddedCredentials('https://user:pass@github.com/repo.git')).toBe(true);
+		expect(hasEmbeddedCredentials('https://user:token@github.com/repo.git')).toBe(true);
+	});
+
+	test('hasEmbeddedCredentials detects bare token@ in HTTPS URLs', () => {
+		expect(hasEmbeddedCredentials('https://ghp_abc123@github.com/repo.git')).toBe(true);
+	});
+
+	test('hasEmbeddedCredentials returns false for clean HTTPS URLs', () => {
+		expect(hasEmbeddedCredentials('https://github.com/owner/repo.git')).toBe(false);
+	});
+
+	test('hasEmbeddedCredentials returns false for SSH URLs', () => {
+		expect(hasEmbeddedCredentials('git@github.com:owner/repo.git')).toBe(false);
+	});
+
+	test('sanitizeUrl strips user:password from HTTPS URLs', () => {
+		expect(sanitizeUrl('https://user:pass@github.com/owner/repo.git')).toBe(
+			'https://github.com/owner/repo.git'
+		);
+	});
+
+	test('sanitizeUrl strips bare token from HTTPS URLs', () => {
+		expect(sanitizeUrl('https://ghp_token123@github.com/owner/repo.git')).toBe(
+			'https://github.com/owner/repo.git'
+		);
+	});
+
+	test('sanitizeUrl leaves clean URLs unchanged', () => {
+		expect(sanitizeUrl('https://github.com/owner/repo.git')).toBe(
+			'https://github.com/owner/repo.git'
+		);
+	});
+
+	test('sanitizeUrl leaves SSH URLs unchanged', () => {
+		expect(sanitizeUrl('git@github.com:owner/repo.git')).toBe(
+			'git@github.com:owner/repo.git'
+		);
+	});
+
+	test('sanitizeMessage strips credentials from URLs in error messages', () => {
+		const msg = 'fatal: could not read Username for https://user:pass@github.com/owner/repo.git';
+		const sanitized = sanitizeMessage(msg);
+		expect(sanitized).not.toContain('user:pass');
+		expect(sanitized).toContain('https://github.com/owner/repo.git');
+	});
+
+	test('sanitizeMessage redacts GitHub PAT tokens', () => {
+		const token = 'ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+		const msg = `Authentication failed for ${token}`;
+		const sanitized = sanitizeMessage(msg);
+		expect(sanitized).not.toContain(token);
+		expect(sanitized).toContain('[REDACTED]');
+	});
+
+	test('sanitizeMessage redacts fine-grained PAT tokens', () => {
+		const token = 'github_pat_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+		const msg = `Authentication failed for ${token}`;
+		const sanitized = sanitizeMessage(msg);
+		expect(sanitized).not.toContain(token);
+	});
+
+	test('isGitAuthError detects authentication failure messages', () => {
+		expect(isGitAuthError('fatal: Authentication failed for repository')).toBe(true);
+		expect(isGitAuthError("fatal: could not read Username for 'https://...'")).toBe(true);
+		expect(isGitAuthError('error: terminal prompts disabled')).toBe(true);
+	});
+
+	test('isGitAuthError returns false for non-auth errors', () => {
+		expect(isGitAuthError('CONFLICT: merge conflict')).toBe(false);
+		expect(isGitAuthError('fatal: repository not found')).toBe(false);
+	});
+
+	test('extractHost parses HTTPS URLs', () => {
+		expect(extractHost('https://github.com/owner/repo.git')).toBe('github.com');
+		expect(extractHost('https://git.internal.corp/repo.git')).toBe('git.internal.corp');
+	});
+
+	test('extractHost parses SSH URLs', () => {
+		expect(extractHost('git@github.com:owner/repo.git')).toBe('github.com');
+		expect(extractHost('ssh://git@ghe.corp:22/owner/repo.git')).toBe('ghe.corp');
+	});
+
+	test('extractHost returns null for unrecognized formats', () => {
+		expect(extractHost('not a url')).toBeNull();
+	});
+
+	test('isGitHubDotComUrl returns true for github.com', () => {
+		expect(isGitHubDotComUrl('https://github.com/owner/repo.git')).toBe(true);
+		expect(isGitHubDotComUrl('git@github.com:owner/repo.git')).toBe(true);
+		expect(isGitHubDotComUrl('https://www.github.com/owner/repo.git')).toBe(true);
+	});
+
+	test('isGitHubDotComUrl returns false for GitHub Enterprise Server', () => {
+		expect(isGitHubDotComUrl('https://ghe.corp.com/owner/repo.git')).toBe(false);
+		expect(isGitHubDotComUrl('git@ghe.corp.com:owner/repo.git')).toBe(false);
+	});
+
+	test('isGitHubDotComUrl returns false for non-GitHub hosts', () => {
+		expect(isGitHubDotComUrl('https://gitlab.com/owner/repo.git')).toBe(false);
+	});
+});
+
+describe('cloneOrPull secret safety integration', () => {
+	const githubRepo: Repository = {
+		clone_url: 'https://github.com/example/test-repo.git',
+		name: 'test-repo',
+	};
+
+	test('rejects non-GitHub.com repository origins', () => {
+		const gheRepo: Repository = {
+			clone_url: 'https://ghe.corp.com/example/test-repo.git',
+			name: 'test-repo',
+		};
+		const result: SyncResult = cloneOrPull(gheRepo, '/tmp/target', new Set());
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.failure.message).toContain('not GitHub.com');
+			expect(result.failure.message).toContain('ghe.corp.com');
+		}
+		expect(mockExecFileSync).not.toHaveBeenCalled();
+	});
+
+	test('rejects GitLab repository origins', () => {
+		const gitlabRepo: Repository = {
+			clone_url: 'https://gitlab.com/example/test-repo.git',
+			name: 'test-repo',
+		};
+		const result: SyncResult = cloneOrPull(gitlabRepo, '/tmp/target', new Set());
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.failure.message).toContain('not GitHub.com');
+		}
+	});
+
+	test('sanitizes embedded credentials from remote URL mismatch messages', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
+		try {
+			mkdirSync(path.join(root, 'test-repo'));
+			mkdirSync(path.join(root, 'test-repo', '.git'));
+
+			// Remote URL contains embedded credentials
+			mockExecFileSync.mockReturnValueOnce(
+				'https://user:secret@github.com/example/test-repo.git\n'
+			);
+
+			const result: SyncResult = cloneOrPull(
+				{
+					clone_url: 'https://github.com/other/test-repo.git',
+					name: 'test-repo',
+				},
+				root,
+				new Set(['test-repo'])
+			);
+
+			expect(result.ok).toBe(false);
+			if (!result.ok) {
+				expect(result.failure.message).not.toContain('user:secret');
+				expect(result.failure.message).toContain('https://github.com/example/test-repo.git');
+			}
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('appends credential guidance on Git auth errors', () => {
+		mockExecFileSync.mockImplementation(() => {
+			throw new Error('fatal: Authentication failed for repository');
+		});
+
+		const result: SyncResult = cloneOrPull(githubRepo, '/tmp/target', new Set());
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.failure.message).toContain('Authentication failed');
+			expect(result.failure.message).toContain('Git Credential Manager');
+		}
+	});
+
+	test('does not append guidance on non-auth Git errors', () => {
+		mockExecFileSync.mockImplementation(() => {
+			throw new Error('fatal: repository not found');
+		});
+
+		const result: SyncResult = cloneOrPull(githubRepo, '/tmp/target', new Set());
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.failure.message).not.toContain('Git Credential Manager');
+		}
+	});
+
+	test('redacts tokens in error messages from Git failures', () => {
+		mockExecFileSync.mockImplementation(() => {
+			throw new Error(
+				"fatal: could not read Username for 'https://ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@github.com/repo.git'"
+			);
+		});
+
+		const result: SyncResult = cloneOrPull(githubRepo, '/tmp/target', new Set());
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.failure.message).not.toContain('ghp_');
+			expect(result.failure.message).not.toContain('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+			expect(result.failure.message).toContain('https://github.com/repo.git');
+		}
 	});
 });

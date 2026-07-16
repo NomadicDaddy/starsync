@@ -16,7 +16,23 @@ bun install
 
 The `preinstall` hook enforces Bun as the package manager — `npm install`, `yarn install`, and `pnpm install` will be rejected.
 
-## Configuration
+## Authentication
+
+StarSync separates API authentication from Git transport authentication:
+
+- **GitHub API** (listing starred repos): uses `GITHUB_TOKEN` via Octokit. Required for `sync`, `init`, and `migrate`.
+- **Git clone/pull** (transport): uses your system Git credentials — Git Credential Manager or SSH keys. StarSync never embeds the API token in Git operations.
+
+When Git credentials are missing or invalid, StarSync reports a clear failure with guidance to configure Git Credential Manager or SSH keys. StarSync also prevents Git from prompting interactively (`GIT_TERMINAL_PROMPT=0`, `core.askPass=`).
+
+### Secret Safety
+
+- API tokens and embedded Git credentials are never placed in command arguments, logs, or archive metadata.
+- Remote URLs in error messages are sanitized — embedded credentials are stripped before any output.
+- Git error messages are scanned for token patterns (`ghp_…`, `github_pat_…`) and redacted.
+- Repository origins are validated as GitHub.com — GitHub Enterprise Server and other hosts are rejected.
+
+### Configuration
 
 Create a `.env` file in the project root (Bun auto-loads it) or set the variable in your shell:
 
