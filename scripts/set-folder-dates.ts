@@ -71,7 +71,7 @@ if (args.help) {
 	process.exit(0);
 }
 
-console.warn('Warning: set-folder-dates is deprecated; use \'starsync dates\' instead.');
+console.warn("Warning: set-folder-dates is deprecated; use 'starsync dates' instead.");
 
 const root = resolveTargetPathForScript(args.targetPath);
 if (!fs.existsSync(root)) {

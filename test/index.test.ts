@@ -3,6 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import type { Repository, SyncResult } from '../src/index.ts';
+
 import {
 	cloneOrPull,
 	listFolders,
@@ -11,7 +13,6 @@ import {
 	runStarsync,
 	stripQuotes,
 } from '../src/index.ts';
-import type { Repository, SyncResult } from '../src/index.ts';
 import {
 	hasEmbeddedCredentials,
 	isGitAuthError,
@@ -422,51 +423,45 @@ describe('sync --dry-run', () => {
 		}
 	});
 
-	test(
-		'queries stars and reports would-clone without calling git',
-		async () => {
-			savedToken = process.env.GITHUB_TOKEN;
-			process.env.GITHUB_TOKEN = 'test-token';
-			mockPaginate.mockResolvedValue([
-				{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-			]);
-			mockExecFileSync.mockReturnValue(undefined);
+	test('queries stars and reports would-clone without calling git', async () => {
+		savedToken = process.env.GITHUB_TOKEN;
+		process.env.GITHUB_TOKEN = 'test-token';
+		mockPaginate.mockResolvedValue([
+			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+		]);
+		mockExecFileSync.mockReturnValue(undefined);
 
-			const target = mkdtempSync(path.join(tmpdir(), 'starsync-dryrun-'));
-			try {
-				const exitCode = await runStarsync([target, '--dry-run']);
-				expect(exitCode).toBe(0);
-				// In dry-run mode, no git clone/pull should be called
-				expect(mockExecFileSync).not.toHaveBeenCalled();
-			} finally {
-				rmSync(target, { force: true, recursive: true });
-			}
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dryrun-'));
+		try {
+			const exitCode = await runStarsync([target, '--dry-run']);
+			expect(exitCode).toBe(0);
+			// In dry-run mode, no git clone/pull should be called
+			expect(mockExecFileSync).not.toHaveBeenCalled();
+		} finally {
+			rmSync(target, { force: true, recursive: true });
 		}
-	);
+	});
 
-	test(
-		'reports would-pull for existing repos without calling git pull',
-		async () => {
-			savedToken = process.env.GITHUB_TOKEN;
-			process.env.GITHUB_TOKEN = 'test-token';
-			mockPaginate.mockResolvedValue([
-				{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-			]);
+	test('reports would-pull for existing repos without calling git pull', async () => {
+		savedToken = process.env.GITHUB_TOKEN;
+		process.env.GITHUB_TOKEN = 'test-token';
+		mockPaginate.mockResolvedValue([
+			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+		]);
 
-			const target = mkdtempSync(path.join(tmpdir(), 'starsync-dryrun-'));
-			try {
-				mkdirSync(path.join(target, 'repo-a'));
-				mkdirSync(path.join(target, 'repo-a', '.git'));
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dryrun-'));
+		try {
+			mkdirSync(path.join(target, 'repo-a'));
+			mkdirSync(path.join(target, 'repo-a', '.git'));
 
-				const exitCode = await runStarsync([target, '--dry-run']);
-				expect(exitCode).toBe(0);
-				// In dry-run mode, no git operations at all
-				expect(mockExecFileSync).not.toHaveBeenCalled();
-			} finally {
-				rmSync(target, { force: true, recursive: true });
-			}
+			const exitCode = await runStarsync([target, '--dry-run']);
+			expect(exitCode).toBe(0);
+			// In dry-run mode, no git operations at all
+			expect(mockExecFileSync).not.toHaveBeenCalled();
+		} finally {
+			rmSync(target, { force: true, recursive: true });
 		}
-	);
+	});
 });
 
 describe('parseArgs --dry-run', () => {
@@ -634,13 +629,12 @@ describe('secret safety', () => {
 	});
 
 	test('sanitizeUrl leaves SSH URLs unchanged', () => {
-		expect(sanitizeUrl('git@github.com:owner/repo.git')).toBe(
-			'git@github.com:owner/repo.git'
-		);
+		expect(sanitizeUrl('git@github.com:owner/repo.git')).toBe('git@github.com:owner/repo.git');
 	});
 
 	test('sanitizeMessage strips credentials from URLs in error messages', () => {
-		const msg = 'fatal: could not read Username for https://user:pass@github.com/owner/repo.git';
+		const msg =
+			'fatal: could not read Username for https://user:pass@github.com/owner/repo.git';
 		const sanitized = sanitizeMessage(msg);
 		expect(sanitized).not.toContain('user:pass');
 		expect(sanitized).toContain('https://github.com/owner/repo.git');
@@ -759,7 +753,9 @@ describe('cloneOrPull secret safety integration', () => {
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
 				expect(result.failure.message).not.toContain('user:secret');
-				expect(result.failure.message).toContain('https://github.com/example/test-repo.git');
+				expect(result.failure.message).toContain(
+					'https://github.com/example/test-repo.git'
+				);
 			}
 		} finally {
 			rmSync(root, { force: true, recursive: true });
