@@ -4,9 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { CheckoutReport, Finding } from './lib/reporting.ts';
+
 import { withApiRetry } from './lib/api-retry.ts';
-import { resolveTargetPath as resolveTargetPathImpl } from './lib/cli-utils.ts';
-import { processRepository, runSyncPool } from './lib/refresh.ts';
+import { resolveTargetPath as resolveTargetPathImpl, stripQuotes } from './lib/cli-utils.ts';
+import { processRepository, runSyncPool, type RefreshResult } from './lib/refresh.ts';
+import { createCommandReport, createCommandReporter, createFinding } from './lib/reporting.ts';
 import {
 	isGitAuthError,
 	isGitHubDotComUrl,
@@ -26,6 +29,7 @@ Usage:
 
 Options:
   --help, -h          Show this help
+  --json              Emit one schema-versioned JSON result document on stdout
   --dry-run           Query stars and inspect the archive without cloning, pulling,
                       renaming, or modifying any Git data, folder names, or timestamps
   --concurrency=N     Number of repositories to process concurrently (default: 4,
@@ -42,6 +46,7 @@ export interface ParsedArgs {
 	concurrency: number;
 	dryRun: boolean;
 	help: boolean;
+	json: boolean;
 	targetPath: null | string;
 }
 
@@ -64,6 +69,7 @@ export const parseArgs = (argv: string[] = process.argv.slice(2)): ParsedArgs =>
 		concurrency: DEFAULT_CONCURRENCY,
 		dryRun: false,
 		help: false,
+		json: false,
 		targetPath: null,
 	};
 	for (const arg of argv) {
@@ -71,6 +77,8 @@ export const parseArgs = (argv: string[] = process.argv.slice(2)): ParsedArgs =>
 			parsed.help = true;
 		} else if (arg === '--dry-run') {
 			parsed.dryRun = true;
+		} else if (arg === '--json') {
+			parsed.json = true;
 		} else if (arg.startsWith('--concurrency=')) {
 			parsed.concurrency = parseConcurrency(arg.slice('--concurrency='.length));
 		} else if (arg === '--concurrency') {
@@ -87,7 +95,7 @@ export const parseArgs = (argv: string[] = process.argv.slice(2)): ParsedArgs =>
 	return parsed;
 };
 
-export { stripQuotes } from './lib/cli-utils.ts';
+export { stripQuotes };
 
 export const resolveTargetPath = (
 	positional: null | string,
@@ -204,38 +212,184 @@ export const cloneOrPull = (
 const getErrorMessage = (err: unknown): string =>
 	err instanceof Error ? err.message : String(err);
 
+const isFallbackTarget = (targetPath: null | string): boolean => {
+	if (targetPath !== null) return false;
+	const envTarget = process.env.TARGET_PATH ? stripQuotes(process.env.TARGET_PATH) : '';
+	return !envTarget;
+};
+
+const getFallbackFindings = (targetPath: null | string): Finding[] =>
+	isFallbackTarget(targetPath)
+		? [
+				createFinding(
+					'warning',
+					'fallback-target',
+					'Falling back to the project-local starred_repos directory. Set TARGET_PATH or pass an explicit target path.'
+				),
+			]
+		: [];
+
+const checkoutExists = (targetBase: string, name: string): boolean =>
+	fs.existsSync(path.join(targetBase, name, '.git'));
+
+const reportRefreshResult = (result: RefreshResult, targetBase: string): CheckoutReport => {
+	const lifecycle = checkoutExists(targetBase, result.name) ? 'active' : null;
+	switch (result.outcome) {
+		case 'added':
+			return {
+				findings: [],
+				lifecycle: 'active',
+				name: result.name,
+				outcome: 'added',
+				pendingRename: false,
+			};
+		case 'blocked':
+			return {
+				findings: [
+					createFinding(
+						'error',
+						'checkout-blocked',
+						result.message ?? 'Local state would be overwritten.'
+					),
+				],
+				lifecycle: 'blocked',
+				name: result.name,
+				outcome: 'failed',
+				pendingRename: false,
+			};
+		case 'current':
+			return {
+				findings: [createFinding('info', 'checkout-current', 'Checkout is current.')],
+				lifecycle: 'active',
+				name: result.name,
+				outcome: 'current',
+				pendingRename: false,
+			};
+		case 'failed':
+			return {
+				findings: [
+					createFinding(
+						'error',
+						'git-operation-failed',
+						result.message ?? 'Unknown Git error.'
+					),
+				],
+				lifecycle,
+				name: result.name,
+				outcome: 'failed',
+				pendingRename: false,
+			};
+		case 'retained':
+			return {
+				findings: [
+					createFinding(
+						'info',
+						'checkout-retained',
+						'Checkout is no longer starred and was retained.'
+					),
+				],
+				lifecycle: 'retained',
+				name: result.name,
+				outcome: 'skipped',
+				pendingRename: false,
+			};
+		case 'skipped':
+			return {
+				findings: [
+					createFinding(
+						'warning',
+						'operation-skipped',
+						result.message ?? 'Operation was skipped.'
+					),
+				],
+				lifecycle,
+				name: result.name,
+				outcome: 'skipped',
+				pendingRename: false,
+			};
+		case 'updated':
+			return {
+				findings: [],
+				lifecycle: 'active',
+				name: result.name,
+				outcome: 'updated',
+				pendingRename: false,
+			};
+	}
+};
+
 export const runStarsync = async (argv: string[] = process.argv.slice(2)): Promise<number> => {
+	const reporter = createCommandReporter(argv.includes('--json'));
 	let args: ParsedArgs;
 	try {
 		args = parseArgs(argv);
 	} catch (err) {
-		console.error(getErrorMessage(err));
-		console.error(HELP_TEXT);
+		reporter.emit(
+			createCommandReport({
+				command: 'sync',
+				exitCode: 2,
+				findings: [createFinding('error', 'invalid-usage', getErrorMessage(err))],
+				helpText: HELP_TEXT,
+				targetPath: null,
+			})
+		);
 		return 2;
 	}
 	if (args.help) {
-		console.log(HELP_TEXT);
+		reporter.emit(
+			createCommandReport({
+				command: 'sync',
+				exitCode: 0,
+				helpText: HELP_TEXT,
+				targetPath: null,
+			})
+		);
 		return 0;
 	}
 
 	const token = process.env.GITHUB_TOKEN;
 	if (!token) {
-		console.error('GITHUB_TOKEN is not set');
+		reporter.emit(
+			createCommandReport({
+				command: 'sync',
+				dryRun: args.dryRun,
+				exitCode: 1,
+				findings: [createFinding('error', 'missing-token', 'GITHUB_TOKEN is not set.')],
+				targetPath: null,
+			})
+		);
 		return 1;
 	}
 
 	const targetBase = resolveTargetPath(args.targetPath);
-	if (!args.dryRun) {
-		fs.mkdirSync(targetBase, { recursive: true });
+	try {
+		if (!args.dryRun) fs.mkdirSync(targetBase, { recursive: true });
+	} catch (err) {
+		reporter.emit(
+			createCommandReport({
+				command: 'sync',
+				dryRun: args.dryRun,
+				exitCode: 1,
+				findings: [
+					createFinding(
+						'error',
+						'target-create-failed',
+						`Cannot create target directory: ${getErrorMessage(err)}`
+					),
+				],
+				targetPath: targetBase,
+			})
+		);
+		return 1;
 	}
-	console.log(`Target: ${targetBase}`);
+	reporter.progress(`Target: ${targetBase}`);
 
 	const existing = listFolders(targetBase);
 	const octokit = new Octokit({ auth: token });
 
 	let repos: Repository[];
 	try {
-		console.log('\nFetching starred repos...');
+		reporter.progress('Fetching starred repositories...');
 		const response = await withApiRetry(
 			() =>
 				octokit.paginate(octokit.rest.activity.listReposStarredByAuthenticatedUser, {
@@ -245,132 +399,163 @@ export const runStarsync = async (argv: string[] = process.argv.slice(2)): Promi
 		);
 		repos = response.map((r) => ({ clone_url: r.clone_url, name: r.name }));
 	} catch (err) {
-		console.error(`Error fetching repositories: ${getErrorMessage(err)}`);
+		reporter.emit(
+			createCommandReport({
+				command: 'sync',
+				dryRun: args.dryRun,
+				exitCode: 1,
+				findings: [
+					createFinding(
+						'error',
+						'github-api-failed',
+						`Error fetching repositories: ${sanitizeMessage(getErrorMessage(err))}`
+					),
+				],
+				targetPath: targetBase,
+			})
+		);
 		return 1;
 	}
 
-	if (args.dryRun) {
-		console.log('\n--dry-run: querying stars and inspecting the archive without changes.');
-	}
-
-	// Track retained checkouts (existing folders not in the starred list)
 	const starredNames = new Set(repos.map((r) => r.name));
-	const retained: string[] = [];
-	for (const folderName of existing) {
-		if (!starredNames.has(folderName)) {
-			const gitPath = path.join(targetBase, folderName, '.git');
-			if (fs.existsSync(gitPath)) {
-				retained.push(folderName);
-			}
-		}
-	}
+	const retained = [...existing].filter(
+		(folderName) => !starredNames.has(folderName) && checkoutExists(targetBase, folderName)
+	);
+	const retainedReports: CheckoutReport[] = retained.map((name) => ({
+		findings: [
+			createFinding(
+				'info',
+				'checkout-retained',
+				'Checkout is no longer starred and was retained.'
+			),
+		],
+		lifecycle: 'retained',
+		name,
+		outcome: 'skipped',
+		pendingRename: false,
+	}));
 
 	if (args.dryRun) {
-		let dryRunSucceeded = 0;
-		for (let i = 0; i < repos.length; i++) {
-			const repo = repos[i]!;
-			const repoPath = path.join(targetBase, repo.name);
-			const isCloned =
-				(existing.has(repo.name) || fs.existsSync(repoPath)) &&
-				fs.existsSync(path.join(repoPath, '.git'));
-			console.log(
-				`\nSyncing ${i + 1}/${repos.length} — ${repo.name} — would ${isCloned ? 'refresh' : 'clone'}`
+		reporter.progress('Dry run: querying stars and inspecting the archive without changes.');
+		const plannedReports = repos.map((repo, index): CheckoutReport => {
+			const isCloned = checkoutExists(targetBase, repo.name);
+			const plannedOutcome = isCloned ? 'updated' : 'added';
+			reporter.progress(
+				`Syncing ${index + 1}/${repos.length} — ${repo.name} — would ${isCloned ? 'refresh' : 'clone'}`
 			);
-			dryRunSucceeded++;
-		}
-		if (retained.length > 0) {
-			console.log(`\nRetained checkouts (${retained.length}):`);
-			for (const name of retained) {
-				console.log(`  ${name}`);
-			}
-		}
-		console.log(`\nSync complete (dry-run). Succeeded: ${dryRunSucceeded}. Failed: 0.`);
+			return {
+				findings: [
+					createFinding(
+						'info',
+						isCloned ? 'refresh-planned' : 'clone-planned',
+						isCloned ? 'Checkout would be refreshed.' : 'Repository would be added.'
+					),
+				],
+				lifecycle: isCloned ? 'active' : null,
+				name: repo.name,
+				outcome: 'skipped',
+				pendingRename: false,
+				plannedOutcome,
+			};
+		});
+		reporter.emit(
+			createCommandReport({
+				checkouts: [...plannedReports, ...retainedReports],
+				command: 'sync',
+				dryRun: true,
+				exitCode: 0,
+				findings: getFallbackFindings(args.targetPath),
+				targetPath: targetBase,
+			})
+		);
 		return 0;
 	}
 
-	// Validate GitHub.com origins before processing
 	const validRepos: Repository[] = [];
-	const invalidFailures: { message: string; name: string }[] = [];
+	const invalidReports: CheckoutReport[] = [];
 	for (const repo of repos) {
 		if (!isGitHubDotComUrl(repo.clone_url)) {
-			const sanitized = sanitizeUrl(repo.clone_url);
-			const msg = `Repository origin is not GitHub.com: ${sanitized}`;
-			console.warn(`Skipping ${repo.name}: ${msg}`);
-			invalidFailures.push({ message: msg, name: repo.name });
+			invalidReports.push({
+				findings: [
+					createFinding(
+						'error',
+						'invalid-origin',
+						`Repository origin is not GitHub.com: ${sanitizeUrl(repo.clone_url)}`
+					),
+				],
+				lifecycle: checkoutExists(targetBase, repo.name) ? 'active' : null,
+				name: repo.name,
+				outcome: 'failed',
+				pendingRename: false,
+			});
 		} else {
 			validRepos.push(repo);
 		}
 	}
 
-	console.log(`\nConcurrency: ${args.concurrency}`);
+	reporter.progress(`Concurrency: ${args.concurrency}`);
 
-	const refreshResults = await runSyncPool(
+	const poolResult = await runSyncPool(
 		validRepos,
 		(repo, isInterruptionRequested) =>
 			processRepository(repo, targetBase, isInterruptionRequested),
-		{ concurrency: args.concurrency, totalCount: validRepos.length }
+		{
+			concurrency: args.concurrency,
+			onDiagnostic: reporter.diagnostic,
+			onProgress: reporter.progress,
+			totalCount: validRepos.length,
+		}
 	);
-
-	// Tally outcomes
-	let added = 0;
-	let updated = 0;
-	let current = 0;
-	let blocked = 0;
-	let skipped = 0;
-	const failures: { message: string; name: string }[] = [...invalidFailures];
-
-	for (const result of refreshResults) {
-		switch (result.outcome) {
-			case 'added':
-				added++;
-				break;
-			case 'blocked': {
-				blocked++;
-				console.warn(
-					`- ${result.name}: blocked — ${result.message ?? 'local state would be overwritten'}`
-				);
-				break;
-			}
-			case 'current':
-				current++;
-				break;
-			case 'failed': {
-				failures.push({ message: result.message ?? 'unknown error', name: result.name });
-				console.error(`- ${result.name}: failed — ${result.message ?? 'unknown error'}`);
-				break;
-			}
-			case 'skipped': {
-				skipped++;
-				console.warn(`- ${result.name}: skipped — ${result.message ?? 'interrupted'}`);
-				break;
-			}
-			case 'updated':
-				updated++;
-				break;
-			default:
-				break;
-		}
-	}
-
-	const succeeded = added + updated + current;
-	console.log(
-		`\nSync complete. Added: ${added}. Updated: ${updated}. Current: ${current}. Blocked: ${blocked}. Skipped: ${skipped}. Retained: ${retained.length}. Failed: ${failures.length}.`
+	const refreshReports = poolResult.results.map((result) =>
+		reportRefreshResult(result, targetBase)
 	);
-	console.log(`Succeeded: ${succeeded}.`);
-
-	if (retained.length > 0) {
-		console.log('Retained checkouts (no longer starred):');
-		for (const name of retained) {
-			console.log(`  ${name}`);
-		}
+	const reportedNames = new Set(poolResult.results.map((result) => result.name));
+	const interruptedReports = poolResult.interrupted
+		? validRepos
+				.filter((repo) => !reportedNames.has(repo.name))
+				.map((repo): CheckoutReport => ({
+					findings: [
+						createFinding(
+							'warning',
+							'interrupted-before-start',
+							'Operation was not scheduled because interruption was requested.'
+						),
+					],
+					lifecycle: checkoutExists(targetBase, repo.name) ? 'active' : null,
+					name: repo.name,
+					outcome: 'skipped',
+					pendingRename: false,
+				}))
+		: [];
+	const checkouts = [
+		...refreshReports,
+		...interruptedReports,
+		...invalidReports,
+		...retainedReports,
+	];
+	const findings = getFallbackFindings(args.targetPath);
+	if (poolResult.interrupted) {
+		findings.push(
+			createFinding(
+				'warning',
+				'interrupted',
+				'Synchronization was interrupted; results are partial.'
+			)
+		);
 	}
-
-	if (failures.length > 0) {
-		console.error('\nFailed repositories:');
-		for (const failure of failures) {
-			console.error(`- ${failure.name}: ${failure.message}`);
-		}
-		return 1;
-	}
-	return 0;
+	const hasErrors = checkouts.some((checkout) =>
+		checkout.findings.some((finding) => finding.severity === 'error')
+	);
+	const exitCode = poolResult.interrupted ? 130 : hasErrors ? 1 : 0;
+	reporter.emit(
+		createCommandReport({
+			checkouts,
+			command: 'sync',
+			exitCode,
+			findings,
+			interrupted: poolResult.interrupted,
+			targetPath: targetBase,
+		})
+	);
+	return exitCode;
 };

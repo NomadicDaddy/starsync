@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import type { Repository, SyncResult } from '../src/index.ts';
+import type { CommandReport } from '../src/lib/reporting.ts';
 
 import {
 	cloneOrPull,
@@ -13,6 +14,7 @@ import {
 	runStarsync,
 	stripQuotes,
 } from '../src/index.ts';
+import { createCommandReport, createFinding } from '../src/lib/reporting.ts';
 import {
 	hasEmbeddedCredentials,
 	isGitAuthError,
@@ -58,6 +60,29 @@ mock.module('@octokit/rest', () => ({
 		paginate = mockPaginate;
 	},
 }));
+
+const captureConsole = async <T>(
+	operation: () => Promise<T> | T
+): Promise<{ result: T; stderr: string[]; stdout: string[] }> => {
+	const stderr: string[] = [];
+	const stdout: string[] = [];
+	const originalError = console.error;
+	const originalLog = console.log;
+	const originalWarn = console.warn;
+	console.error = (...args: unknown[]) => stderr.push(args.map(String).join(' '));
+	console.log = (...args: unknown[]) => stdout.push(args.map(String).join(' '));
+	console.warn = (...args: unknown[]) => stderr.push(args.map(String).join(' '));
+	try {
+		return { result: await operation(), stderr, stdout };
+	} finally {
+		console.error = originalError;
+		console.log = originalLog;
+		console.warn = originalWarn;
+	}
+};
+
+const parseReport = (stdout: string[]): CommandReport =>
+	JSON.parse(stdout.at(0) ?? '') as CommandReport;
 
 afterEach(() => {
 	mockExecFile.mockClear();
@@ -295,24 +320,28 @@ describe('argument parsing', () => {
 			concurrency: 4,
 			dryRun: false,
 			help: false,
+			json: false,
 			targetPath: null,
 		});
 		expect(parseArgs(['--help'])).toEqual({
 			concurrency: 4,
 			dryRun: false,
 			help: true,
+			json: false,
 			targetPath: null,
 		});
 		expect(parseArgs(['-h'])).toEqual({
 			concurrency: 4,
 			dryRun: false,
 			help: true,
+			json: false,
 			targetPath: null,
 		});
 		expect(parseArgs(['repos'])).toEqual({
 			concurrency: 4,
 			dryRun: false,
 			help: false,
+			json: false,
 			targetPath: 'repos',
 		});
 	});
@@ -522,12 +551,14 @@ describe('parseArgs --dry-run', () => {
 			concurrency: 4,
 			dryRun: true,
 			help: false,
+			json: false,
 			targetPath: null,
 		});
 		expect(parseArgs(['--dry-run', 'repos'])).toEqual({
 			concurrency: 4,
 			dryRun: true,
 			help: false,
+			json: false,
 			targetPath: 'repos',
 		});
 	});
@@ -631,6 +662,7 @@ describe('subcommand dispatch', () => {
 			mkdirSync(path.join(target, 'repo-a'));
 			mkdirSync(path.join(target, 'repo-a', '.git'));
 			mkdirSync(path.join(target, 'repo-b'));
+			mockExecFileSync.mockReturnValue('2026-07-16T10:00:00Z\n');
 
 			const exitCode = dispatchDates([target, '--dry-run']);
 			expect(exitCode).toBe(0);
@@ -1070,7 +1102,8 @@ describe('refresh pipeline', () => {
 			},
 			{ concurrency: 1, totalCount: repos.length }
 		);
-		expect(results).toHaveLength(3);
+		expect(results.results).toHaveLength(3);
+		expect(results.interrupted).toBe(false);
 		expect(order).toEqual(['r1', 'r2', 'r3']);
 	});
 
@@ -1085,7 +1118,8 @@ describe('refresh pipeline', () => {
 			}),
 			{ concurrency: 4, totalCount: 0 }
 		);
-		expect(results).toHaveLength(0);
+		expect(results.results).toHaveLength(0);
+		expect(results.interrupted).toBe(false);
 	});
 
 	test('runSyncPool prints Syncing N/Total progress', async () => {
@@ -1158,5 +1192,345 @@ describe('refresh pipeline', () => {
 		);
 		expect(callbackReceived).not.toBeNull();
 		expect(callbackReceived!()).toBe(false);
+	});
+});
+
+describe('structured command reporting', () => {
+	test('report summaries keep lifecycle, outcome, pending rename, and severity separate', () => {
+		const report = createCommandReport({
+			checkouts: [
+				{
+					findings: [createFinding('info', 'checkout-current', 'Checkout is current.')],
+					lifecycle: 'active',
+					name: 'current-repo',
+					outcome: 'current',
+					pendingRename: false,
+				},
+				{
+					findings: [
+						createFinding('info', 'checkout-retained', 'Checkout was retained.'),
+					],
+					lifecycle: 'retained',
+					name: 'retained-repo',
+					outcome: 'skipped',
+					pendingRename: false,
+				},
+				{
+					findings: [createFinding('error', 'checkout-blocked', 'Checkout is blocked.')],
+					lifecycle: 'blocked',
+					name: 'blocked-repo',
+					outcome: 'failed',
+					pendingRename: false,
+				},
+				{
+					findings: [createFinding('warning', 'pending-rename', 'Rename is pending.')],
+					lifecycle: 'active',
+					name: 'renamed-repo',
+					outcome: 'skipped',
+					pendingRename: true,
+				},
+			],
+			command: 'verify',
+			exitCode: 1,
+			targetPath: 'C:/archive',
+		});
+
+		expect(report.summary.checkouts).toEqual({
+			active: 2,
+			blocked: 1,
+			pendingRename: 1,
+			retained: 1,
+		});
+		expect(report.summary.outcomes).toEqual({
+			added: 0,
+			current: 1,
+			failed: 1,
+			skipped: 2,
+			updated: 0,
+		});
+		expect(report.summary.findings).toEqual({ error: 1, info: 2, warning: 1 });
+	});
+
+	test('parseArgs accepts --json without changing other defaults', () => {
+		expect(parseArgs(['--json'])).toEqual({
+			concurrency: 4,
+			dryRun: false,
+			help: false,
+			json: true,
+			targetPath: null,
+		});
+	});
+
+	test('every subcommand emits exactly one JSON help document on stdout', async () => {
+		const {
+			dispatchDates,
+			dispatchInit,
+			dispatchMigrate,
+			dispatchSync,
+			dispatchUnlock,
+			dispatchVerify,
+		} = await import('../src/lib/subcommands.ts');
+		const commands: [CommandReport['command'], () => number | Promise<number>][] = [
+			['dates', () => dispatchDates(['--json', '--help'])],
+			['init', () => dispatchInit(['--json', '--help'])],
+			['migrate', () => dispatchMigrate(['--json', '--help'])],
+			['sync', () => dispatchSync(['--json', '--help'])],
+			['unlock', () => dispatchUnlock(['--json', '--help'])],
+			['verify', () => dispatchVerify(['--json', '--help'])],
+		];
+
+		for (const [command, dispatch] of commands) {
+			const captured = await captureConsole(dispatch);
+			expect(captured.result).toBe(0);
+			expect(captured.stdout).toHaveLength(1);
+			const report = parseReport(captured.stdout);
+			expect(report.schemaVersion).toBe(1);
+			expect(report.command).toBe(command);
+			expect(report.exitCode).toBe(0);
+		}
+	});
+
+	test('JSON usage errors remain one document and exit 2', async () => {
+		const { dispatchVerify } = await import('../src/lib/subcommands.ts');
+		const captured = await captureConsole(() => dispatchVerify(['--json', '--bogus']));
+		const report = parseReport(captured.stdout);
+
+		expect(captured.result).toBe(2);
+		expect(captured.stdout).toHaveLength(1);
+		expect(report.exitCode).toBe(2);
+		expect(report.summary.findings.error).toBe(1);
+		expect(captured.stderr.some((line) => line.includes('invalid-usage'))).toBe(true);
+	});
+
+	test('unavailable commands emit their JSON result before exit 1', async () => {
+		const { dispatchVerify } = await import('../src/lib/subcommands.ts');
+		const captured = await captureConsole(() => dispatchVerify(['--json', 'C:/archive']));
+		const report = parseReport(captured.stdout);
+
+		expect(captured.result).toBe(1);
+		expect(captured.stdout).toHaveLength(1);
+		expect(report.exitCode).toBe(1);
+		expect(report.findings.at(-1)?.code).toBe('command-unavailable');
+		expect(report.summary.findings.error).toBe(1);
+	});
+
+	test('dates JSON keeps progress on stderr and reports planned updates', async () => {
+		const { dispatchDates } = await import('../src/lib/subcommands.ts');
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dates-json-'));
+		try {
+			mkdirSync(path.join(target, 'repo-a', '.git'), { recursive: true });
+			mockExecFileSync.mockReturnValue('2026-07-16T10:00:00Z\n');
+
+			const captured = await captureConsole(() =>
+				dispatchDates(['--json', '--dry-run', target])
+			);
+			const report = parseReport(captured.stdout);
+
+			expect(captured.result).toBe(0);
+			expect(captured.stdout).toHaveLength(1);
+			expect(captured.stderr.some((line) => line.startsWith('Root:'))).toBe(true);
+			expect(report.dryRun).toBe(true);
+			expect(report.checkouts[0]).toEqual(
+				expect.objectContaining({
+					lifecycle: 'active',
+					outcome: 'skipped',
+					pendingRename: false,
+					plannedOutcome: 'updated',
+				})
+			);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('dates human output retains oldest and newest timestamp tables', async () => {
+		const { dispatchDates } = await import('../src/lib/subcommands.ts');
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dates-human-'));
+		try {
+			mkdirSync(path.join(target, 'repo-a', '.git'), { recursive: true });
+			mockExecFileSync.mockReturnValue('2026-07-16T10:00:00Z\n');
+
+			const captured = await captureConsole(() => dispatchDates(['--dry-run', target]));
+
+			expect(captured.result).toBe(0);
+			expect(captured.stdout).toContain('Oldest folder timestamps:');
+			expect(captured.stdout).toContain('Newest folder timestamps:');
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('sync JSON reports active lifecycle and added run outcome without persistence', async () => {
+		const savedToken = process.env.GITHUB_TOKEN;
+		process.env.GITHUB_TOKEN = 'test-token';
+		mockPaginate.mockResolvedValue([
+			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+		]);
+		mockExecFile.mockImplementation(
+			(
+				_cmd: string,
+				_args: string[],
+				_options: unknown,
+				callback: (err: Error | null, stdout: string, stderr: string) => void
+			): void => callback(null, '', '')
+		);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-json-'));
+		try {
+			const captured = await captureConsole(() =>
+				runStarsync(['--json', '--concurrency=1', target])
+			);
+			const report = parseReport(captured.stdout);
+
+			expect(captured.result).toBe(0);
+			expect(captured.stdout).toHaveLength(1);
+			expect(captured.stderr.some((line) => line.includes('Syncing 1/1'))).toBe(true);
+			expect(report.schemaVersion).toBe(1);
+			expect(report.checkouts[0]).toEqual(
+				expect.objectContaining({
+					lifecycle: 'active',
+					outcome: 'added',
+					pendingRename: false,
+				})
+			);
+			expect(report.summary.outcomes.added).toBe(1);
+			expect(readdirSync(target)).toEqual([]);
+		} finally {
+			if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
+			else process.env.GITHUB_TOKEN = savedToken;
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('sync human output preserves succeeded and lifecycle summaries', async () => {
+		const savedToken = process.env.GITHUB_TOKEN;
+		process.env.GITHUB_TOKEN = 'test-token';
+		mockPaginate.mockResolvedValue([
+			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+		]);
+		mockExecFile.mockImplementation(
+			(
+				_cmd: string,
+				_args: string[],
+				_options: unknown,
+				callback: (err: Error | null, stdout: string, stderr: string) => void
+			): void => callback(null, '', '')
+		);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-human-'));
+		try {
+			const captured = await captureConsole(() => runStarsync(['--concurrency=1', target]));
+
+			expect(captured.result).toBe(0);
+			expect(captured.stdout).toContain(
+				'Checkout lifecycle. Active: 1. Retained: 0. Blocked: 0. Pending rename: 0.'
+			);
+			expect(captured.stdout).toContain('Succeeded: 1. Failed: 0.');
+		} finally {
+			if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
+			else process.env.GITHUB_TOKEN = savedToken;
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('quoted-empty TARGET_PATH is reported as a fallback warning', async () => {
+		const savedTarget = process.env.TARGET_PATH;
+		const savedToken = process.env.GITHUB_TOKEN;
+		process.env.GITHUB_TOKEN = 'test-token';
+		process.env.TARGET_PATH = '""';
+		mockPaginate.mockResolvedValue([]);
+		try {
+			const captured = await captureConsole(() => runStarsync(['--json', '--dry-run']));
+			const report = parseReport(captured.stdout);
+
+			expect(captured.result).toBe(0);
+			expect(report.findings).toContainEqual(
+				expect.objectContaining({ code: 'fallback-target', severity: 'warning' })
+			);
+		} finally {
+			if (savedTarget === undefined) delete process.env.TARGET_PATH;
+			else process.env.TARGET_PATH = savedTarget;
+			if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
+			else process.env.GITHUB_TOKEN = savedToken;
+		}
+	});
+
+	test('blocked refreshes separate lifecycle from outcome and exit 1', async () => {
+		const savedToken = process.env.GITHUB_TOKEN;
+		process.env.GITHUB_TOKEN = 'test-token';
+		mockPaginate.mockResolvedValue([
+			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+		]);
+		mockExecFile.mockImplementation(
+			(
+				_cmd: string,
+				args: string[],
+				_options: unknown,
+				callback: (err: Error | null, stdout: string, stderr: string) => void
+			): void => callback(null, args.includes('status') ? ' M local-file\n' : '', '')
+		);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-blocked-json-'));
+		try {
+			mkdirSync(path.join(target, 'repo-a', '.git'), { recursive: true });
+			const captured = await captureConsole(() =>
+				runStarsync(['--json', '--concurrency=1', target])
+			);
+			const report = parseReport(captured.stdout);
+
+			expect(captured.result).toBe(1);
+			expect(captured.stdout).toHaveLength(1);
+			expect(report.checkouts[0]).toEqual(
+				expect.objectContaining({ lifecycle: 'blocked', outcome: 'failed' })
+			);
+			expect(report.checkouts[0]?.findings[0]?.severity).toBe('error');
+			expect(report.summary.checkouts.blocked).toBe(1);
+			expect(report.summary.outcomes.failed).toBe(1);
+		} finally {
+			if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
+			else process.env.GITHUB_TOKEN = savedToken;
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('first interruption emits partial JSON and exits 130', async () => {
+		const savedToken = process.env.GITHUB_TOKEN;
+		process.env.GITHUB_TOKEN = 'test-token';
+		mockPaginate.mockResolvedValue([
+			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
+			{ clone_url: 'https://github.com/example/repo-b.git', name: 'repo-b' },
+		]);
+		mockExecFile.mockImplementation(
+			(
+				_cmd: string,
+				args: string[],
+				_options: unknown,
+				callback: (err: Error | null, stdout: string, stderr: string) => void
+			): void => {
+				if (args.includes('repo-a')) {
+					const signalHandler = process.listeners('SIGINT').at(-1);
+					if (signalHandler === undefined)
+						throw new Error('SIGINT handler was not registered');
+					signalHandler('SIGINT');
+				}
+				callback(null, '', '');
+			}
+		);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-interrupted-json-'));
+		try {
+			const captured = await captureConsole(() =>
+				runStarsync(['--json', '--concurrency=1', target])
+			);
+			const report = parseReport(captured.stdout);
+
+			expect(captured.result).toBe(130);
+			expect(captured.stdout).toHaveLength(1);
+			expect(report.interrupted).toBe(true);
+			expect(report.exitCode).toBe(130);
+			expect(report.summary.outcomes.added).toBe(1);
+			expect(report.summary.outcomes.skipped).toBe(1);
+			expect(report.findings.some((finding) => finding.code === 'interrupted')).toBe(true);
+		} finally {
+			if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
+			else process.env.GITHUB_TOKEN = savedToken;
+			rmSync(target, { force: true, recursive: true });
+		}
 	});
 });

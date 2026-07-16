@@ -53,26 +53,55 @@ A positional argument on the command line overrides `TARGET_PATH`.
 
 ## Usage
 
-Sync all starred repos:
+StarSync provides six explicit subcommands:
 
 ```sh
-bun run sync
-# or
-bun src/cli.ts [target-path]
+bun src/cli.ts sync [options] [target-path]
+bun src/cli.ts verify [options] [target-path]
+bun src/cli.ts migrate [options] [target-path]
+bun src/cli.ts dates [options] [target-path]
+bun src/cli.ts init [options] [target-path]
+bun src/cli.ts unlock [options] [target-path]
 ```
 
-Update each top-level repo folder's mtime to match its latest commit:
+`sync` and `dates` are available now. `verify`, `migrate`, `init`, and `unlock` are recognized but
+exit with code 1 until their behavior ships. Bare `starsync [target-path]` remains a deprecated
+alias for `sync` during the 1.x transition.
+
+Common options:
+
+| Option            | Description                                                        |
+| ----------------- | ------------------------------------------------------------------ |
+| `--help`, `-h`    | Show command-specific usage                                        |
+| `--json`          | Emit one schema-versioned result document on stdout                |
+| `--dry-run`       | Preview `sync` or `dates` without changing the archive             |
+| `--concurrency=N` | Process 1-8 repositories concurrently during `sync` (default: 4)   |
+
+The legacy folder-date command remains available as a deprecated alias:
 
 ```sh
 bun run set-folder-dates -- [--dry-run] [target-path]
 ```
 
-| Option         | Description                                             |
-| -------------- | ------------------------------------------------------- |
-| `--help`, `-h` | Show usage                                              |
-| `--dry-run`    | (set-folder-dates) preview without modifying timestamps |
+### Structured reporting
 
-Both commands exit with code 2 on unknown arguments and code 1 on runtime errors (including any clone/pull failures during sync).
+Every subcommand accepts `--json`. JSON mode writes exactly one result document to stdout and
+sends progress, warnings, and errors to stderr. Reports use integer `schemaVersion: 1` and keep
+these concepts independent:
+
+- checkout lifecycle: `active`, `retained`, or `blocked`;
+- pending rename: a separate boolean warning state;
+- current-run outcome: `added`, `updated`, `current`, `skipped`, or `failed`;
+- findings: `info`, `warning`, or `error`.
+
+Schema version 1 may gain additive fields. Removing a field or changing its meaning requires a new
+schema version. Reports are emitted only to the process streams; routine run reports are not saved
+inside the archive.
+
+All subcommands use the same exit contract: 0 when there are no errors, 1 for an operational
+failure or blocked request, 2 for invalid usage, and 130 after user interruption. On the first
+interrupt, StarSync stops scheduling new work, lets in-flight Git operations finish, and emits the
+partial result.
 
 ## Scripts
 

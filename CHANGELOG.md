@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+### Added
+
+- Added `--json` to every subcommand with a stable schema-versioned report, separate checkout
+  lifecycle and run outcome fields, severity-classified findings, predictable exit codes, and
+  partial results after a first interruption.
+
 ## [1.1.1] - 2026-07-14
 
 ### Fixed

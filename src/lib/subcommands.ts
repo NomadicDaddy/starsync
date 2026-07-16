@@ -1,16 +1,18 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { resolveTargetPath, stripQuotes } from './cli-utils.ts';
-import { runDatesCommand } from './dates-command.ts';
+import type { Finding } from './reporting.ts';
+
+import { resolveTargetPath, stripQuotes, type Subcommand } from './cli-utils.ts';
+import { formatDatesTables, runDatesCommand } from './dates-command.ts';
 import {
 	DATES_HELP_TEXT,
 	INIT_HELP_TEXT,
 	MIGRATE_HELP_TEXT,
-	SYNC_HELP_TEXT,
 	UNLOCK_HELP_TEXT,
 	VERIFY_HELP_TEXT,
 } from './help-text.ts';
+import { createCommandReport, createCommandReporter, createFinding } from './reporting.ts';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..', '..');
@@ -19,6 +21,7 @@ export interface ParsedSubcommandArgs {
 	apply: boolean;
 	dryRun: boolean;
 	help: boolean;
+	json: boolean;
 	targetPath: null | string;
 }
 
@@ -27,6 +30,7 @@ const parseSubcommandArgs = (argv: string[]): ParsedSubcommandArgs => {
 		apply: false,
 		dryRun: false,
 		help: false,
+		json: false,
 		targetPath: null,
 	};
 	for (const arg of argv) {
@@ -36,6 +40,8 @@ const parseSubcommandArgs = (argv: string[]): ParsedSubcommandArgs => {
 			parsed.dryRun = true;
 		} else if (arg === '--apply') {
 			parsed.apply = true;
+		} else if (arg === '--json') {
+			parsed.json = true;
 		} else if (!arg.startsWith('-')) {
 			if (parsed.targetPath !== null) {
 				throw new Error(`Unexpected positional argument: ${arg}`);
@@ -54,27 +60,62 @@ const isFallbackTarget = (positional: null | string): boolean => {
 	return !envValue;
 };
 
-const warnFallback = (): void => {
-	console.warn(
-		'Warning: falling back to the project-local starred_repos directory. ' +
-			'Set TARGET_PATH or pass an explicit target-path to avoid this.'
+const fallbackFinding = (positional: null | string): Finding[] =>
+	isFallbackTarget(positional)
+		? [
+				createFinding(
+					'warning',
+					'fallback-target',
+					'Falling back to the project-local starred_repos directory. Set TARGET_PATH or pass an explicit target path.'
+				),
+			]
+		: [];
+
+const emitHelp = (command: Subcommand, json: boolean, helpText: string): number => {
+	createCommandReporter(json).emit(
+		createCommandReport({ command, exitCode: 0, helpText, targetPath: null })
 	);
+	return 0;
+};
+
+const emitUsageError = (
+	command: Subcommand,
+	argv: string[],
+	helpText: string,
+	err: unknown
+): number => {
+	const message = err instanceof Error ? err.message : String(err);
+	createCommandReporter(argv.includes('--json')).emit(
+		createCommandReport({
+			command,
+			exitCode: 2,
+			findings: [createFinding('error', 'invalid-usage', message)],
+			helpText,
+			targetPath: null,
+		})
+	);
+	return 2;
+};
+
+const emitUnavailable = (
+	command: Subcommand,
+	args: ParsedSubcommandArgs,
+	message: string,
+	includeFallback: boolean
+): number => {
+	const findings = includeFallback ? fallbackFinding(args.targetPath) : [];
+	findings.push(createFinding('error', 'command-unavailable', message));
+	const targetPath =
+		args.targetPath || process.env.TARGET_PATH
+			? resolveTargetPath(args.targetPath, process.env.TARGET_PATH, repoDir)
+			: null;
+	createCommandReporter(args.json).emit(
+		createCommandReport({ command, exitCode: 1, findings, targetPath })
+	);
+	return 1;
 };
 
 export const dispatchSync = async (argv: string[]): Promise<number> => {
-	let args: ParsedSubcommandArgs;
-	try {
-		args = parseSubcommandArgs(argv);
-	} catch (err) {
-		console.error((err as Error).message);
-		console.error(SYNC_HELP_TEXT);
-		return 2;
-	}
-	if (args.help) {
-		console.log(SYNC_HELP_TEXT);
-		return 0;
-	}
-	if (isFallbackTarget(args.targetPath)) warnFallback();
 	const { runStarsync } = await import('../index.ts');
 	return runStarsync(argv);
 };
@@ -84,17 +125,10 @@ export const dispatchVerify = (argv: string[]): number => {
 	try {
 		args = parseSubcommandArgs(argv);
 	} catch (err) {
-		console.error((err as Error).message);
-		console.error(VERIFY_HELP_TEXT);
-		return 2;
+		return emitUsageError('verify', argv, VERIFY_HELP_TEXT, err);
 	}
-	if (args.help) {
-		console.log(VERIFY_HELP_TEXT);
-		return 0;
-	}
-	if (isFallbackTarget(args.targetPath)) warnFallback();
-	console.error('verify: not available in this release');
-	return 1;
+	if (args.help) return emitHelp('verify', args.json, VERIFY_HELP_TEXT);
+	return emitUnavailable('verify', args, 'Verify is not available in this release.', true);
 };
 
 export const dispatchMigrate = (argv: string[]): number => {
@@ -102,21 +136,13 @@ export const dispatchMigrate = (argv: string[]): number => {
 	try {
 		args = parseSubcommandArgs(argv);
 	} catch (err) {
-		console.error((err as Error).message);
-		console.error(MIGRATE_HELP_TEXT);
-		return 2;
+		return emitUsageError('migrate', argv, MIGRATE_HELP_TEXT, err);
 	}
-	if (args.help) {
-		console.log(MIGRATE_HELP_TEXT);
-		return 0;
-	}
-	if (isFallbackTarget(args.targetPath)) warnFallback();
-	if (args.apply) {
-		console.error('migrate --apply: not available in this release');
-		return 1;
-	}
-	console.error('migrate: not available in this release');
-	return 1;
+	if (args.help) return emitHelp('migrate', args.json, MIGRATE_HELP_TEXT);
+	const message = args.apply
+		? 'Migrate --apply is not available in this release.'
+		: 'Migrate is not available in this release.';
+	return emitUnavailable('migrate', args, message, true);
 };
 
 export const dispatchDates = (argv: string[]): number => {
@@ -124,17 +150,27 @@ export const dispatchDates = (argv: string[]): number => {
 	try {
 		args = parseSubcommandArgs(argv);
 	} catch (err) {
-		console.error((err as Error).message);
-		console.error(DATES_HELP_TEXT);
-		return 2;
+		return emitUsageError('dates', argv, DATES_HELP_TEXT, err);
 	}
-	if (args.help) {
-		console.log(DATES_HELP_TEXT);
-		return 0;
+	if (args.help) return emitHelp('dates', args.json, DATES_HELP_TEXT);
+
+	const targetPath = resolveTargetPath(args.targetPath, process.env.TARGET_PATH, repoDir);
+	const reporter = createCommandReporter(args.json);
+	reporter.progress(`Root: ${targetPath}`);
+	const result = runDatesCommand(targetPath, { dryRun: args.dryRun });
+	reporter.emit(
+		createCommandReport({
+			checkouts: result.checkouts,
+			command: 'dates',
+			dryRun: args.dryRun,
+			exitCode: result.exitCode,
+			findings: [...fallbackFinding(args.targetPath), ...result.findings],
+			targetPath,
+		})
+	);
+	if (!args.json) {
+		for (const line of formatDatesTables(result.displayRows)) reporter.progress(line);
 	}
-	if (isFallbackTarget(args.targetPath)) warnFallback();
-	const target = resolveTargetPath(args.targetPath, process.env.TARGET_PATH, repoDir);
-	const result = runDatesCommand(target, { dryRun: args.dryRun });
 	return result.exitCode;
 };
 
@@ -143,16 +179,10 @@ export const dispatchInit = (argv: string[]): number => {
 	try {
 		args = parseSubcommandArgs(argv);
 	} catch (err) {
-		console.error((err as Error).message);
-		console.error(INIT_HELP_TEXT);
-		return 2;
+		return emitUsageError('init', argv, INIT_HELP_TEXT, err);
 	}
-	if (args.help) {
-		console.log(INIT_HELP_TEXT);
-		return 0;
-	}
-	console.error('init: not available in this release');
-	return 1;
+	if (args.help) return emitHelp('init', args.json, INIT_HELP_TEXT);
+	return emitUnavailable('init', args, 'Init is not available in this release.', false);
 };
 
 export const dispatchUnlock = (argv: string[]): number => {
@@ -160,14 +190,8 @@ export const dispatchUnlock = (argv: string[]): number => {
 	try {
 		args = parseSubcommandArgs(argv);
 	} catch (err) {
-		console.error((err as Error).message);
-		console.error(UNLOCK_HELP_TEXT);
-		return 2;
+		return emitUsageError('unlock', argv, UNLOCK_HELP_TEXT, err);
 	}
-	if (args.help) {
-		console.log(UNLOCK_HELP_TEXT);
-		return 0;
-	}
-	console.error('unlock: not available in this release');
-	return 1;
+	if (args.help) return emitHelp('unlock', args.json, UNLOCK_HELP_TEXT);
+	return emitUnavailable('unlock', args, 'Unlock is not available in this release.', false);
 };

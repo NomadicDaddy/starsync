@@ -221,7 +221,14 @@ export const processRepository = async (
  */
 export interface SyncPoolOptions {
 	concurrency: number;
+	onDiagnostic?: (message: string) => void;
+	onProgress?: (message: string) => void;
 	totalCount: number;
+}
+
+export interface SyncPoolResult {
+	interrupted: boolean;
+	results: RefreshResult[];
 }
 
 /**
@@ -248,10 +255,12 @@ export const runSyncPool = async (
 	repos: RepoRecord[],
 	processFn: (repo: RepoRecord, isInterruptionRequested: () => boolean) => Promise<RefreshResult>,
 	options: SyncPoolOptions
-): Promise<RefreshResult[]> => {
+): Promise<SyncPoolResult> => {
 	const results: RefreshResult[] = new Array(repos.length);
 	let nextIndex = 0;
 	const interruption: InterruptionState = { level: 0 };
+	const onDiagnostic = options.onDiagnostic ?? ((message: string) => console.warn(message));
+	const onProgress = options.onProgress ?? ((message: string) => console.log(message));
 
 	const isInterruptionRequested = (): boolean => interruption.level >= 1;
 
@@ -264,7 +273,7 @@ export const runSyncPool = async (
 			if (index >= repos.length) return;
 
 			const repo = repos[index]!;
-			console.log(`\nSyncing ${index + 1}/${options.totalCount} — ${repo.name}`);
+			onProgress(`Syncing ${index + 1}/${options.totalCount} — ${repo.name}`);
 
 			const result = await processFn(repo, isInterruptionRequested);
 			results[index] = result;
@@ -275,16 +284,15 @@ export const runSyncPool = async (
 	const sigintHandler = () => {
 		interruption.level++;
 		if (interruption.level === 1) {
-			console.warn(
-				'\nInterrupt received — finishing in-flight operations. Press Ctrl+C again to stop immediately.'
+			onDiagnostic(
+				'Interrupt received — finishing in-flight operations. Press Ctrl+C again to stop immediately.'
 			);
 		} else {
-			console.warn('\nSecond interrupt — stopping immediately.');
+			onDiagnostic('Second interrupt — stopping immediately.');
 			process.exit(130);
 		}
 	};
 
-	const hadSigintHandler = process.listenerCount('SIGINT') > 0;
 	process.on('SIGINT', sigintHandler);
 
 	try {
@@ -296,10 +304,10 @@ export const runSyncPool = async (
 		await Promise.all(workers);
 	} finally {
 		process.removeListener('SIGINT', sigintHandler);
-		if (!hadSigintHandler && process.listenerCount('SIGINT') === 0) {
-			// Ensure we don't leave a dangling handler reference
-		}
 	}
 
-	return results.filter((r) => r !== undefined);
+	return {
+		interrupted: interruption.level > 0,
+		results: results.filter((result) => result !== undefined),
+	};
 };
