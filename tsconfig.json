@@ -1,6 +1,8 @@
 {
 	"compilerOptions": {
 		"allowImportingTsExtensions": true,
+		"allowSyntheticDefaultImports": true,
+		"erasableSyntaxOnly": true,
 		"esModuleInterop": true,
 		"exactOptionalPropertyTypes": true,
 		"forceConsistentCasingInFileNames": true,
@@ -11,7 +13,9 @@
 		"noEmit": true,
 		"noFallthroughCasesInSwitch": true,
 		"noImplicitOverride": true,
+		"noImplicitReturns": true,
 		"noUncheckedIndexedAccess": true,
+		"noUncheckedSideEffectImports": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
 		"resolveJsonModule": true,
