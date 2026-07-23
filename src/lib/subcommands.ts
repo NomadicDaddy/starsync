@@ -3,7 +3,6 @@ import { fileURLToPath } from 'node:url';
 
 import type { CommandReport } from './reporting.ts';
 
-import { HELP_TEXT, parseArgs } from '../index.ts';
 import {
 	initArchive,
 	migrateArchive,
@@ -12,11 +11,12 @@ import {
 	unlockArchive,
 	verifyArchive,
 } from './archive-api.ts';
-import { resolveTargetPath, stripQuotes, type Subcommand } from './cli-utils.ts';
+import { parseArgs, resolveTargetPath, stripQuotes, type Subcommand } from './cli-utils.ts';
 import {
 	DATES_HELP_TEXT,
 	INIT_HELP_TEXT,
 	MIGRATE_HELP_TEXT,
+	SYNC_HELP_TEXT,
 	UNLOCK_HELP_TEXT,
 	VERIFY_HELP_TEXT,
 } from './help-text.ts';
@@ -118,11 +118,11 @@ export const dispatchSync = async (argv: string[]): Promise<number> => {
 	try {
 		args = parseArgs(argv);
 	} catch (err) {
-		return emitUsageError('sync', argv, HELP_TEXT, err);
+		return emitUsageError('sync', argv, SYNC_HELP_TEXT, err);
 	}
-	if (args.help) return emitHelp('sync', args.json, HELP_TEXT);
+	if (args.help) return emitHelp('sync', args.json, SYNC_HELP_TEXT);
 
-	const targetPath = resolveRequiredTarget('sync', argv, HELP_TEXT, args.targetPath);
+	const targetPath = resolveRequiredTarget('sync', argv, SYNC_HELP_TEXT, args.targetPath);
 	if (targetPath === null) return 2;
 	const interrupt = createInterruptControl(
 		reporter,

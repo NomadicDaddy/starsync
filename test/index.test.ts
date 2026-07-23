@@ -12,11 +12,13 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import type { Repository, SyncResult } from '../src/index.ts';
+import type { ParsedArgs, Repository, SyncResult } from '../src/index.ts';
 import type { CommandReport } from '../src/lib/reporting.ts';
 
 import {
 	cloneOrPull,
+	DEFAULT_CONCURRENCY,
+	HELP_TEXT,
 	initArchive,
 	inspectArchive,
 	listFolders,
@@ -1321,6 +1323,24 @@ describe('subcommand dispatch', () => {
 		const { dispatchSync } = await import('../src/lib/subcommands.ts');
 		const exitCode = await dispatchSync(['--help']);
 		expect(exitCode).toBe(0);
+	});
+
+	test('sync dispatch stays independent of the public index while preserving its API', async () => {
+		const subcommandsSource = readFileSync(
+			new URL('../src/lib/subcommands.ts', import.meta.url),
+			'utf8'
+		);
+		const { dispatchSync } = await import('../src/lib/subcommands.ts');
+		const defaultParsed: ParsedArgs = parseArgs([]);
+		const parsed: ParsedArgs = parseArgs(['--concurrency=2']);
+		const captured = await captureConsole(() => dispatchSync(['--help']));
+
+		expect(subcommandsSource).not.toMatch(/from\s+['"]\.\.\/index\.ts['"]/);
+		expect(DEFAULT_CONCURRENCY).toBe(4);
+		expect(defaultParsed.concurrency).toBe(DEFAULT_CONCURRENCY);
+		expect(parsed.concurrency).toBe(2);
+		expect(captured.result).toBe(0);
+		expect(captured.stdout).toEqual([HELP_TEXT]);
 	});
 });
 
