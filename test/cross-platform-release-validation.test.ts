@@ -172,7 +172,7 @@ describe('cross-platform release validation', () => {
 				id: 7,
 				login: 'archive-owner',
 			});
-			expect(migration.exitCode).toBe(0);
+			expect(migration).toMatchObject({ exitCode: 0 });
 			expect(migration.checkouts.map((checkout) => checkout.name).sort()).toEqual([
 				'alpha--owner',
 				'beta--owner',
