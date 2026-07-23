@@ -24,6 +24,15 @@ export default tseslint.config([
 		ignores: ['**/*.min.js', '**/dist/**', '**/node_modules/**', '**/starred_repos/**'],
 	},
 	{
+		extends: [js.configs.recommended],
+		files: ['eslint.config.js'],
+		languageOptions: {
+			ecmaVersion: 2022,
+			globals: globals.node,
+			sourceType: 'module',
+		},
+	},
+	{
 		extends: [js.configs.recommended, ...tseslint.configs.recommended],
 		files: ['**/*.ts'],
 		languageOptions: {
