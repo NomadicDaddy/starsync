@@ -65,17 +65,22 @@ bun src/cli.ts init [options] [target-path]
 bun src/cli.ts unlock [options] [target-path]
 ```
 
-`init`, `sync`, `verify`, `dates`, and the read-only `migrate` preview are available now. `unlock`
-is recognized but exits with code 1 until its behavior ships. `migrate --apply` remains reserved
-for its migration feature. Every command requires either `[target-path]` or `TARGET_PATH`; missing
-both is a usage error with exit code 2. Bare `starsync [target-path]` remains a deprecated alias for
-`sync` during the transition.
+`init`, `sync`, `verify`, `dates`, `unlock`, and the read-only `migrate` preview are available now.
+`migrate --apply` remains reserved for its migration feature. Every command requires either
+`[target-path]` or `TARGET_PATH`; missing both is a usage error with exit code 2. Bare
+`starsync [target-path]` remains a deprecated alias for `sync` during the transition.
 
 `init` requires an existing empty directory and `GITHUB_TOKEN`. It authenticates the GitHub
 account, then writes `.starsync/config.json` with only archive format 2 and
 `owner: { id, login }`. Modifying commands reject uninitialized, older, newer, or invalid managed
 archives. `sync` also rejects credentials for an account whose stable ID does not match the
 archive owner; a renamed login with the same ID remains the same owner.
+
+Every archive operation holds `.starsync/operation-lock.json` while it inspects or changes the
+archive. The lock identifies the command, hostname, process ID, and start time. StarSync
+automatically reclaims it only when the same-host process is confirmed dead. Remote or uncertain
+ownership requires `starsync unlock --force [target-path]`; even forced unlock refuses to remove a
+lock owned by a confirmed live same-host process.
 
 A configless, non-empty directory containing GitHub.com checkouts is recognized as a legacy
 archive. `sync` and `dates` refuse to modify legacy archives. The
@@ -160,13 +165,13 @@ The public entry point exports:
 | `verifyArchive`         | Run read-only local archive verification    |
 | `migrateArchive`        | Preview archive migration                   |
 | `normalizeArchiveDates` | Preview or normalize checkout folder dates  |
-| `initArchive`           | Initialize an archive when v2 support ships |
+| `initArchive`           | Initialize an empty managed archive         |
+| `unlockArchive`         | Inspect or conservatively remove its lock   |
 
-`initArchive` and `migrateArchive({ apply: true })` currently return a structured
-`command-unavailable` report because those mutation features have not shipped. The deprecated
-low-level exports remain during the 1.x transition for compatibility; consumers should migrate
-from `runStarsync`, argument parsing, checkout discovery, and direct clone/pull helpers to these
-command-level operations before 2.0.
+`migrateArchive({ apply: true })` currently returns a structured `command-unavailable` report
+because applied migration has not shipped. The deprecated low-level exports remain during the 1.x
+transition for compatibility; consumers should migrate from `runStarsync`, argument parsing,
+checkout discovery, and direct clone/pull helpers to these command-level operations before 2.0.
 
 ## Scripts
 

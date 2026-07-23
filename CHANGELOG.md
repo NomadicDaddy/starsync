@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+### Added
+
+- Added one archive-wide operation lock for initialization, synchronization and dry runs,
+  verification, migration preview, date normalization, and its deprecated companion entrypoint.
+  Locks identify their host, process, command, and start time; confirmed-dead same-host locks
+  recover automatically, while remote or uncertain locks require a risk-reported
+  `unlock --force`.
+
 ## [1.2.0] - 2026-07-23
 
 ### Added

@@ -7,11 +7,17 @@ import type { CheckoutReport, CommandReport, Finding } from './reporting.ts';
 
 import { withApiRetry } from './api-retry.ts';
 import { getAuthenticatedArchiveOwner, readArchiveConfig } from './archive-config.ts';
+import { initArchiveUnlocked, type InitArchiveOptions } from './archive-initialization.ts';
 import {
 	createGitHubRepositoryResolver,
 	getArchiveModificationFinding,
 	previewArchiveMigration,
 } from './archive-migration.ts';
+import {
+	withArchiveOperationLock,
+	withArchiveOperationLockSync,
+} from './archive-operation-lock.ts';
+import { unlockArchive, type UnlockArchiveOptions } from './archive-unlock.ts';
 import { verifyArchive as verifyArchiveContents } from './archive-verification.ts';
 import { formatDatesTables, runDatesCommand } from './dates-command.ts';
 import { processRepository, runSyncPool, type RefreshResult } from './refresh.ts';
@@ -217,7 +223,7 @@ const reportRefreshResult = (result: RefreshResult, targetBase: string): Checkou
 	}
 };
 
-export const syncArchive = async (options: SyncArchiveOptions): Promise<CommandReport> => {
+const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<CommandReport> => {
 	const targetPath = resolveExplicitTarget(options.targetPath);
 	if (targetPath === null) return invalidTargetReport('sync');
 	const dryRun = options.dryRun ?? false;
@@ -544,7 +550,7 @@ export const syncArchive = async (options: SyncArchiveOptions): Promise<CommandR
 	});
 };
 
-export const verifyArchive = async (options: VerifyArchiveOptions): Promise<CommandReport> => {
+const verifyArchiveUnlocked = async (options: VerifyArchiveOptions): Promise<CommandReport> => {
 	const targetPath = resolveExplicitTarget(options.targetPath);
 	if (targetPath === null) return invalidTargetReport('verify');
 	if (options.signal?.aborted) return interruptedReport('verify', targetPath);
@@ -580,7 +586,7 @@ export const verifyArchive = async (options: VerifyArchiveOptions): Promise<Comm
 	}
 };
 
-export const migrateArchive = async (options: MigrateArchiveOptions): Promise<CommandReport> => {
+const migrateArchiveUnlocked = async (options: MigrateArchiveOptions): Promise<CommandReport> => {
 	const targetPath = resolveExplicitTarget(options.targetPath);
 	if (targetPath === null) return invalidTargetReport('migrate');
 	if (options.signal?.aborted) return interruptedReport('migrate', targetPath, true);
@@ -645,7 +651,7 @@ export const migrateArchive = async (options: MigrateArchiveOptions): Promise<Co
 	}
 };
 
-export const normalizeArchiveDates = (options: NormalizeArchiveDatesOptions): CommandReport => {
+const normalizeArchiveDatesUnlocked = (options: NormalizeArchiveDatesOptions): CommandReport => {
 	const targetPath = resolveExplicitTarget(options.targetPath);
 	if (targetPath === null) return invalidTargetReport('dates');
 	const dryRun = options.dryRun ?? false;
@@ -680,4 +686,30 @@ export const normalizeArchiveDates = (options: NormalizeArchiveDatesOptions): Co
 	});
 };
 
-export { initArchive, type InitArchiveOptions } from './archive-initialization.ts';
+export const initArchive = (options: InitArchiveOptions): Promise<CommandReport> =>
+	withArchiveOperationLock('init', options, (held) => initArchiveUnlocked(options, held));
+
+export const syncArchive = (options: SyncArchiveOptions): Promise<CommandReport> =>
+	withArchiveOperationLock(
+		'sync',
+		options,
+		() => syncArchiveUnlocked(options),
+		options.dryRun ?? false
+	);
+
+export const verifyArchive = (options: VerifyArchiveOptions): Promise<CommandReport> =>
+	withArchiveOperationLock('verify', options, () => verifyArchiveUnlocked(options));
+
+export const migrateArchive = (options: MigrateArchiveOptions): Promise<CommandReport> =>
+	withArchiveOperationLock('migrate', options, () => migrateArchiveUnlocked(options), true);
+
+export const normalizeArchiveDates = (options: NormalizeArchiveDatesOptions): CommandReport =>
+	withArchiveOperationLockSync(
+		'dates',
+		options,
+		() => normalizeArchiveDatesUnlocked(options),
+		options.dryRun ?? false
+	);
+
+export { unlockArchive };
+export type { InitArchiveOptions, UnlockArchiveOptions };

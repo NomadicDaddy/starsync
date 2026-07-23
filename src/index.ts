@@ -120,6 +120,7 @@ export {
 	migrateArchive,
 	normalizeArchiveDates,
 	syncArchive,
+	unlockArchive,
 	verifyArchive,
 	type ArchiveOperationOptions,
 	type ArchiveProgressCallback,
@@ -127,6 +128,7 @@ export {
 	type MigrateArchiveOptions,
 	type NormalizeArchiveDatesOptions,
 	type SyncArchiveOptions,
+	type UnlockArchiveOptions,
 	type VerifyArchiveOptions,
 } from './lib/archive-api.ts';
 export { REPOSITORY_ID_KEY, REPOSITORY_SLUG_KEY } from './lib/archive-verification.ts';

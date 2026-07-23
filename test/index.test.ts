@@ -1054,10 +1054,15 @@ describe('subcommand dispatch', () => {
 		expect(exitCode).toBe(0);
 	});
 
-	test('dispatchUnlock exits 1 with not-available message', async () => {
+	test('dispatchUnlock exits 0 when the archive has no lock', async () => {
 		const { dispatchUnlock } = await import('../src/lib/subcommands.ts');
-		const exitCode = dispatchUnlock(['C:/archive']);
-		expect(exitCode).toBe(1);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dispatch-unlock-'));
+		try {
+			const exitCode = dispatchUnlock([target]);
+			expect(exitCode).toBe(0);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
 	});
 
 	test('dispatchUnlock --help exits 0', async () => {
@@ -1986,16 +1991,21 @@ describe('structured command reporting', () => {
 		expect(captured.stderr.some((line) => line.includes('invalid-usage'))).toBe(true);
 	});
 
-	test('unavailable commands emit their JSON result before exit 1', async () => {
+	test('unlock emits one JSON result when the archive has no lock', async () => {
 		const { dispatchUnlock } = await import('../src/lib/subcommands.ts');
-		const captured = await captureConsole(() => dispatchUnlock(['--json', 'C:/archive']));
-		const report = parseReport(captured.stdout);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-unlock-json-'));
+		try {
+			const captured = await captureConsole(() => dispatchUnlock(['--json', target]));
+			const report = parseReport(captured.stdout);
 
-		expect(captured.result).toBe(1);
-		expect(captured.stdout).toHaveLength(1);
-		expect(report.exitCode).toBe(1);
-		expect(report.findings.at(-1)?.code).toBe('command-unavailable');
-		expect(report.summary.findings.error).toBe(1);
+			expect(captured.result).toBe(0);
+			expect(captured.stdout).toHaveLength(1);
+			expect(report.exitCode).toBe(0);
+			expect(report.findings.at(-1)?.code).toBe('archive-not-locked');
+			expect(report.summary.findings.info).toBe(1);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
 	});
 
 	test('dates JSON keeps progress on stderr and reports planned updates', async () => {

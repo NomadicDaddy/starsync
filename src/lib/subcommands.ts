@@ -9,6 +9,7 @@ import {
 	migrateArchive,
 	normalizeArchiveDates,
 	syncArchive,
+	unlockArchive,
 	verifyArchive,
 } from './archive-api.ts';
 import { resolveTargetPath, stripQuotes, type Subcommand } from './cli-utils.ts';
@@ -28,15 +29,17 @@ const repoDir = path.resolve(scriptDir, '..', '..');
 export interface ParsedSubcommandArgs {
 	apply: boolean;
 	dryRun: boolean;
+	force: boolean;
 	help: boolean;
 	json: boolean;
 	targetPath: null | string;
 }
 
-const parseSubcommandArgs = (argv: string[]): ParsedSubcommandArgs => {
+const parseSubcommandArgs = (argv: string[], allowForce = false): ParsedSubcommandArgs => {
 	const parsed: ParsedSubcommandArgs = {
 		apply: false,
 		dryRun: false,
+		force: false,
 		help: false,
 		json: false,
 		targetPath: null,
@@ -48,6 +51,8 @@ const parseSubcommandArgs = (argv: string[]): ParsedSubcommandArgs => {
 			parsed.dryRun = true;
 		} else if (arg === '--apply') {
 			parsed.apply = true;
+		} else if (arg === '--force' && allowForce) {
+			parsed.force = true;
 		} else if (arg === '--json') {
 			parsed.json = true;
 		} else if (!arg.startsWith('-')) {
@@ -105,23 +110,6 @@ const resolveRequiredTarget = (
 		return null;
 	}
 	return resolveTargetPath(positional, process.env.TARGET_PATH, repoDir);
-};
-
-const emitUnavailable = (
-	command: Subcommand,
-	args: ParsedSubcommandArgs,
-	message: string,
-	targetPath: string
-): number => {
-	createCommandReporter(args.json).emit(
-		createCommandReport({
-			command,
-			exitCode: 1,
-			findings: [createFinding('error', 'command-unavailable', message)],
-			targetPath,
-		})
-	);
-	return 1;
 };
 
 export const dispatchSync = async (argv: string[]): Promise<number> => {
@@ -282,12 +270,19 @@ export const dispatchInit = async (argv: string[]): Promise<number> => {
 export const dispatchUnlock = (argv: string[]): number => {
 	let args: ParsedSubcommandArgs;
 	try {
-		args = parseSubcommandArgs(argv);
+		args = parseSubcommandArgs(argv, true);
 	} catch (err) {
 		return emitUsageError('unlock', argv, UNLOCK_HELP_TEXT, err);
 	}
 	if (args.help) return emitHelp('unlock', args.json, UNLOCK_HELP_TEXT);
 	const targetPath = resolveRequiredTarget('unlock', argv, UNLOCK_HELP_TEXT, args.targetPath);
 	if (targetPath === null) return 2;
-	return emitUnavailable('unlock', args, 'Unlock is not available in this release.', targetPath);
+	const reporter = createCommandReporter(args.json);
+	const report = unlockArchive({
+		force: args.force,
+		onProgress: reporter.progress,
+		targetPath,
+	});
+	reporter.emit(report);
+	return report.exitCode;
 };

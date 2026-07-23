@@ -68,25 +68,52 @@ export const readArchiveConfig = (targetPath: string): ArchiveConfig => {
 	return parseArchiveConfig(JSON.parse(fs.readFileSync(configPath, 'utf-8')) as unknown);
 };
 
-export const writeArchiveConfig = (targetPath: string, owner: ArchiveOwner): void => {
+export const writeArchiveConfig = (
+	targetPath: string,
+	owner: ArchiveOwner,
+	operationLockPath?: string
+): void => {
 	const metadataPath = path.join(targetPath, ARCHIVE_CONFIG_DIRECTORY);
 	const configPath = path.join(metadataPath, ARCHIVE_CONFIG_FILE);
+	let configCreated = false;
 	let createdMetadataDirectory = false;
 	try {
-		fs.mkdirSync(metadataPath);
-		createdMetadataDirectory = true;
+		if (operationLockPath === undefined) {
+			fs.mkdirSync(metadataPath);
+			createdMetadataDirectory = true;
+		} else {
+			if (path.dirname(operationLockPath) !== metadataPath) {
+				throw new Error('The operation lock is outside the archive metadata directory.');
+			}
+			const metadataEntries = fs.readdirSync(metadataPath);
+			if (
+				metadataEntries.length !== 1 ||
+				metadataEntries[0] !== path.basename(operationLockPath)
+			) {
+				throw new Error('The archive metadata directory changed during initialization.');
+			}
+		}
 		const targetEntries = fs.readdirSync(targetPath);
 		if (targetEntries.length !== 1 || targetEntries[0] !== ARCHIVE_CONFIG_DIRECTORY) {
 			throw new Error('The target directory changed and is no longer empty.');
 		}
-		fs.writeFileSync(
-			configPath,
-			`${JSON.stringify({ archiveFormat: CURRENT_ARCHIVE_FORMAT, owner }, null, '\t')}\n`,
-			{ encoding: 'utf-8', flag: 'wx' }
-		);
+		const descriptor = fs.openSync(configPath, 'wx', 0o600);
+		configCreated = true;
+		try {
+			fs.writeFileSync(
+				descriptor,
+				`${JSON.stringify({ archiveFormat: CURRENT_ARCHIVE_FORMAT, owner }, null, '\t')}\n`,
+				'utf-8'
+			);
+			fs.fsyncSync(descriptor);
+		} finally {
+			fs.closeSync(descriptor);
+		}
 	} catch (err) {
 		if (createdMetadataDirectory) {
 			fs.rmSync(metadataPath, { force: true, recursive: true });
+		} else if (configCreated) {
+			fs.rmSync(configPath, { force: true });
 		}
 		throw err;
 	}

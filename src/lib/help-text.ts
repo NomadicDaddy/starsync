@@ -19,6 +19,7 @@ Options:
   --dry-run         Sync only: query stars and inspect without changing anything
   --concurrency=N   Sync only: concurrent repository processing (default: 4, range: 1-8)
   --apply           Migrate only: apply migration (not available in 1.x)
+  --force           Unlock only: remove a remote or uncertain lock after assessing the risk
 
 Environment:
   GITHUB_TOKEN      Required for init and sync. Personal access token with repo + read:user scopes.
@@ -119,11 +120,13 @@ Usage:
 Options:
   --help, -h        Show this help
   --json            Emit one schema-versioned JSON result document on stdout
+  --force           Remove a remote or uncertain lock after confirming no operation
+                    still uses the archive; never overrides a confirmed live local owner
 
 Environment:
   TARGET_PATH       Required if no positional target-path is given.
 
-Not available in this release.`;
+Confirmed-dead same-host locks are removed without --force.`;
 
 const SUBCOMMAND_HELP: Record<string, string> = {
 	dates: DATES_HELP_TEXT,

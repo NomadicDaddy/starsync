@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { ArchiveOwner } from './archive-config.ts';
+import type { HeldArchiveLock } from './archive-lock.ts';
 import type { CommandReport } from './reporting.ts';
 
 import {
@@ -9,6 +10,7 @@ import {
 	getAuthenticatedArchiveOwner,
 	writeArchiveConfig,
 } from './archive-config.ts';
+import { ARCHIVE_LOCK_FILENAME } from './archive-lock.ts';
 import { createCommandReport, createFinding } from './reporting.ts';
 import { sanitizeMessage } from './secret-safety.ts';
 
@@ -41,7 +43,25 @@ const interruptedReport = (targetPath: string): CommandReport =>
 		targetPath,
 	});
 
-export const initArchive = async (options: InitArchiveOptions): Promise<CommandReport> => {
+const isInitializationTargetEmpty = (targetPath: string, held: HeldArchiveLock | null): boolean => {
+	const targetEntries = fs.readdirSync(targetPath);
+	if (targetEntries.length === 0) return true;
+	if (
+		held === null ||
+		!held.allowsInitialization ||
+		targetEntries.length !== 1 ||
+		targetEntries[0] !== '.starsync'
+	) {
+		return false;
+	}
+	const metadataEntries = fs.readdirSync(path.join(targetPath, '.starsync'));
+	return metadataEntries.length === 1 && metadataEntries[0] === ARCHIVE_LOCK_FILENAME;
+};
+
+export const initArchiveUnlocked = async (
+	options: InitArchiveOptions,
+	held: HeldArchiveLock | null
+): Promise<CommandReport> => {
 	const trimmedTarget = options.targetPath.trim();
 	if (!trimmedTarget) {
 		return createCommandReport({
@@ -67,7 +87,7 @@ export const initArchive = async (options: InitArchiveOptions): Promise<CommandR
 				`Initialization requires an existing empty directory: ${targetPath}`
 			);
 		}
-		if (fs.readdirSync(targetPath).length > 0) {
+		if (!isInitializationTargetEmpty(targetPath, held)) {
 			return initFailure(
 				targetPath,
 				'target-not-empty',
@@ -96,14 +116,14 @@ export const initArchive = async (options: InitArchiveOptions): Promise<CommandR
 	if (options.signal?.aborted) return interruptedReport(targetPath);
 
 	try {
-		if (fs.readdirSync(targetPath).length > 0) {
+		if (!isInitializationTargetEmpty(targetPath, held)) {
 			return initFailure(
 				targetPath,
 				'target-not-empty',
 				'The target directory changed during authentication and is no longer empty.'
 			);
 		}
-		writeArchiveConfig(targetPath, owner);
+		writeArchiveConfig(targetPath, owner, held?.lockPath);
 	} catch (err) {
 		return initFailure(
 			targetPath,
