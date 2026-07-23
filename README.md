@@ -48,7 +48,7 @@ GITHUB_TOKEN=ghp_your_token_here bun run sync
 | Variable       | Required | Description                                               |
 | -------------- | -------- | --------------------------------------------------------- |
 | `GITHUB_TOKEN` | yes      | Personal access token with `repo` and `read:user` scopes. |
-| `TARGET_PATH`  | no       | Where to sync repos. Defaults to `<repo>/starred_repos`.  |
+| `TARGET_PATH`  | yes*     | Managed archive path; omit only when passing it directly. |
 
 A positional argument on the command line overrides `TARGET_PATH`.
 
@@ -65,13 +65,20 @@ bun src/cli.ts init [options] [target-path]
 bun src/cli.ts unlock [options] [target-path]
 ```
 
-`sync`, `verify`, `dates`, and the read-only `migrate` preview are available now. `init` and
-`unlock` are recognized but exit with code 1 until their behavior ships. `migrate --apply` is
-reserved for 2.0 and exits with code 1 in 1.x. Bare `starsync [target-path]` remains a deprecated
-alias for `sync` during the 1.x transition.
+`init`, `sync`, `verify`, `dates`, and the read-only `migrate` preview are available now. `unlock`
+is recognized but exits with code 1 until its behavior ships. `migrate --apply` remains reserved
+for its migration feature. Every command requires either `[target-path]` or `TARGET_PATH`; missing
+both is a usage error with exit code 2. Bare `starsync [target-path]` remains a deprecated alias for
+`sync` during the transition.
+
+`init` requires an existing empty directory and `GITHUB_TOKEN`. It authenticates the GitHub
+account, then writes `.starsync/config.json` with only archive format 2 and
+`owner: { id, login }`. Modifying commands reject uninitialized, older, newer, or invalid managed
+archives. `sync` also rejects credentials for an account whose stable ID does not match the
+archive owner; a renamed login with the same ID remains the same owner.
 
 A configless, non-empty directory containing GitHub.com checkouts is recognized as a legacy
-archive. During the 1.x transition, `sync` and `dates` refuse to modify legacy archives. The
+archive. `sync` and `dates` refuse to modify legacy archives. The
 read-only `migrate` preview and `verify` are available now. The migration preview resolves each
 checkout's stable GitHub repository ID and current slug, proposes the canonical
 `repository--owner` folder, and reports dirty or unverifiable state, name collisions, invalid or
@@ -88,12 +95,12 @@ folders, or updates timestamps.
 
 Common options:
 
-| Option            | Description                                                        |
-| ----------------- | ------------------------------------------------------------------ |
-| `--help`, `-h`    | Show command-specific usage                                        |
-| `--json`          | Emit one schema-versioned result document on stdout                |
-| `--dry-run`       | Preview `sync` or `dates` without changing the archive             |
-| `--concurrency=N` | Process 1-8 repositories concurrently during `sync` (default: 4)   |
+| Option            | Description                                                      |
+| ----------------- | ---------------------------------------------------------------- |
+| `--help`, `-h`    | Show command-specific usage                                      |
+| `--json`          | Emit one schema-versioned result document on stdout              |
+| `--dry-run`       | Preview `sync` or `dates` without changing the archive           |
+| `--concurrency=N` | Process 1-8 repositories concurrently during `sync` (default: 4) |
 
 The legacy folder-date command remains available as a deprecated alias:
 
@@ -147,13 +154,13 @@ if (report.exitCode !== 0) {
 
 The public entry point exports:
 
-| Operation               | Purpose                                      |
-| ----------------------- | -------------------------------------------- |
-| `syncArchive`           | Synchronize or preview an archive refresh    |
-| `verifyArchive`         | Run read-only local archive verification     |
-| `migrateArchive`        | Preview archive migration                    |
-| `normalizeArchiveDates` | Preview or normalize checkout folder dates   |
-| `initArchive`           | Initialize an archive when v2 support ships  |
+| Operation               | Purpose                                     |
+| ----------------------- | ------------------------------------------- |
+| `syncArchive`           | Synchronize or preview an archive refresh   |
+| `verifyArchive`         | Run read-only local archive verification    |
+| `migrateArchive`        | Preview archive migration                   |
+| `normalizeArchiveDates` | Preview or normalize checkout folder dates  |
+| `initArchive`           | Initialize an archive when v2 support ships |
 
 `initArchive` and `migrateArchive({ apply: true })` currently return a structured
 `command-unavailable` report because those mutation features have not shipped. The deprecated
@@ -163,16 +170,16 @@ command-level operations before 2.0.
 
 ## Scripts
 
-| Script                     | What it runs                        |
-| -------------------------- | ----------------------------------- |
-| `bun run sync`             | `bun ./src/cli.ts`                  |
-| `bun start`                | `bun src/cli.ts`                    |
-| `bun run set-folder-dates` | `bun ./scripts/set-folder-dates.ts` |
-| `bun run build`            | `bun build ./src/cli.ts --target=bun` |
-| `bun run compile`          | standalone binary in `dist/`        |
-| `bun run typecheck`        | `tsc --noEmit`                      |
-| `bun run lint`             | `eslint "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
-| `bun run smoke:qc`         | typecheck, lint, format check, test |
+| Script                     | What it runs                                                      |
+| -------------------------- | ----------------------------------------------------------------- |
+| `bun run sync`             | `bun ./src/cli.ts`                                                |
+| `bun start`                | `bun src/cli.ts`                                                  |
+| `bun run set-folder-dates` | `bun ./scripts/set-folder-dates.ts`                               |
+| `bun run build`            | `bun build ./src/cli.ts --target=bun`                             |
+| `bun run compile`          | standalone binary in `dist/`                                      |
+| `bun run typecheck`        | `tsc --noEmit`                                                    |
+| `bun run lint`             | `eslint "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
+| `bun run smoke:qc`         | typecheck, lint, format check, test                               |
 | `bun run format`           | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
 | `bun run format:check`     | `prettier --check "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
 

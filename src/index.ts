@@ -41,10 +41,9 @@ Options:
 
 Environment:
   GITHUB_TOKEN        Required. Personal access token with repo + read:user scopes.
-  TARGET_PATH         Optional. Used if no positional target-path is given.
+  TARGET_PATH         Required if no positional target-path is given.
 
-A positional target-path argument overrides TARGET_PATH.
-Default target: <repo>/starred_repos.`;
+A positional target-path argument overrides TARGET_PATH.`;
 
 export interface ParsedArgs {
 	concurrency: number;

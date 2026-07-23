@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -75,6 +75,14 @@ const mockGetRepository = mock(
 			},
 		})
 );
+const mockGetAuthenticated = mock(() =>
+	Promise.resolve({
+		data: {
+			id: 7,
+			login: 'archive-owner',
+		},
+	})
+);
 
 mock.module('@octokit/rest', () => ({
 	Octokit: class MockOctokit {
@@ -84,6 +92,9 @@ mock.module('@octokit/rest', () => ({
 			},
 			repos: {
 				get: mockGetRepository,
+			},
+			users: {
+				getAuthenticated: mockGetAuthenticated,
 			},
 		};
 		paginate = mockPaginate;
@@ -119,6 +130,17 @@ const createCheckout = (root: string, name: string): string => {
 	return checkoutPath;
 };
 
+const writeManagedArchiveConfig = (
+	root: string,
+	owner: { id: number; login: string } = { id: 7, login: 'archive-owner' }
+): void => {
+	mkdirSync(path.join(root, '.starsync'), { recursive: true });
+	writeFileSync(
+		path.join(root, '.starsync', 'config.json'),
+		JSON.stringify({ archiveFormat: 2, owner })
+	);
+};
+
 const mockGitReads = (
 	origins: Record<string, string>,
 	statuses: Record<string, string> = {}
@@ -139,6 +161,15 @@ const mockGitReads = (
 afterEach(() => {
 	mockExecFile.mockClear();
 	mockExecFileSync.mockReset();
+	mockGetAuthenticated.mockClear();
+	mockGetAuthenticated.mockImplementation(() =>
+		Promise.resolve({
+			data: {
+				id: 7,
+				login: 'archive-owner',
+			},
+		})
+	);
 	mockGetRepository.mockReset();
 	mockPaginate.mockReset();
 });
@@ -455,6 +486,7 @@ describe('programmatic archive API', () => {
 		process.argv = ['bun', 'unexpected-cli-argument'];
 		delete process.env.GITHUB_TOKEN;
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-api-sync-'));
+		writeManagedArchiveConfig(target);
 		const progress: string[] = [];
 		try {
 			const captured = await captureConsole(() =>
@@ -488,7 +520,7 @@ describe('programmatic archive API', () => {
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-api-operations-'));
 		try {
 			const captured = await captureConsole(async () => [
-				initArchive({ targetPath: target, token: 'test-token' }),
+				await initArchive({ targetPath: target, token: 'test-token' }),
 				await migrateArchive({ apply: true, targetPath: target, token: 'test-token' }),
 				normalizeArchiveDates({ dryRun: true, targetPath: target }),
 				await verifyArchive({ targetPath: path.join(target, 'missing') }),
@@ -532,6 +564,7 @@ describe('programmatic archive API', () => {
 		const controller = new AbortController();
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-api-abort-'));
 		try {
+			writeManagedArchiveConfig(target);
 			const report = await syncArchive({
 				concurrency: 1,
 				onProgress: (message) => {
@@ -560,6 +593,7 @@ describe('programmatic archive API', () => {
 		const controller = new AbortController();
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-api-dry-abort-'));
 		try {
+			writeManagedArchiveConfig(target);
 			const report = await syncArchive({
 				dryRun: true,
 				onProgress: (message) => {
@@ -575,6 +609,164 @@ describe('programmatic archive API', () => {
 			expect(report.checkouts[0]?.plannedOutcome).toBeUndefined();
 		} finally {
 			rmSync(target, { force: true, recursive: true });
+		}
+	});
+});
+
+describe('managed archive initialization', () => {
+	test('initializes an empty directory with only archive format and authenticated owner', async () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-init-'));
+		try {
+			mockGetAuthenticated.mockResolvedValue({
+				data: { id: 42, login: 'octocat' },
+			});
+
+			const report = await initArchive({
+				targetPath: target,
+				token: 'secret-test-token',
+			});
+			const configText = readFileSync(path.join(target, '.starsync', 'config.json'), 'utf-8');
+
+			expect(report.exitCode).toBe(0);
+			expect(report.findings).toContainEqual(
+				expect.objectContaining({ code: 'archive-initialized', severity: 'info' })
+			);
+			expect(JSON.parse(configText)).toEqual({
+				archiveFormat: 2,
+				owner: { id: 42, login: 'octocat' },
+			});
+			expect(Object.keys(JSON.parse(configText) as Record<string, unknown>).sort()).toEqual([
+				'archiveFormat',
+				'owner',
+			]);
+			expect(configText).not.toContain('secret-test-token');
+			expect(readdirSync(target)).toEqual(['.starsync']);
+			expect(inspectArchive(target).kind).toBe('current-managed');
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('refuses missing, non-empty, and unauthenticated targets without config writes', async () => {
+		const missing = path.join(tmpdir(), `starsync-init-missing-${crypto.randomUUID()}`);
+		const nonEmpty = mkdtempSync(path.join(tmpdir(), 'starsync-init-nonempty-'));
+		try {
+			writeFileSync(path.join(nonEmpty, 'existing.txt'), 'keep me');
+
+			const missingTarget = await initArchive({ targetPath: missing, token: 'test-token' });
+			const nonEmptyTarget = await initArchive({
+				targetPath: nonEmpty,
+				token: 'test-token',
+			});
+			const missingToken = await initArchive({ targetPath: nonEmpty, token: '' });
+
+			expect(missingTarget.findings[0]?.code).toBe('target-not-found');
+			expect(nonEmptyTarget.findings[0]?.code).toBe('target-not-empty');
+			expect(missingToken.findings[0]?.code).toBe('missing-token');
+			expect(readdirSync(nonEmpty)).toEqual(['existing.txt']);
+			expect(mockGetAuthenticated).not.toHaveBeenCalled();
+		} finally {
+			rmSync(nonEmpty, { force: true, recursive: true });
+		}
+	});
+
+	test('rejects sync for another account and never rewrites owner metadata', async () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-owner-mismatch-'));
+		try {
+			writeManagedArchiveConfig(target, { id: 7, login: 'original-owner' });
+			const configPath = path.join(target, '.starsync', 'config.json');
+			const configBefore = readFileSync(configPath, 'utf-8');
+			mockGetAuthenticated.mockResolvedValue({
+				data: { id: 8, login: 'different-owner' },
+			});
+
+			const report = await syncArchive({
+				dryRun: true,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(1);
+			expect(report.findings[0]?.code).toBe('archive-owner-mismatch');
+			expect(mockPaginate).not.toHaveBeenCalled();
+			expect(readFileSync(configPath, 'utf-8')).toBe(configBefore);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('accepts the same account ID after a login rename without upgrading config', async () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-owner-rename-'));
+		try {
+			writeManagedArchiveConfig(target, { id: 7, login: 'original-owner' });
+			const configPath = path.join(target, '.starsync', 'config.json');
+			const configBefore = readFileSync(configPath, 'utf-8');
+			mockGetAuthenticated.mockResolvedValue({
+				data: { id: 7, login: 'renamed-owner' },
+			});
+			mockPaginate.mockResolvedValue([]);
+
+			const report = await syncArchive({
+				dryRun: true,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(0);
+			expect(readFileSync(configPath, 'utf-8')).toBe(configBefore);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('blocks modifying commands for older, newer, and invalid managed configs', async () => {
+		const cases = [
+			{
+				code: 'older-archive-read-only',
+				config: { archiveFormat: 1, owner: { id: 7, login: 'archive-owner' } },
+				prefix: 'starsync-older-managed-',
+			},
+			{
+				code: 'archive-format-newer',
+				config: { archiveFormat: 3, owner: { id: 7, login: 'archive-owner' } },
+				prefix: 'starsync-newer-managed-',
+			},
+			{
+				code: 'invalid-archive-config',
+				config: {
+					archiveFormat: 2,
+					owner: { id: 7, login: 'archive-owner' },
+					unexpected: true,
+				},
+				prefix: 'starsync-invalid-managed-',
+			},
+		];
+
+		for (const testCase of cases) {
+			const target = mkdtempSync(path.join(tmpdir(), testCase.prefix));
+			try {
+				mkdirSync(path.join(target, '.starsync'));
+				writeFileSync(
+					path.join(target, '.starsync', 'config.json'),
+					JSON.stringify(testCase.config)
+				);
+
+				const syncReport = await syncArchive({
+					dryRun: true,
+					targetPath: target,
+					token: 'test-token',
+				});
+				const datesReport = normalizeArchiveDates({
+					dryRun: true,
+					targetPath: target,
+				});
+
+				expect(syncReport.findings[0]?.code).toBe(testCase.code);
+				expect(datesReport.findings[0]?.code).toBe(testCase.code);
+				expect(mockGetAuthenticated).not.toHaveBeenCalled();
+			} finally {
+				rmSync(target, { force: true, recursive: true });
+			}
 		}
 	});
 });
@@ -596,11 +788,19 @@ describe('runStarsync', () => {
 		}
 	};
 
-	test('returns exit code 1 when GITHUB_TOKEN is not set', async () => {
+	test('returns exit code 2 when no explicit target is provided', async () => {
+		const savedTarget = process.env.TARGET_PATH;
 		delete process.env.GITHUB_TOKEN;
-		const captured = await captureConsole(() => runStarsync([]));
-		expect(captured.result).toBe(1);
-		expect(captured.stderr).toContain('ERROR [missing-token]: GITHUB_TOKEN is not set.');
+		delete process.env.TARGET_PATH;
+		try {
+			const captured = await captureConsole(() => runStarsync([]));
+			expect(captured.result).toBe(2);
+			expect(captured.stderr).toContain(
+				'ERROR [invalid-usage]: A target path or TARGET_PATH is required.'
+			);
+		} finally {
+			if (savedTarget !== undefined) process.env.TARGET_PATH = savedTarget;
+		}
 	});
 
 	test(
@@ -639,6 +839,7 @@ describe('runStarsync', () => {
 
 			const target = mkdtempSync(path.join(tmpdir(), 'starsync-sync-'));
 			try {
+				writeManagedArchiveConfig(target);
 				const exitCode = await runStarsync([target]);
 				expect(exitCode).toBe(0);
 			} finally {
@@ -672,6 +873,7 @@ describe('runStarsync', () => {
 
 			const target = mkdtempSync(path.join(tmpdir(), 'starsync-sync-'));
 			try {
+				writeManagedArchiveConfig(target);
 				const exitCode = await runStarsync([target]);
 				expect(exitCode).toBe(1);
 			} finally {
@@ -702,6 +904,7 @@ describe('sync --dry-run', () => {
 
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dryrun-'));
 		try {
+			writeManagedArchiveConfig(target);
 			const exitCode = await runStarsync([target, '--dry-run']);
 			expect(exitCode).toBe(0);
 			// In dry-run mode, no git clone/pull should be called
@@ -720,6 +923,7 @@ describe('sync --dry-run', () => {
 
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dryrun-'));
 		try {
+			writeManagedArchiveConfig(target);
 			mkdirSync(path.join(target, 'repo-a'));
 			mkdirSync(path.join(target, 'repo-a', '.git'));
 
@@ -794,7 +998,7 @@ describe('subcommand dispatch', () => {
 		const originalToken = process.env.GITHUB_TOKEN;
 		try {
 			delete process.env.GITHUB_TOKEN;
-			const exitCode = await dispatchMigrate([]);
+			const exitCode = await dispatchMigrate(['C:/archive']);
 			expect(exitCode).toBe(1);
 		} finally {
 			if (originalToken !== undefined) process.env.GITHUB_TOKEN = originalToken;
@@ -803,7 +1007,7 @@ describe('subcommand dispatch', () => {
 
 	test('dispatchMigrate --apply exits 1 with not-available message', async () => {
 		const { dispatchMigrate } = await import('../src/lib/subcommands.ts');
-		const exitCode = await dispatchMigrate(['--apply']);
+		const exitCode = await dispatchMigrate(['--apply', 'C:/archive']);
 		expect(exitCode).toBe(1);
 	});
 
@@ -813,21 +1017,46 @@ describe('subcommand dispatch', () => {
 		expect(exitCode).toBe(0);
 	});
 
-	test('dispatchInit exits 1 with not-available message', async () => {
+	test('dispatchInit requires an explicit target', async () => {
 		const { dispatchInit } = await import('../src/lib/subcommands.ts');
-		const exitCode = dispatchInit([]);
-		expect(exitCode).toBe(1);
+		const savedTarget = process.env.TARGET_PATH;
+		delete process.env.TARGET_PATH;
+		try {
+			const exitCode = await dispatchInit([]);
+			expect(exitCode).toBe(2);
+		} finally {
+			if (savedTarget !== undefined) process.env.TARGET_PATH = savedTarget;
+		}
+	});
+
+	test('dispatchInit initializes an explicitly targeted archive', async () => {
+		const { dispatchInit } = await import('../src/lib/subcommands.ts');
+		const savedToken = process.env.GITHUB_TOKEN;
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dispatch-init-'));
+		process.env.GITHUB_TOKEN = 'test-token';
+		try {
+			const captured = await captureConsole(() => dispatchInit(['--json', target]));
+			const report = parseReport(captured.stdout);
+
+			expect(captured.result).toBe(0);
+			expect(report.findings[0]?.code).toBe('archive-initialized');
+			expect(readdirSync(target)).toEqual(['.starsync']);
+		} finally {
+			if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
+			else process.env.GITHUB_TOKEN = savedToken;
+			rmSync(target, { force: true, recursive: true });
+		}
 	});
 
 	test('dispatchInit --help exits 0', async () => {
 		const { dispatchInit } = await import('../src/lib/subcommands.ts');
-		const exitCode = dispatchInit(['--help']);
+		const exitCode = await dispatchInit(['--help']);
 		expect(exitCode).toBe(0);
 	});
 
 	test('dispatchUnlock exits 1 with not-available message', async () => {
 		const { dispatchUnlock } = await import('../src/lib/subcommands.ts');
-		const exitCode = dispatchUnlock([]);
+		const exitCode = dispatchUnlock(['C:/archive']);
 		expect(exitCode).toBe(1);
 	});
 
@@ -853,6 +1082,7 @@ describe('subcommand dispatch', () => {
 		const { dispatchDates } = await import('../src/lib/subcommands.ts');
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-subcmd-'));
 		try {
+			writeManagedArchiveConfig(target);
 			mkdirSync(path.join(target, 'repo-a'));
 			mkdirSync(path.join(target, 'repo-a', '.git'));
 			mkdirSync(path.join(target, 'repo-b'));
@@ -1757,8 +1987,8 @@ describe('structured command reporting', () => {
 	});
 
 	test('unavailable commands emit their JSON result before exit 1', async () => {
-		const { dispatchInit } = await import('../src/lib/subcommands.ts');
-		const captured = await captureConsole(() => dispatchInit(['--json', 'C:/archive']));
+		const { dispatchUnlock } = await import('../src/lib/subcommands.ts');
+		const captured = await captureConsole(() => dispatchUnlock(['--json', 'C:/archive']));
 		const report = parseReport(captured.stdout);
 
 		expect(captured.result).toBe(1);
@@ -1772,6 +2002,7 @@ describe('structured command reporting', () => {
 		const { dispatchDates } = await import('../src/lib/subcommands.ts');
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dates-json-'));
 		try {
+			writeManagedArchiveConfig(target);
 			mkdirSync(path.join(target, 'repo-a', '.git'), { recursive: true });
 			mockExecFileSync.mockReturnValue('2026-07-16T10:00:00Z\n');
 
@@ -1801,6 +2032,7 @@ describe('structured command reporting', () => {
 		const { dispatchDates } = await import('../src/lib/subcommands.ts');
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dates-human-'));
 		try {
+			writeManagedArchiveConfig(target);
 			mkdirSync(path.join(target, 'repo-a', '.git'), { recursive: true });
 			mockExecFileSync.mockReturnValue('2026-07-16T10:00:00Z\n');
 
@@ -1830,6 +2062,7 @@ describe('structured command reporting', () => {
 		);
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-json-'));
 		try {
+			writeManagedArchiveConfig(target);
 			const captured = await captureConsole(() =>
 				runStarsync(['--json', '--concurrency=1', target])
 			);
@@ -1847,7 +2080,7 @@ describe('structured command reporting', () => {
 				})
 			);
 			expect(report.summary.outcomes.added).toBe(1);
-			expect(readdirSync(target)).toEqual([]);
+			expect(readdirSync(target)).toEqual(['.starsync']);
 		} finally {
 			if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
 			else process.env.GITHUB_TOKEN = savedToken;
@@ -1871,6 +2104,7 @@ describe('structured command reporting', () => {
 		);
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-human-'));
 		try {
+			writeManagedArchiveConfig(target);
 			const captured = await captureConsole(() => runStarsync(['--concurrency=1', target]));
 
 			expect(captured.result).toBe(0);
@@ -1885,7 +2119,7 @@ describe('structured command reporting', () => {
 		}
 	});
 
-	test('quoted-empty TARGET_PATH is reported as a fallback warning', async () => {
+	test('quoted-empty TARGET_PATH is rejected as a missing target', async () => {
 		const savedTarget = process.env.TARGET_PATH;
 		const savedToken = process.env.GITHUB_TOKEN;
 		process.env.GITHUB_TOKEN = 'test-token';
@@ -1895,9 +2129,9 @@ describe('structured command reporting', () => {
 			const captured = await captureConsole(() => runStarsync(['--json', '--dry-run']));
 			const report = parseReport(captured.stdout);
 
-			expect(captured.result).toBe(0);
+			expect(captured.result).toBe(2);
 			expect(report.findings).toContainEqual(
-				expect.objectContaining({ code: 'fallback-target', severity: 'warning' })
+				expect.objectContaining({ code: 'invalid-usage', severity: 'error' })
 			);
 		} finally {
 			if (savedTarget === undefined) delete process.env.TARGET_PATH;
@@ -1923,6 +2157,7 @@ describe('structured command reporting', () => {
 		);
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-blocked-json-'));
 		try {
+			writeManagedArchiveConfig(target);
 			mkdirSync(path.join(target, 'repo-a', '.git'), { recursive: true });
 			const captured = await captureConsole(() =>
 				runStarsync(['--json', '--concurrency=1', target])
@@ -1969,6 +2204,7 @@ describe('structured command reporting', () => {
 		);
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-interrupted-json-'));
 		try {
+			writeManagedArchiveConfig(target);
 			const captured = await captureConsole(() =>
 				runStarsync(['--json', '--concurrency=1', target])
 			);

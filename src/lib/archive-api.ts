@@ -2,9 +2,11 @@ import { Octokit } from '@octokit/rest';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { ArchiveOwner } from './archive-config.ts';
 import type { CheckoutReport, CommandReport, Finding } from './reporting.ts';
 
 import { withApiRetry } from './api-retry.ts';
+import { getAuthenticatedArchiveOwner, readArchiveConfig } from './archive-config.ts';
 import {
 	createGitHubRepositoryResolver,
 	getArchiveModificationFinding,
@@ -26,10 +28,6 @@ export interface ArchiveOperationOptions {
 	onProgress?: ArchiveProgressCallback;
 	signal?: AbortSignal;
 	targetPath: string;
-}
-
-export interface InitArchiveOptions extends ArchiveOperationOptions {
-	token: string;
 }
 
 export interface MigrateArchiveOptions extends ArchiveOperationOptions {
@@ -89,7 +87,7 @@ const interruptedReport = (
 	});
 
 const missingTokenReport = (
-	command: 'init' | 'migrate' | 'sync',
+	command: 'migrate' | 'sync',
 	targetPath: string,
 	message: string,
 	dryRun = false
@@ -114,6 +112,24 @@ const listFolders = (targetPath: string): Set<string> => {
 			.map((entry) => entry.name)
 	);
 };
+
+const invalidArchiveConfigReport = (
+	command: 'sync',
+	targetPath: string,
+	err: unknown
+): CommandReport =>
+	createCommandReport({
+		command,
+		exitCode: 1,
+		findings: [
+			createFinding(
+				'error',
+				'invalid-archive-config',
+				`Cannot read archive config: ${sanitizeMessage(getErrorMessage(err))}`
+			),
+		],
+		targetPath,
+	});
 
 const reportRefreshResult = (result: RefreshResult, targetBase: string): CheckoutReport => {
 	const lifecycle = checkoutExists(targetBase, result.name) ? 'active' : null;
@@ -231,9 +247,7 @@ export const syncArchive = async (options: SyncArchiveOptions): Promise<CommandR
 		});
 	}
 
-	const archiveRestriction = fs.existsSync(targetPath)
-		? getArchiveModificationFinding(targetPath)
-		: null;
+	const archiveRestriction = getArchiveModificationFinding(targetPath);
 	if (archiveRestriction) {
 		return createCommandReport({
 			command: 'sync',
@@ -243,6 +257,48 @@ export const syncArchive = async (options: SyncArchiveOptions): Promise<CommandR
 			targetPath,
 		});
 	}
+
+	let configuredOwner: ArchiveOwner;
+	try {
+		configuredOwner = readArchiveConfig(targetPath).owner;
+	} catch (err) {
+		return invalidArchiveConfigReport('sync', targetPath, err);
+	}
+
+	let authenticatedOwner: ArchiveOwner;
+	try {
+		authenticatedOwner = await getAuthenticatedArchiveOwner(options.token);
+	} catch (err) {
+		return createCommandReport({
+			command: 'sync',
+			dryRun,
+			exitCode: 1,
+			findings: [
+				createFinding(
+					'error',
+					'github-authentication-failed',
+					`Cannot authenticate GitHub account: ${sanitizeMessage(getErrorMessage(err))}`
+				),
+			],
+			targetPath,
+		});
+	}
+	if (configuredOwner.id !== authenticatedOwner.id) {
+		return createCommandReport({
+			command: 'sync',
+			dryRun,
+			exitCode: 1,
+			findings: [
+				createFinding(
+					'error',
+					'archive-owner-mismatch',
+					`Archive belongs to GitHub account ${configuredOwner.login} (identity ${configuredOwner.id}), but the authenticated account is ${authenticatedOwner.login} (identity ${authenticatedOwner.id}).`
+				),
+			],
+			targetPath,
+		});
+	}
+	if (options.signal?.aborted) return interruptedReport('sync', targetPath, dryRun);
 
 	try {
 		if (!dryRun) fs.mkdirSync(targetPath, { recursive: true });
@@ -624,16 +680,4 @@ export const normalizeArchiveDates = (options: NormalizeArchiveDatesOptions): Co
 	});
 };
 
-export const initArchive = (options: InitArchiveOptions): CommandReport => {
-	const targetPath = resolveExplicitTarget(options.targetPath);
-	if (targetPath === null) return invalidTargetReport('init');
-	if (options.signal?.aborted) return interruptedReport('init', targetPath);
-	return createCommandReport({
-		command: 'init',
-		exitCode: 1,
-		findings: [
-			createFinding('error', 'command-unavailable', 'Init is not available in this release.'),
-		],
-		targetPath,
-	});
-};
+export { initArchive, type InitArchiveOptions } from './archive-initialization.ts';

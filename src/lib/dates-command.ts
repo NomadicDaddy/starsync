@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import type { CheckoutReport, CommandExitCode, Finding } from './reporting.ts';
 
+import { ARCHIVE_CONFIG_DIRECTORY } from './archive-config.ts';
 import { createFinding } from './reporting.ts';
 
 interface DatesOptions {
@@ -128,7 +129,9 @@ export const runDatesCommand = (target: string, options: DatesOptions): DatesRes
 
 	const checkouts: CheckoutReport[] = [];
 	const displayRows: DatesDisplayRow[] = [];
-	const directories = entries.filter((entry) => entry.isDirectory());
+	const directories = entries.filter(
+		(entry) => entry.isDirectory() && entry.name !== ARCHIVE_CONFIG_DIRECTORY
+	);
 	for (const [index, entry] of directories.entries()) {
 		if (options.signal?.aborted) {
 			for (const interruptedEntry of directories.slice(index)) {

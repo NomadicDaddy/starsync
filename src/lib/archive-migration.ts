@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { CheckoutReport, Finding, MigrationPreview } from './reporting.ts';
 
 import { withApiRetry } from './api-retry.ts';
+import { CURRENT_ARCHIVE_FORMAT, readArchiveConfig } from './archive-config.ts';
 import { createFinding } from './reporting.ts';
 import {
 	hasEmbeddedCredentials,
@@ -14,7 +15,6 @@ import {
 	sanitizeUrl,
 } from './secret-safety.ts';
 
-export const CURRENT_ARCHIVE_FORMAT = 2;
 const MIGRATION_PREVIEW_CONCURRENCY = 4;
 
 type ArchiveKind =
@@ -289,7 +289,13 @@ const getArchiveModificationFindingImpl = (targetPath: string): Finding | null =
 				const origin = readOriginFromGitConfig(path.join(targetPath, entry.name));
 				return origin !== null && isGitHubDotComUrl(sanitizeUrl(origin));
 			});
-		if (!hasLegacyCheckout) return null;
+		if (!hasLegacyCheckout) {
+			return createFinding(
+				'error',
+				'archive-uninitialized',
+				'The target is not an initialized managed archive. Run starsync init first.'
+			);
+		}
 		return createFinding(
 			'error',
 			'legacy-archive-read-only',
@@ -309,11 +315,18 @@ const getArchiveModificationFindingImpl = (targetPath: string): Finding | null =
 		return inspection.findings.find((finding) => finding.severity === 'error') ?? null;
 	}
 	if (inspection.kind === 'current-managed') {
-		return createFinding(
-			'error',
-			'managed-archive-unavailable',
-			'Modifying managed archives is not available in this release.'
-		);
+		try {
+			readArchiveConfig(targetPath);
+		} catch (err) {
+			return createFinding(
+				'error',
+				'invalid-archive-config',
+				`Cannot read archive config: ${sanitizeMessage(
+					err instanceof Error ? err.message : String(err)
+				)}`
+			);
+		}
+		return null;
 	}
 	return null;
 };

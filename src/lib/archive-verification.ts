@@ -1,9 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { ArchiveConfig } from './archive-config.ts';
 import type { ArchiveEntry, ArchiveInspection } from './archive-migration.ts';
 import type { CheckoutReport, Finding } from './reporting.ts';
 
+import { parseArchiveConfig } from './archive-config.ts';
 import { inspectArchive, parseGitHubRepositorySlug } from './archive-migration.ts';
 import { runGit } from './git-exec.ts';
 import { createFinding } from './reporting.ts';
@@ -109,21 +111,17 @@ const validateArchiveOwner = (targetPath: string, inspection: ArchiveInspection)
 		];
 	}
 
-	const owner = isRecord(parsed) && isRecord(parsed.owner) ? parsed.owner : null;
-	const id = owner?.id;
-	const login = owner?.login;
-	if (
-		typeof id !== 'number' ||
-		!Number.isSafeInteger(id) ||
-		id <= 0 ||
-		typeof login !== 'string' ||
-		!/^[a-z\d](?:[a-z\d-]*[a-z\d])?$/i.test(login)
-	) {
+	let config: ArchiveConfig;
+	try {
+		config = parseArchiveConfig(parsed);
+	} catch (err) {
 		return [
 			createFinding(
 				'error',
 				'invalid-archive-owner',
-				'Archive config must contain owner.id as a positive integer and owner.login as a valid GitHub login.'
+				`Archive owner binding is invalid: ${sanitizeMessage(
+					err instanceof Error ? err.message : String(err)
+				)}`
 			),
 		];
 	}
@@ -132,7 +130,7 @@ const validateArchiveOwner = (targetPath: string, inspection: ArchiveInspection)
 		createFinding(
 			'info',
 			'archive-owner-bound',
-			`Archive is bound to GitHub account ${login} (identity ${id}).`
+			`Archive is bound to GitHub account ${config.owner.login} (identity ${config.owner.id}).`
 		),
 	];
 };

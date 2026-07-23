@@ -21,8 +21,8 @@ Options:
   --apply           Migrate only: apply migration (not available in 1.x)
 
 Environment:
-  GITHUB_TOKEN      Required for sync. Personal access token with repo + read:user scopes.
-  TARGET_PATH       Optional. Used if no positional target-path is given.
+  GITHUB_TOKEN      Required for init and sync. Personal access token with repo + read:user scopes.
+  TARGET_PATH       Required if no positional target-path is given.
 
 Run 'starsync <command> --help' for command-specific options.`;
 
@@ -42,10 +42,9 @@ Options:
 
 Environment:
   GITHUB_TOKEN        Required. Personal access token with repo + read:user scopes.
-  TARGET_PATH         Optional. Used if no positional target-path is given.
+  TARGET_PATH         Required if no positional target-path is given.
 
-A positional target-path argument overrides TARGET_PATH.
-Default target: <repo>/starred_repos.`;
+A positional target-path argument overrides TARGET_PATH.`;
 
 export const VERIFY_HELP_TEXT = `starsync verify - inspect the archive for Git integrity and identity inconsistencies.
 
@@ -58,10 +57,9 @@ Options:
   --json            Emit one schema-versioned JSON result document on stdout
 
 Environment:
-  TARGET_PATH       Optional. Used if no positional target-path is given.
+  TARGET_PATH       Required if no positional target-path is given.
 
 A positional target-path argument overrides TARGET_PATH.
-Default target: <repo>/starred_repos.
 Verification is local and read-only; it does not use GITHUB_TOKEN or network access.`;
 
 export const MIGRATE_HELP_TEXT = `starsync migrate - preview migration of a legacy archive.
@@ -76,10 +74,9 @@ Options:
   --apply           Apply the migration (not available in 1.x; preview-only)
 
 Environment:
-  TARGET_PATH       Optional. Used if no positional target-path is given.
+  TARGET_PATH       Required if no positional target-path is given.
 
-A positional target-path argument overrides TARGET_PATH.
-Default target: <repo>/starred_repos.`;
+A positional target-path argument overrides TARGET_PATH.`;
 
 export const DATES_HELP_TEXT = `starsync dates - set each repo folder's mtime to its latest commit time.
 
@@ -93,10 +90,9 @@ Options:
   --dry-run         Print actions without modifying timestamps
 
 Environment:
-  TARGET_PATH       Optional. Used if no positional target-path is given.
+  TARGET_PATH       Required if no positional target-path is given.
 
-A positional target-path argument overrides TARGET_PATH.
-Default target: <repo>/starred_repos.`;
+A positional target-path argument overrides TARGET_PATH.`;
 
 export const INIT_HELP_TEXT = `starsync init - initialize a managed archive with owner and format.
 
@@ -109,9 +105,10 @@ Options:
   --json            Emit one schema-versioned JSON result document on stdout
 
 Environment:
-  TARGET_PATH       Optional. Used if no positional target-path is given.
+  GITHUB_TOKEN      Required. Personal access token with repo + read:user scopes.
+  TARGET_PATH       Required if no positional target-path is given.
 
-Not available in this release.`;
+The target directory must already exist and be empty.`;
 
 export const UNLOCK_HELP_TEXT = `starsync unlock - release an archive operation lock.
 
@@ -124,7 +121,7 @@ Options:
   --json            Emit one schema-versioned JSON result document on stdout
 
 Environment:
-  TARGET_PATH       Optional. Used if no positional target-path is given.
+  TARGET_PATH       Required if no positional target-path is given.
 
 Not available in this release.`;
 
