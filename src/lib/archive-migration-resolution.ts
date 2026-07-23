@@ -5,6 +5,7 @@ import type { ArchiveEntry, RepositoryResolver, ResolvedRepository } from './arc
 import type { CheckoutReport, MigrationPreview } from './reporting.ts';
 
 import { withApiRetry } from './api-retry.ts';
+import { buildGitEnvironment } from './git-exec.ts';
 import { createFinding } from './reporting.ts';
 import {
 	hasEmbeddedCredentials,
@@ -23,7 +24,7 @@ export const readMigrationGit = (checkoutPath: string, args: string[]): string =
 	execFileSync('git', ['-c', 'core.askPass=', ...args], {
 		cwd: checkoutPath,
 		encoding: 'utf-8',
-		env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' },
+		env: buildGitEnvironment(process.env, { GIT_OPTIONAL_LOCKS: '0' }),
 		stdio: ['ignore', 'pipe', 'pipe'],
 	}).trim();
 

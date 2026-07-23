@@ -499,7 +499,10 @@ describe('cloneOrPull', () => {
 				1,
 				'git',
 				['-C', path.join(root, 'test-repo'), 'config', '--get', 'remote.origin.url'],
-				{ encoding: 'utf-8' }
+				expect.objectContaining({
+					encoding: 'utf-8',
+					env: expect.objectContaining({ GIT_TERMINAL_PROMPT: '0' }),
+				})
 			);
 			expect(mockExecFileSync).toHaveBeenNthCalledWith(
 				2,
@@ -659,6 +662,59 @@ describe('cloneOrPull', () => {
 			}
 		} finally {
 			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('removes parent secrets from the synchronous Git environment', () => {
+		const savedEnvironment = {
+			AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+			DB_PASSWORD: process.env.DB_PASSWORD,
+			GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+			HOME: process.env.HOME,
+			NPM_TOKEN: process.env.NPM_TOKEN,
+			PATH: process.env.PATH,
+			SERVICE_API_KEY: process.env.SERVICE_API_KEY,
+			SystemRoot: process.env.SystemRoot,
+		};
+		Object.assign(process.env, {
+			AWS_SECRET_ACCESS_KEY: 'aws-secret',
+			DB_PASSWORD: 'database-secret',
+			GITHUB_TOKEN: 'github-secret',
+			HOME: '/home/starsync',
+			NPM_TOKEN: 'npm-secret',
+			PATH: '/usr/local/bin',
+			SERVICE_API_KEY: 'service-secret',
+			SystemRoot: 'C:\\Windows',
+		});
+
+		try {
+			mockExecFileSync.mockReturnValue(undefined);
+			expect(cloneOrPull(repo, '/tmp/target', new Set()).ok).toBe(true);
+
+			const options = mockExecFileSync.mock.calls.at(-1)?.[2] as
+				{ env?: NodeJS.ProcessEnv } | undefined;
+			expect(options?.env).toEqual(
+				expect.objectContaining({
+					GIT_TERMINAL_PROMPT: '0',
+					HOME: '/home/starsync',
+					PATH: '/usr/local/bin',
+					SystemRoot: 'C:\\Windows',
+				})
+			);
+			for (const key of [
+				'AWS_SECRET_ACCESS_KEY',
+				'DB_PASSWORD',
+				'GITHUB_TOKEN',
+				'NPM_TOKEN',
+				'SERVICE_API_KEY',
+			]) {
+				expect(options?.env).not.toHaveProperty(key);
+			}
+		} finally {
+			for (const [key, value] of Object.entries(savedEnvironment)) {
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
 		}
 	});
 });
@@ -2075,6 +2131,81 @@ describe('parseArgs --concurrency', () => {
 
 	test('rejects bare --concurrency without value', () => {
 		expect(() => parseArgs(['--concurrency'])).toThrow('--concurrency requires a value');
+	});
+});
+
+describe('Git subprocess environment', () => {
+	test('buildGitEnvironment keeps only allowlisted platform and Git variables', async () => {
+		const { buildGitEnvironment } = await import('../src/lib/git-exec.ts');
+		const environment = buildGitEnvironment(
+			{
+				AWS_SECRET_ACCESS_KEY: 'aws-secret',
+				COMSPEC: 'C:\\Windows\\System32\\cmd.exe',
+				DB_PASSWORD: 'database-secret',
+				GITHUB_TOKEN: 'github-secret',
+				HOME: '/home/starsync',
+				HTTP_PROXY: 'http://proxy.example',
+				NPM_TOKEN: 'npm-secret',
+				PATH: '/usr/local/bin',
+				SERVICE_API_KEY: 'service-secret',
+				SystemRoot: 'C:\\Windows',
+				UNRELATED_SETTING: 'not-required-by-git',
+			},
+			{
+				credential_helper: 'override-secret',
+				GIT_OPTIONAL_LOCKS: '0',
+				GIT_TERMINAL_PROMPT: '1',
+				PaSsWd: 'override-secret',
+				PATH: '/opt/git/bin',
+			}
+		);
+
+		expect(environment).toEqual({
+			COMSPEC: 'C:\\Windows\\System32\\cmd.exe',
+			GIT_OPTIONAL_LOCKS: '0',
+			GIT_TERMINAL_PROMPT: '0',
+			HOME: '/home/starsync',
+			HTTP_PROXY: 'http://proxy.example',
+			PATH: '/opt/git/bin',
+			SystemRoot: 'C:\\Windows',
+		});
+	});
+
+	test('runGit filters source and override secrets at the async process boundary', async () => {
+		const { runGit } = await import('../src/lib/git-exec.ts');
+		await runGit(['status', '--porcelain'], {
+			cwd: '/tmp/repository',
+			env: {
+				AWS_SECRET_ACCESS_KEY: 'aws-secret',
+				DB_PASSWORD: 'database-secret',
+				GITHUB_TOKEN: 'github-secret',
+				HOME: '/home/starsync',
+				NPM_TOKEN: 'npm-secret',
+				PATH: '/opt/git/bin',
+				SERVICE_API_KEY: 'service-secret',
+				SystemRoot: 'C:\\Windows',
+			},
+		});
+
+		const options = mockExecFile.mock.calls.at(-1)?.[2] as
+			{ env?: NodeJS.ProcessEnv } | undefined;
+		expect(options?.env).toEqual(
+			expect.objectContaining({
+				GIT_TERMINAL_PROMPT: '0',
+				HOME: '/home/starsync',
+				PATH: '/opt/git/bin',
+				SystemRoot: 'C:\\Windows',
+			})
+		);
+		for (const key of [
+			'AWS_SECRET_ACCESS_KEY',
+			'DB_PASSWORD',
+			'GITHUB_TOKEN',
+			'NPM_TOKEN',
+			'SERVICE_API_KEY',
+		]) {
+			expect(options?.env).not.toHaveProperty(key);
+		}
 	});
 });
 

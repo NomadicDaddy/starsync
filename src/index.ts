@@ -14,6 +14,7 @@ import {
 	resolveTargetPath as resolveTargetPathImpl,
 	stripQuotes as stripQuotesImpl,
 } from './lib/cli-utils.ts';
+import { buildGitEnvironment } from './lib/git-exec.ts';
 import {
 	isGitAuthError,
 	isGitHubDotComUrl,
@@ -159,6 +160,7 @@ export const cloneOrPull = (
 		(existing.has(repo.name) || fs.existsSync(repoPath)) &&
 		fs.existsSync(path.join(repoPath, '.git'));
 	const verb = isCloned ? 'pull' : 'clone';
+	const gitEnvironment = buildGitEnvironment();
 	try {
 		if (isCloned) {
 			const remoteUrl = execFileSync(
@@ -166,6 +168,7 @@ export const cloneOrPull = (
 				['-C', repoPath, 'config', '--get', 'remote.origin.url'],
 				{
 					encoding: 'utf-8',
+					env: gitEnvironment,
 				}
 			).trim();
 			if (normalizeRepoUrl(remoteUrl) !== normalizeRepoUrl(repo.clone_url)) {
@@ -185,14 +188,14 @@ export const cloneOrPull = (
 			console.log('Repository is already available -> pulling');
 			execFileSync('git', ['-c', 'core.askPass=', 'pull'], {
 				cwd: repoPath,
-				env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+				env: gitEnvironment,
 				stdio: 'inherit',
 			});
 		} else {
 			console.log('Repository not available -> cloning');
 			execFileSync('git', ['-c', 'core.askPass=', 'clone', repo.clone_url], {
 				cwd: targetBase,
-				env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+				env: gitEnvironment,
 				stdio: 'inherit',
 			});
 		}

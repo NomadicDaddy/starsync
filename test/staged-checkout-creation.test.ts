@@ -65,12 +65,25 @@ const createLocalOrigin = (root: string): string => {
 	return origin;
 };
 
-const localCloneEnvironment = (githubUrl: string, localOrigin: string): NodeJS.ProcessEnv => ({
-	GIT_ALLOW_PROTOCOL: 'file',
-	GIT_CONFIG_COUNT: '1',
-	GIT_CONFIG_KEY_0: `url.${pathToFileURL(localOrigin).href}.insteadOf`,
-	GIT_CONFIG_VALUE_0: githubUrl,
-});
+const createLocalCloneEnvironment = (
+	root: string,
+	githubUrl: string,
+	localOrigin: string
+): NodeJS.ProcessEnv => {
+	const gitHome = path.join(root, 'git-home');
+	mkdirSync(gitHome, { recursive: true });
+	writeFileSync(
+		path.join(gitHome, '.gitconfig'),
+		[
+			'[protocol "file"]',
+			'\tallow = always',
+			`[url "${pathToFileURL(localOrigin).href}"]`,
+			`\tinsteadOf = ${githubUrl}`,
+			'',
+		].join('\n')
+	);
+	return { HOME: gitHome, USERPROFILE: gitHome };
+};
 
 const runStagedCheckout = (
 	repository: RepoRecord,
@@ -109,7 +122,7 @@ describe('staged checkout creation process boundary', () => {
 				},
 				target,
 				7,
-				localCloneEnvironment(cloneUrl, origin)
+				createLocalCloneEnvironment(root, cloneUrl, origin)
 			);
 
 			expect(result).toEqual(
@@ -156,7 +169,7 @@ describe('staged checkout creation process boundary', () => {
 				},
 				target,
 				7,
-				localCloneEnvironment(cloneUrl, path.join(root, 'missing.git'))
+				createLocalCloneEnvironment(root, cloneUrl, path.join(root, 'missing.git'))
 			);
 
 			expect(result.outcome).toBe('failed');

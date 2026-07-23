@@ -3,8 +3,6 @@ import type { RefreshResult } from './refresh.ts';
 import { isTransientGitError, runGit } from './git-exec.ts';
 import { isGitAuthError, sanitizeMessage, CREDENTIAL_GUIDANCE } from './secret-safety.ts';
 
-const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
-
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => {
 		setTimeout(resolve, ms);
@@ -29,7 +27,6 @@ const failed = (name: string, err: unknown): RefreshResult => {
 const fetchRemote = async (repoPath: string): Promise<void> => {
 	await runGit(['fetch', '--tags', '--no-prune', 'origin'], {
 		cwd: repoPath,
-		env: GIT_ENV,
 	});
 };
 
@@ -133,7 +130,6 @@ export const refreshCheckoutOnDefaultBranch = async (
 		try {
 			await runGit(['switch', '--create', defaultBranch, '--track', remote.ref], {
 				cwd: repoPath,
-				env: GIT_ENV,
 			});
 			return { name, outcome: 'updated' };
 		} catch (err) {
@@ -155,11 +151,10 @@ export const refreshCheckoutOnDefaultBranch = async (
 	}
 
 	try {
-		await runGit(['switch', defaultBranch], { cwd: repoPath, env: GIT_ENV });
+		await runGit(['switch', defaultBranch], { cwd: repoPath });
 		if (localHash === remote.hash) return { name, outcome: 'current' };
 		await runGit(['merge', '--ff-only', remote.ref], {
 			cwd: repoPath,
-			env: GIT_ENV,
 		});
 		return { name, outcome: 'updated' };
 	} catch (err) {
