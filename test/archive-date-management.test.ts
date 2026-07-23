@@ -123,7 +123,7 @@ describe('managed Archive Dates process boundary', () => {
 
 			const preview = await normalizeArchiveDates({ dryRun: true, targetPath: target });
 
-			expect(preview.exitCode).toBe(0);
+			expect(preview).toMatchObject({ exitCode: 0 });
 			expect(preview.checkouts[0]).toEqual(
 				expect.objectContaining({
 					name: 'repo--owner',
@@ -178,7 +178,7 @@ describe('managed Archive Dates process boundary', () => {
 
 			const report = await normalizeArchiveDates({ targetPath: target });
 
-			expect(report.exitCode).toBe(1);
+			expect(report).toMatchObject({ exitCode: 1 });
 			expect(Math.abs(statSync(managed).mtimeMs - newestCommitTime.getTime())).toBeLessThan(
 				1_000
 			);
