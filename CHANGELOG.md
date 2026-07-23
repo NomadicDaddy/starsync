@@ -4,8 +4,14 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-23
+
 ### Added
 
+- Added release validation on Windows, macOS, and Linux. The automated gate runs the locked Bun
+  install, quality checks, bundle build, platform compilation, and an offline copied-archive
+  journey. An opt-in live smoke can verify an explicit temporary archive copy without touching the
+  configured archive.
 - Added staged checkout publication. New managed repositories are cloned into unique
   StarSync-owned sibling directories, checked for GitHub.com origin, Git object integrity,
   archive-owner scope, and stable identity, then atomically renamed to their canonical folder.
