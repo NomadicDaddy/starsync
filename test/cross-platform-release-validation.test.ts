@@ -105,6 +105,26 @@ const addRemoteCommit = (fixture: RepositoryFixture): void => {
 };
 
 describe('cross-platform release validation', () => {
+	test('bounds and supersedes the full three-platform release matrix', () => {
+		const workflow = readFileSync(
+			path.resolve('.github/workflows/release-validation.yml'),
+			'utf-8'
+		);
+
+		expect(workflow).toMatch(
+			/^on:\r?\n {4}pull_request:\r?\n {4}push:\r?\n {8}branches:\r?\n {12}- main\r?\n {4}workflow_dispatch:$/m
+		);
+		expect(workflow).toMatch(
+			/^concurrency:\r?\n {4}group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.event\.pull_request\.number \|\| github\.ref \}\}\r?\n {4}cancel-in-progress: true$/m
+		);
+		expect(workflow).toMatch(
+			/^ {4}cross-platform:\r?\n {8}name: Bun 1\.3\.14 \/ \$\{\{ matrix\.os \}\}\r?\n {8}runs-on: \$\{\{ matrix\.os \}\}\r?\n {8}timeout-minutes: 20$/m
+		);
+		expect(workflow).toMatch(
+			/^ {12}matrix:\r?\n {16}os:\r?\n {20}- macos-latest\r?\n {20}- ubuntu-latest\r?\n {20}- windows-latest$/m
+		);
+	});
+
 	test('pins every third-party action to a full commit with a release-tag comment', () => {
 		const workflow = readFileSync(
 			path.resolve('.github/workflows/release-validation.yml'),
