@@ -105,6 +105,23 @@ const addRemoteCommit = (fixture: RepositoryFixture): void => {
 };
 
 describe('cross-platform release validation', () => {
+	test('pins every third-party action to a full commit with a release-tag comment', () => {
+		const workflow = readFileSync(
+			path.resolve('.github/workflows/release-validation.yml'),
+			'utf-8'
+		);
+		const thirdPartyUsesLines = workflow
+			.split(/\r?\n/)
+			.filter((line) => /^\s*uses:\s+(?!\.\/)\S+/.test(line));
+
+		expect(thirdPartyUsesLines.length).toBeGreaterThan(0);
+		for (const line of thirdPartyUsesLines) {
+			expect(line).toMatch(
+				/^\s*uses:\s+[a-z0-9_.-]+\/[a-z0-9_.-]+@[0-9a-f]{40}\s+#\s+v\d+(?:\.\d+){0,2}\s*$/i
+			);
+		}
+	});
+
 	test('runs a copied archive through migration, verification, refresh, and dates offline', async () => {
 		const root = mkdtempSync(path.join(tmpdir(), 'starsync-release-copy-'));
 		const sourceArchive = path.join(root, 'source-archive');
