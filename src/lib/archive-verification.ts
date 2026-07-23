@@ -7,6 +7,11 @@ import type { CheckoutReport, Finding } from './reporting.ts';
 
 import { parseArchiveConfig } from './archive-config.ts';
 import { inspectArchive, parseGitHubRepositorySlug } from './archive-migration.ts';
+import {
+	canonicalCheckoutName,
+	REPOSITORY_ID_KEY,
+	REPOSITORY_SLUG_KEY,
+} from './checkout-identity.ts';
 import { runGit } from './git-exec.ts';
 import { createFinding } from './reporting.ts';
 import {
@@ -16,9 +21,6 @@ import {
 	sanitizeUrl,
 	CREDENTIAL_GUIDANCE,
 } from './secret-safety.ts';
-
-export const REPOSITORY_ID_KEY = 'starsync.repository-id';
-export const REPOSITORY_SLUG_KEY = 'starsync.repository-slug';
 
 const VERIFICATION_CONCURRENCY = 4;
 
@@ -76,11 +78,6 @@ const readOptionalGitConfig = async (checkoutPath: string, key: string): Promise
 		if (Number(details.code) === 1 && !details.stderr?.trim()) return null;
 		throw err;
 	}
-};
-
-const expectedFolderName = (slug: string): null | string => {
-	const match = slug.match(/^([a-z\d](?:[a-z\d-]*[a-z\d])?)\/([a-z\d._-]+)$/i);
-	return match?.[1] && match[2] ? `${match[2]}--${match[1]}` : null;
 };
 
 const validateArchiveOwner = (targetPath: string, inspection: ArchiveInspection): Finding[] => {
@@ -276,7 +273,7 @@ const verifyCheckout = async (
 		);
 	} else if (rawId !== null && rawSlug !== null) {
 		const parsedId = Number(rawId);
-		const proposedName = expectedFolderName(rawSlug);
+		const proposedName = canonicalCheckoutName(rawSlug);
 		if (!Number.isSafeInteger(parsedId) || parsedId <= 0 || proposedName === null) {
 			blocked = true;
 			findings.push(
@@ -310,7 +307,7 @@ const verifyCheckout = async (
 	const renameSource = repositorySlug ?? originSlug;
 	const proposedName =
 		typeof renameSource === 'string'
-			? expectedFolderName(renameSource)
+			? canonicalCheckoutName(renameSource)
 			: renameSource
 				? `${renameSource.repository}--${renameSource.owner}`
 				: null;

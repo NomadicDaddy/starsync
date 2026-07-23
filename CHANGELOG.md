@@ -6,11 +6,23 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Added
 
+- Added stable repository identity for every managed checkout. New repositories use
+  `repository--owner` folders and store `starsync.repository-id` plus
+  `starsync.repository-slug` in checkout-local Git configuration.
+- Added resumable `migrate --apply`. It preserves successful identity writes and safe renames
+  across checkout failures, adopts dirty checkouts without moving their work, and finalizes the
+  archive format only after every checkout identity is recorded.
 - Added one archive-wide operation lock for initialization, synchronization and dry runs,
   verification, migration preview, date normalization, and its deprecated companion entrypoint.
   Locks identify their host, process, command, and start time; confirmed-dead same-host locks
   recover automatically, while remote or uncertain locks require a risk-reported
   `unlock --force`.
+
+### Changed
+
+- Synchronization now matches checkouts by stable GitHub repository ID instead of mutable slug or
+  short folder name. Slug changes remain attached to the same checkout and are reported as pending
+  renames until an explicit migration applies them.
 
 ## [1.2.0] - 2026-07-23
 

@@ -25,7 +25,7 @@ import {
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..');
 
-export const HELP_TEXT = `starsync sync - clone or pull every starred GitHub repository.
+export const HELP_TEXT = `starsync sync - add or refresh managed checkouts by stable repository identity.
 
 Usage:
   starsync sync [options] [target-path]
@@ -131,7 +131,7 @@ export {
 	type UnlockArchiveOptions,
 	type VerifyArchiveOptions,
 } from './lib/archive-api.ts';
-export { REPOSITORY_ID_KEY, REPOSITORY_SLUG_KEY } from './lib/archive-verification.ts';
+export { REPOSITORY_ID_KEY, REPOSITORY_SLUG_KEY } from './lib/checkout-identity.ts';
 
 /** @deprecated Use verifyArchive, which returns a structured CommandReport. */
 export const verifyArchiveContents = verifyArchiveContentsImpl;

@@ -2,7 +2,9 @@
 
 **SAVE YOUR STARRED REPOS BEFORE THEY DISAPPEAR!**
 
-Clone or pull every starred GitHub repository to your local machine. Subsequent runs pull each existing repo to the latest commit; new stars are cloned.
+Preserve every starred GitHub repository in a managed local archive. StarSync matches checkouts by
+stable GitHub repository identity, refreshes existing history, and adds new stars under canonical
+`repository--owner` folders.
 
 Bun + TypeScript CLI plus a companion script for normalizing folder timestamps.
 
@@ -65,8 +67,8 @@ bun src/cli.ts init [options] [target-path]
 bun src/cli.ts unlock [options] [target-path]
 ```
 
-`init`, `sync`, `verify`, `dates`, `unlock`, and the read-only `migrate` preview are available now.
-`migrate --apply` remains reserved for its migration feature. Every command requires either
+All six commands are available, including read-only `migrate` preview and explicit
+`migrate --apply`. Every command requires either
 `[target-path]` or `TARGET_PATH`; missing both is a usage error with exit code 2. Bare
 `starsync [target-path]` remains a deprecated alias for `sync` during the transition.
 
@@ -83,12 +85,25 @@ ownership requires `starsync unlock --force [target-path]`; even forced unlock r
 lock owned by a confirmed live same-host process.
 
 A configless, non-empty directory containing GitHub.com checkouts is recognized as a legacy
-archive. `sync` and `dates` refuse to modify legacy archives. The
-read-only `migrate` preview and `verify` are available now. The migration preview resolves each
+archive. `sync` and `dates` refuse to modify legacy archives until migration completes. The
+read-only `migrate` preview resolves each
 checkout's stable GitHub repository ID and current slug, proposes the canonical
 `repository--owner` folder, and reports dirty or unverifiable state, name collisions, invalid or
 credential-bearing origins, duplicate identities, and pending renames without writing to the
 archive.
+
+`migrate --apply` records the ID and current slug in checkout-local Git configuration before
+renaming a safe checkout. Successful checkout changes remain in place if another checkout fails.
+The temporary `.starsync/migration-state.json` records only the authenticated archive owner needed
+to resume, and is removed after all identities are recorded and the archive config reaches format
+2. Dirty or unverifiable checkouts are adopted without changing their work; their identity is
+recorded, their folder stays in place, and they remain blocked with a pending rename for a later
+explicit migration.
+
+Normal synchronization uses repository IDs rather than slugs or folder labels. New repositories
+use `repository--owner`; a rename or ownership transfer keeps using the existing checkout and
+reports a pending rename until migration is explicitly applied. Duplicate identities and occupied
+canonical folders are errors and are never published or renamed over.
 
 `verify` is fully local and does not require `GITHUB_TOKEN` or network access. It runs Git object
 integrity checks, validates origins and checkout state, detects duplicate identities and pending
@@ -106,6 +121,7 @@ Common options:
 | `--json`          | Emit one schema-versioned result document on stdout              |
 | `--dry-run`       | Preview `sync` or `dates` without changing the archive           |
 | `--concurrency=N` | Process 1-8 repositories concurrently during `sync` (default: 4) |
+| `--apply`         | Apply `migrate` identity backfill and safe canonical renames      |
 
 The legacy folder-date command remains available as a deprecated alias:
 
@@ -163,15 +179,15 @@ The public entry point exports:
 | ----------------------- | ------------------------------------------- |
 | `syncArchive`           | Synchronize or preview an archive refresh   |
 | `verifyArchive`         | Run read-only local archive verification    |
-| `migrateArchive`        | Preview archive migration                   |
+| `migrateArchive`        | Preview or apply archive migration          |
 | `normalizeArchiveDates` | Preview or normalize checkout folder dates  |
 | `initArchive`           | Initialize an empty managed archive         |
 | `unlockArchive`         | Inspect or conservatively remove its lock   |
 
-`migrateArchive({ apply: true })` currently returns a structured `command-unavailable` report
-because applied migration has not shipped. The deprecated low-level exports remain during the 1.x
-transition for compatibility; consumers should migrate from `runStarsync`, argument parsing,
-checkout discovery, and direct clone/pull helpers to these command-level operations before 2.0.
+Pass `apply: true` to `migrateArchive` to apply the resumable migration; omit it for a read-only
+preview. The deprecated low-level exports remain during the 1.x transition for compatibility;
+consumers should migrate from `runStarsync`, argument parsing, checkout discovery, and direct
+clone/pull helpers to these command-level operations before 2.0.
 
 ## Scripts
 

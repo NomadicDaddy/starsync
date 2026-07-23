@@ -22,7 +22,7 @@ import {
 	syncArchive,
 	verifyArchive,
 } from '../src/index.ts';
-import { createCommandReport, createFinding } from '../src/lib/reporting.ts';
+import { createCommandReport, createCommandReporter, createFinding } from '../src/lib/reporting.ts';
 import {
 	hasEmbeddedCredentials,
 	isGitAuthError,
@@ -55,8 +55,19 @@ mock.module('node:child_process', () => ({
 
 interface MockRepoResponse {
 	clone_url: string;
+	full_name: string;
+	id: number;
 	name: string;
+	owner: { login: string };
 }
+
+const mockStarredRepository = (name: string, id: number, owner = 'example'): MockRepoResponse => ({
+	clone_url: `https://github.com/${owner}/${name}.git`,
+	full_name: `${owner}/${name}`,
+	id,
+	name,
+	owner: { login: owner },
+});
 
 const mockPaginate = mock((): Promise<MockRepoResponse[]> => Promise.resolve([]));
 const mockGetRepository = mock(
@@ -139,6 +150,32 @@ const writeManagedArchiveConfig = (
 		path.join(root, '.starsync', 'config.json'),
 		JSON.stringify({ archiveFormat: 2, owner })
 	);
+};
+
+const mockManagedCheckoutIdentity = (
+	folderName: string,
+	repositoryId: number,
+	repositorySlug: string,
+	status = ''
+): void => {
+	mockExecFile.mockImplementation((_cmd, args, options, callback) => {
+		const cwd = (options as { cwd?: string } | undefined)?.cwd ?? '';
+		if (path.basename(cwd) === folderName && args.includes('--get')) {
+			if (args.includes('remote.origin.url')) {
+				callback(null, `https://github.com/${repositorySlug}.git\n`, '');
+				return;
+			}
+			callback(
+				null,
+				args.includes('starsync.repository-id')
+					? `${repositoryId}\n`
+					: `${repositorySlug}\n`,
+				''
+			);
+			return;
+		}
+		callback(null, args.includes('status') ? status : '', '');
+	});
 };
 
 const mockGitReads = (
@@ -478,9 +515,7 @@ describe('folder discovery', () => {
 
 describe('programmatic archive API', () => {
 	test('syncArchive uses only explicit options and returns the JSON report model', async () => {
-		mockPaginate.mockResolvedValue([
-			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-		]);
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
 		const savedArgv = process.argv;
 		const savedToken = process.env.GITHUB_TOKEN;
 		process.argv = ['bun', 'unexpected-cli-argument'];
@@ -505,7 +540,7 @@ describe('programmatic archive API', () => {
 			expect(captured.result.command).toBe('sync');
 			expect(captured.result.exitCode).toBe(0);
 			expect(captured.result.checkouts[0]).toEqual(
-				expect.objectContaining({ name: 'repo-a', plannedOutcome: 'added' })
+				expect.objectContaining({ name: 'repo-a--example', plannedOutcome: 'added' })
 			);
 			expect(progress.some((message) => message.includes('Syncing 1/1'))).toBe(true);
 		} finally {
@@ -558,9 +593,7 @@ describe('programmatic archive API', () => {
 	});
 
 	test('aborting from progress stops sync before a repository operation starts', async () => {
-		mockPaginate.mockResolvedValue([
-			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-		]);
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
 		const controller = new AbortController();
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-api-abort-'));
 		try {
@@ -578,7 +611,7 @@ describe('programmatic archive API', () => {
 			expect(report.exitCode).toBe(130);
 			expect(report.interrupted).toBe(true);
 			expect(report.checkouts[0]).toEqual(
-				expect.objectContaining({ name: 'repo-a', outcome: 'skipped' })
+				expect.objectContaining({ name: 'repo-a--example', outcome: 'skipped' })
 			);
 			expect(mockExecFile).not.toHaveBeenCalled();
 		} finally {
@@ -587,9 +620,7 @@ describe('programmatic archive API', () => {
 	});
 
 	test('aborting from dry-run progress stops before repository inspection', async () => {
-		mockPaginate.mockResolvedValue([
-			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-		]);
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
 		const controller = new AbortController();
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-api-dry-abort-'));
 		try {
@@ -823,8 +854,8 @@ describe('runStarsync', () => {
 		'returns exit code 0 on successful sync with two repos',
 		withToken(async () => {
 			mockPaginate.mockResolvedValue([
-				{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-				{ clone_url: 'https://github.com/example/repo-b.git', name: 'repo-b' },
+				mockStarredRepository('repo-a', 101),
+				mockStarredRepository('repo-b', 102),
 			]);
 			mockExecFile.mockImplementation(
 				(
@@ -852,8 +883,8 @@ describe('runStarsync', () => {
 		'returns exit code 1 when one clone fails (partial failure)',
 		withToken(async () => {
 			mockPaginate.mockResolvedValue([
-				{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-				{ clone_url: 'https://github.com/example/repo-b.git', name: 'repo-b' },
+				mockStarredRepository('repo-a', 101),
+				mockStarredRepository('repo-b', 102),
 			]);
 			// repo-a succeeds, repo-b fails
 			mockExecFile.mockImplementation(
@@ -863,7 +894,7 @@ describe('runStarsync', () => {
 					_options: unknown,
 					callback: (err: Error | null, stdout: string, stderr: string) => void
 				): void => {
-					if (args.includes('repo-b')) {
+					if (args.some((arg) => arg.includes('repo-b'))) {
 						callback(new Error('fatal: repository not found'), '', '');
 					} else {
 						callback(null, '', '');
@@ -897,9 +928,7 @@ describe('sync --dry-run', () => {
 	test('queries stars and reports would-clone without calling git', async () => {
 		savedToken = process.env.GITHUB_TOKEN;
 		process.env.GITHUB_TOKEN = 'test-token';
-		mockPaginate.mockResolvedValue([
-			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-		]);
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
 		mockExecFileSync.mockReturnValue(undefined);
 
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dryrun-'));
@@ -917,20 +946,53 @@ describe('sync --dry-run', () => {
 	test('reports would-pull for existing repos without calling git pull', async () => {
 		savedToken = process.env.GITHUB_TOKEN;
 		process.env.GITHUB_TOKEN = 'test-token';
-		mockPaginate.mockResolvedValue([
-			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-		]);
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
 
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dryrun-'));
 		try {
 			writeManagedArchiveConfig(target);
-			mkdirSync(path.join(target, 'repo-a'));
-			mkdirSync(path.join(target, 'repo-a', '.git'));
+			mkdirSync(path.join(target, 'repo-a--example', '.git'), { recursive: true });
+			mockManagedCheckoutIdentity('repo-a--example', 101, 'example/repo-a');
 
 			const exitCode = await runStarsync([target, '--dry-run']);
 			expect(exitCode).toBe(0);
 			// In dry-run mode, no git operations at all
 			expect(mockExecFileSync).not.toHaveBeenCalled();
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('matches a renamed repository by stable identity and reports a pending rename', async () => {
+		savedToken = process.env.GITHUB_TOKEN;
+		process.env.GITHUB_TOKEN = 'test-token';
+		mockPaginate.mockResolvedValue([mockStarredRepository('renamed-repo', 101, 'new-owner')]);
+
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-renamed-dryrun-'));
+		try {
+			writeManagedArchiveConfig(target);
+			mkdirSync(path.join(target, 'original--old-owner', '.git'), { recursive: true });
+			mockManagedCheckoutIdentity('original--old-owner', 101, 'old-owner/original');
+
+			const report = await syncArchive({
+				dryRun: true,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(0);
+			expect(report.checkouts[0]).toEqual(
+				expect.objectContaining({
+					name: 'original--old-owner',
+					pendingRename: true,
+					plannedOutcome: 'updated',
+				})
+			);
+			expect(
+				mockExecFile.mock.calls.some((call) =>
+					(call[1] as string[]).some((arg) => arg === 'clone')
+				)
+			).toBe(false);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
 		}
@@ -1005,10 +1067,20 @@ describe('subcommand dispatch', () => {
 		}
 	});
 
-	test('dispatchMigrate --apply exits 1 with not-available message', async () => {
+	test('dispatchMigrate --apply completes an empty current archive', async () => {
 		const { dispatchMigrate } = await import('../src/lib/subcommands.ts');
-		const exitCode = await dispatchMigrate(['--apply', 'C:/archive']);
-		expect(exitCode).toBe(1);
+		const savedToken = process.env.GITHUB_TOKEN;
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-empty-migration-'));
+		process.env.GITHUB_TOKEN = 'test-token';
+		try {
+			writeManagedArchiveConfig(target);
+			const exitCode = await dispatchMigrate(['--apply', target]);
+			expect(exitCode).toBe(0);
+		} finally {
+			if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
+			else process.env.GITHUB_TOKEN = savedToken;
+			rmSync(target, { force: true, recursive: true });
+		}
 	});
 
 	test('dispatchMigrate --help exits 0', async () => {
@@ -1774,6 +1846,98 @@ describe('refresh pipeline', () => {
 		expect(result.name).toBe('new-repo');
 	});
 
+	test('processRepository clones to the canonical folder and records stable identity', async () => {
+		const { processRepository } = await import('../src/lib/refresh.ts');
+		mockExecFile.mockImplementation((_cmd, _args, _options, callback) =>
+			callback(null, '', '')
+		);
+
+		const result = await processRepository(
+			{
+				clone_url: 'https://github.com/example/new-repo.git',
+				folderName: 'new-repo--example',
+				id: 321,
+				name: 'new-repo',
+				slug: 'example/new-repo',
+			},
+			'/tmp/test-target',
+			() => false
+		);
+
+		expect(result).toEqual(
+			expect.objectContaining({ name: 'new-repo--example', outcome: 'added' })
+		);
+		expect(mockExecFile).toHaveBeenCalledWith(
+			'git',
+			['clone', 'https://github.com/example/new-repo.git', 'new-repo--example'],
+			expect.any(Object),
+			expect.any(Function)
+		);
+		expect(mockExecFile).toHaveBeenCalledWith(
+			'git',
+			['remote', 'set-url', 'origin', 'https://github.com/example/new-repo.git'],
+			expect.any(Object),
+			expect.any(Function)
+		);
+		expect(mockExecFile).toHaveBeenCalledWith(
+			'git',
+			['config', '--local', 'starsync.repository-id', '321'],
+			expect.objectContaining({ cwd: path.join('/tmp/test-target', 'new-repo--example') }),
+			expect.any(Function)
+		);
+		expect(mockExecFile).toHaveBeenCalledWith(
+			'git',
+			['config', '--local', 'starsync.repository-slug', 'example/new-repo'],
+			expect.any(Object),
+			expect.any(Function)
+		);
+	});
+
+	test('processRepository normalizes origin before recording a renamed repository slug', async () => {
+		const { processRepository } = await import('../src/lib/refresh.ts');
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-refresh-rename-'));
+		const checkout = createCheckout(target, 'original--old-owner');
+		mockExecFile.mockImplementation((_cmd, args, _options, callback) => {
+			callback(null, args.includes('status') ? '' : '', '');
+		});
+
+		try {
+			const result = await processRepository(
+				{
+					clone_url: 'https://github.com/new-owner/renamed-repo.git',
+					folderName: 'original--old-owner',
+					id: 101,
+					name: 'renamed-repo',
+					pendingRename: true,
+					slug: 'new-owner/renamed-repo',
+				},
+				target,
+				() => false
+			);
+
+			expect(result).toEqual(
+				expect.objectContaining({
+					name: 'original--old-owner',
+					pendingRename: true,
+				})
+			);
+			expect(mockExecFile).toHaveBeenCalledWith(
+				'git',
+				['remote', 'set-url', 'origin', 'https://github.com/new-owner/renamed-repo.git'],
+				expect.objectContaining({ cwd: checkout }),
+				expect.any(Function)
+			);
+			expect(mockExecFile).toHaveBeenCalledWith(
+				'git',
+				['config', '--local', 'starsync.repository-slug', 'new-owner/renamed-repo'],
+				expect.objectContaining({ cwd: checkout }),
+				expect.any(Function)
+			);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
 	test('runSyncPool processes repos with concurrency 1 sequentially', async () => {
 		const mod = await import('../src/lib/refresh.ts');
 		const runSyncPool = mod.runSyncPool;
@@ -2059,9 +2223,7 @@ describe('structured command reporting', () => {
 	test('sync JSON reports active lifecycle and added run outcome without persistence', async () => {
 		const savedToken = process.env.GITHUB_TOKEN;
 		process.env.GITHUB_TOKEN = 'test-token';
-		mockPaginate.mockResolvedValue([
-			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-		]);
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
 		mockExecFile.mockImplementation(
 			(
 				_cmd: string,
@@ -2101,9 +2263,7 @@ describe('structured command reporting', () => {
 	test('sync human output preserves succeeded and lifecycle summaries', async () => {
 		const savedToken = process.env.GITHUB_TOKEN;
 		process.env.GITHUB_TOKEN = 'test-token';
-		mockPaginate.mockResolvedValue([
-			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-		]);
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
 		mockExecFile.mockImplementation(
 			(
 				_cmd: string,
@@ -2154,21 +2314,17 @@ describe('structured command reporting', () => {
 	test('blocked refreshes separate lifecycle from outcome and exit 1', async () => {
 		const savedToken = process.env.GITHUB_TOKEN;
 		process.env.GITHUB_TOKEN = 'test-token';
-		mockPaginate.mockResolvedValue([
-			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-		]);
-		mockExecFile.mockImplementation(
-			(
-				_cmd: string,
-				args: string[],
-				_options: unknown,
-				callback: (err: Error | null, stdout: string, stderr: string) => void
-			): void => callback(null, args.includes('status') ? ' M local-file\n' : '', '')
-		);
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-blocked-json-'));
 		try {
 			writeManagedArchiveConfig(target);
-			mkdirSync(path.join(target, 'repo-a', '.git'), { recursive: true });
+			mkdirSync(path.join(target, 'repo-a--example', '.git'), { recursive: true });
+			mockManagedCheckoutIdentity(
+				'repo-a--example',
+				101,
+				'example/repo-a',
+				' M local-file\n'
+			);
 			const captured = await captureConsole(() =>
 				runStarsync(['--json', '--concurrency=1', target])
 			);
@@ -2190,11 +2346,10 @@ describe('structured command reporting', () => {
 	});
 
 	test('first interruption emits partial JSON and exits 130', async () => {
-		const savedToken = process.env.GITHUB_TOKEN;
-		process.env.GITHUB_TOKEN = 'test-token';
+		const controller = new AbortController();
 		mockPaginate.mockResolvedValue([
-			{ clone_url: 'https://github.com/example/repo-a.git', name: 'repo-a' },
-			{ clone_url: 'https://github.com/example/repo-b.git', name: 'repo-b' },
+			mockStarredRepository('repo-a', 101),
+			mockStarredRepository('repo-b', 102),
 		]);
 		mockExecFile.mockImplementation(
 			(
@@ -2203,11 +2358,8 @@ describe('structured command reporting', () => {
 				_options: unknown,
 				callback: (err: Error | null, stdout: string, stderr: string) => void
 			): void => {
-				if (args.includes('repo-a')) {
-					const signalHandler = process.listeners('SIGINT').at(-1);
-					if (signalHandler === undefined)
-						throw new Error('SIGINT handler was not registered');
-					signalHandler('SIGINT');
+				if (args.some((arg) => arg.includes('repo-a'))) {
+					controller.abort();
 				}
 				callback(null, '', '');
 			}
@@ -2215,9 +2367,16 @@ describe('structured command reporting', () => {
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-interrupted-json-'));
 		try {
 			writeManagedArchiveConfig(target);
-			const captured = await captureConsole(() =>
-				runStarsync(['--json', '--concurrency=1', target])
-			);
+			const captured = await captureConsole(async () => {
+				const report = await syncArchive({
+					concurrency: 1,
+					signal: controller.signal,
+					targetPath: target,
+					token: 'test-token',
+				});
+				createCommandReporter(true).emit(report);
+				return report.exitCode;
+			});
 			const report = parseReport(captured.stdout);
 
 			expect(captured.result).toBe(130);
@@ -2228,8 +2387,6 @@ describe('structured command reporting', () => {
 			expect(report.summary.outcomes.skipped).toBe(1);
 			expect(report.findings.some((finding) => finding.code === 'interrupted')).toBe(true);
 		} finally {
-			if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
-			else process.env.GITHUB_TOKEN = savedToken;
 			rmSync(target, { force: true, recursive: true });
 		}
 	});

@@ -173,7 +173,7 @@ const readManagedArchive = (targetPath: string, entries: ArchiveEntry[]): Archiv
 				createFinding(
 					'info',
 					'archive-format-current',
-					`Archive format ${archiveFormat} is current; no migration is required.`
+					`Archive format ${archiveFormat} is current.`
 				),
 			],
 			kind: 'current-managed',
@@ -299,7 +299,7 @@ const getArchiveModificationFindingImpl = (targetPath: string): Finding | null =
 		return createFinding(
 			'error',
 			'legacy-archive-read-only',
-			'A legacy archive may only be verified or previewed with migrate during this release.'
+			'A legacy archive must be migrated before modifying commands can use it.'
 		);
 	}
 
@@ -308,7 +308,7 @@ const getArchiveModificationFindingImpl = (targetPath: string): Finding | null =
 		return createFinding(
 			'error',
 			'older-archive-read-only',
-			'An older managed archive may only be verified or previewed with migrate.'
+			'An older managed archive must be migrated before modifying commands can use it.'
 		);
 	}
 	if (inspection.kind === 'newer-managed' || inspection.kind === 'invalid') {
@@ -579,7 +579,6 @@ export const previewArchiveMigration = async (
 ): Promise<MigrationPreviewResult> => {
 	const inspection = inspectArchive(targetPath);
 	if (
-		inspection.kind === 'current-managed' ||
 		inspection.kind === 'invalid' ||
 		inspection.kind === 'newer-managed' ||
 		inspection.kind === 'uninitialized'

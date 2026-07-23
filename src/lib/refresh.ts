@@ -1,10 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { finalizeCheckoutIdentity } from './checkout-identity.ts';
 import { isTransientGitError, runGit } from './git-exec.ts';
 import { isGitAuthError, sanitizeMessage, CREDENTIAL_GUIDANCE } from './secret-safety.ts';
-
-// ── Types ───────────────────────────────────────────────────────────────────
 
 /** The sync outcome for a single checkout attempt. */
 export type SyncOutcome =
@@ -13,7 +12,11 @@ export type SyncOutcome =
 /** A starred repository from the GitHub API. */
 export interface RepoRecord {
 	clone_url: string;
+	folderName?: string;
+	id?: number;
 	name: string;
+	pendingRename?: boolean;
+	slug?: string;
 }
 
 /** Result of refreshing or cloning a single repository. */
@@ -21,28 +24,26 @@ export interface RefreshResult {
 	message?: string;
 	name: string;
 	outcome: SyncOutcome;
+	pendingRename?: boolean;
 }
-
-// ── Deterministic delay ─────────────────────────────────────────────────────
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => {
 		setTimeout(resolve, ms);
 	});
 
-// ── Clone (new repository) ──────────────────────────────────────────────────
-
 /**
  * Clones a new repository. Retries transient transport failures once.
  */
 const cloneRepository = async (repo: RepoRecord, targetBase: string): Promise<RefreshResult> => {
+	const folderName = repo.folderName ?? repo.name;
 	const attempt = async (): Promise<void> => {
-		await runGit(['clone', repo.clone_url, repo.name], { cwd: targetBase });
+		await runGit(['clone', repo.clone_url, folderName], { cwd: targetBase });
 	};
 
 	try {
 		await attempt();
-		return { name: repo.name, outcome: 'added' };
+		return { name: folderName, outcome: 'added' };
 	} catch (err) {
 		const message = (err as Error).message;
 		if (isTransientGitError(sanitizeMessage(message))) {
@@ -50,12 +51,12 @@ const cloneRepository = async (repo: RepoRecord, targetBase: string): Promise<Re
 			await sleep(1000);
 			try {
 				await attempt();
-				return { name: repo.name, outcome: 'added' };
+				return { name: folderName, outcome: 'added' };
 			} catch (err) {
-				return buildFailure(repo.name, err);
+				return buildFailure(folderName, err);
 			}
 		}
-		return buildFailure(repo.name, err);
+		return buildFailure(folderName, err);
 	}
 };
 
@@ -184,8 +185,6 @@ const refreshCheckout = async (repoPath: string, name: string): Promise<RefreshR
 	}
 };
 
-// ── Single-repository processing ────────────────────────────────────────────
-
 /**
  * Processes a single repository: clone if new, refresh if existing.
  * Validates that the origin is GitHub.com before any Git operation.
@@ -195,26 +194,38 @@ export const processRepository = async (
 	targetBase: string,
 	isInterruptionRequested: () => boolean
 ): Promise<RefreshResult> => {
-	const repoPath = path.join(targetBase, repo.name);
+	const folderName = repo.folderName ?? repo.name;
+	const repoPath = path.join(targetBase, folderName);
 	const hasGitDir = fs.existsSync(repoPath) && fs.existsSync(path.join(repoPath, '.git'));
 
+	let result: RefreshResult;
 	if (!hasGitDir) {
-		return cloneRepository(repo, targetBase);
-	}
-
-	if (isInterruptionRequested()) {
+		result = await cloneRepository(repo, targetBase);
+	} else if (isInterruptionRequested()) {
 		// We've already started: let in-flight Git ops finish but don't start new fetches
-		return {
+		result = {
 			message: 'Interrupted before refresh could start.',
-			name: repo.name,
+			name: folderName,
 			outcome: 'skipped',
 		};
+	} else {
+		result = await refreshCheckout(repoPath, folderName);
 	}
 
-	return refreshCheckout(repoPath, repo.name);
+	if (
+		repo.id !== undefined &&
+		repo.slug !== undefined &&
+		result.outcome !== 'failed' &&
+		result.outcome !== 'skipped'
+	) {
+		const metadataError = await finalizeCheckoutIdentity(repoPath, {
+			repositoryId: repo.id,
+			repositorySlug: repo.slug,
+		});
+		if (metadataError !== null) return buildFailure(folderName, metadataError);
+	}
+	return { ...result, pendingRename: repo.pendingRename ?? false };
 };
-
-// ── Concurrency pool ────────────────────────────────────────────────────────
 
 /**
  * Configuration for the sync pool.
@@ -262,7 +273,9 @@ export const runSyncPool = async (
 			if (index >= repos.length) return;
 
 			const repo = repos[index]!;
-			onProgress(`Syncing ${index + 1}/${options.totalCount} — ${repo.name}`);
+			onProgress(
+				`Syncing ${index + 1}/${options.totalCount} — ${repo.folderName ?? repo.name}`
+			);
 			if (isInterruptionRequested()) return;
 
 			const result = await processFn(repo, isInterruptionRequested);

@@ -6,9 +6,9 @@ Usage:
   bun src/cli.ts <command> [options] [target-path]
 
 Commands:
-  sync       Clone or pull every starred GitHub repository (1.x)
+  sync       Add or refresh managed checkouts by stable repository identity
   verify     Inspect the archive for integrity without changing it (1.x)
-  migrate    Preview migration of a legacy archive (preview-only in 1.x)
+  migrate    Preview or apply managed checkout identity migration
   dates      Set each repo folder's mtime to its latest commit time (1.x)
   init       Initialize a managed archive with owner and format (2.0)
   unlock     Release an archive operation lock (2.0)
@@ -18,7 +18,7 @@ Options:
   --json            Emit one schema-versioned JSON result document on stdout
   --dry-run         Sync only: query stars and inspect without changing anything
   --concurrency=N   Sync only: concurrent repository processing (default: 4, range: 1-8)
-  --apply           Migrate only: apply migration (not available in 1.x)
+  --apply           Migrate only: apply the previewed identity and folder migration
   --force           Unlock only: remove a remote or uncertain lock after assessing the risk
 
 Environment:
@@ -63,7 +63,7 @@ Environment:
 A positional target-path argument overrides TARGET_PATH.
 Verification is local and read-only; it does not use GITHUB_TOKEN or network access.`;
 
-export const MIGRATE_HELP_TEXT = `starsync migrate - preview migration of a legacy archive.
+export const MIGRATE_HELP_TEXT = `starsync migrate - preview or apply managed checkout identity migration.
 
 Usage:
   starsync migrate [options] [target-path]
@@ -72,12 +72,16 @@ Usage:
 Options:
   --help, -h        Show this help
   --json            Emit one schema-versioned JSON result document on stdout
-  --apply           Apply the migration (not available in 1.x; preview-only)
+  --apply           Record checkout identities, safely rename canonical folders, and
+                    finalize the archive format after every identity is recorded
 
 Environment:
+  GITHUB_TOKEN      Required. Resolves repository identities and binds migration owner.
   TARGET_PATH       Required if no positional target-path is given.
 
-A positional target-path argument overrides TARGET_PATH.`;
+A positional target-path argument overrides TARGET_PATH.
+Without --apply, migration is read-only. Applied migrations preserve completed checkout work
+across failures and resume from checkout-local identity plus temporary owner state.`;
 
 export const DATES_HELP_TEXT = `starsync dates - set each repo folder's mtime to its latest commit time.
 

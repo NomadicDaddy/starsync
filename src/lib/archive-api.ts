@@ -8,6 +8,7 @@ import type { CheckoutReport, CommandReport, Finding } from './reporting.ts';
 import { withApiRetry } from './api-retry.ts';
 import { getAuthenticatedArchiveOwner, readArchiveConfig } from './archive-config.ts';
 import { initArchiveUnlocked, type InitArchiveOptions } from './archive-initialization.ts';
+import { applyArchiveMigration } from './archive-migration-apply.ts';
 import {
 	createGitHubRepositoryResolver,
 	getArchiveModificationFinding,
@@ -20,6 +21,11 @@ import {
 import { unlockArchive, type UnlockArchiveOptions } from './archive-unlock.ts';
 import { verifyArchive as verifyArchiveContents } from './archive-verification.ts';
 import { formatDatesTables, runDatesCommand } from './dates-command.ts';
+import {
+	planManagedSync,
+	type ManagedSyncPlan,
+	type StarredRepositoryRecord,
+} from './managed-checkout-planning.ts';
 import { processRepository, runSyncPool, type RefreshResult } from './refresh.ts';
 import { createCommandReport, createFinding } from './reporting.ts';
 import { isGitHubDotComUrl, sanitizeMessage, sanitizeUrl } from './secret-safety.ts';
@@ -52,11 +58,6 @@ export interface SyncArchiveOptions extends ArchiveOperationOptions {
 }
 
 export type VerifyArchiveOptions = ArchiveOperationOptions;
-
-interface StarredRepository {
-	clone_url: string;
-	name: string;
-}
 
 const getErrorMessage = (err: unknown): string =>
 	err instanceof Error ? err.message : String(err);
@@ -109,16 +110,6 @@ const missingTokenReport = (
 const checkoutExists = (targetBase: string, name: string): boolean =>
 	fs.existsSync(path.join(targetBase, name, '.git'));
 
-const listFolders = (targetPath: string): Set<string> => {
-	if (!fs.existsSync(targetPath)) return new Set();
-	return new Set(
-		fs
-			.readdirSync(targetPath, { withFileTypes: true })
-			.filter((entry) => entry.isDirectory())
-			.map((entry) => entry.name)
-	);
-};
-
 const invalidArchiveConfigReport = (
 	command: 'sync',
 	targetPath: string,
@@ -139,6 +130,7 @@ const invalidArchiveConfigReport = (
 
 const reportRefreshResult = (result: RefreshResult, targetBase: string): CheckoutReport => {
 	const lifecycle = checkoutExists(targetBase, result.name) ? 'active' : null;
+	const pendingRename = result.pendingRename ?? false;
 	switch (result.outcome) {
 		case 'added':
 			return {
@@ -146,7 +138,7 @@ const reportRefreshResult = (result: RefreshResult, targetBase: string): Checkou
 				lifecycle: 'active',
 				name: result.name,
 				outcome: 'added',
-				pendingRename: false,
+				pendingRename,
 			};
 		case 'blocked':
 			return {
@@ -160,7 +152,7 @@ const reportRefreshResult = (result: RefreshResult, targetBase: string): Checkou
 				lifecycle: 'blocked',
 				name: result.name,
 				outcome: 'failed',
-				pendingRename: false,
+				pendingRename,
 			};
 		case 'current':
 			return {
@@ -168,7 +160,7 @@ const reportRefreshResult = (result: RefreshResult, targetBase: string): Checkou
 				lifecycle: 'active',
 				name: result.name,
 				outcome: 'current',
-				pendingRename: false,
+				pendingRename,
 			};
 		case 'failed':
 			return {
@@ -182,7 +174,7 @@ const reportRefreshResult = (result: RefreshResult, targetBase: string): Checkou
 				lifecycle,
 				name: result.name,
 				outcome: 'failed',
-				pendingRename: false,
+				pendingRename,
 			};
 		case 'retained':
 			return {
@@ -196,7 +188,7 @@ const reportRefreshResult = (result: RefreshResult, targetBase: string): Checkou
 				lifecycle: 'retained',
 				name: result.name,
 				outcome: 'skipped',
-				pendingRename: false,
+				pendingRename,
 			};
 		case 'skipped':
 			return {
@@ -210,7 +202,7 @@ const reportRefreshResult = (result: RefreshResult, targetBase: string): Checkou
 				lifecycle,
 				name: result.name,
 				outcome: 'skipped',
-				pendingRename: false,
+				pendingRename,
 			};
 		case 'updated':
 			return {
@@ -218,7 +210,7 @@ const reportRefreshResult = (result: RefreshResult, targetBase: string): Checkou
 				lifecycle: 'active',
 				name: result.name,
 				outcome: 'updated',
-				pendingRename: false,
+				pendingRename,
 			};
 	}
 };
@@ -327,26 +319,8 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 	options.onProgress?.(`Target: ${targetPath}`);
 	options.onProgress?.('Fetching starred repositories...');
 	if (options.signal?.aborted) return interruptedReport('sync', targetPath, dryRun);
-	let existing: Set<string>;
-	try {
-		existing = listFolders(targetPath);
-	} catch (err) {
-		return createCommandReport({
-			command: 'sync',
-			dryRun,
-			exitCode: 1,
-			findings: [
-				createFinding(
-					'error',
-					'target-read-failed',
-					`Cannot read target directory: ${getErrorMessage(err)}`
-				),
-			],
-			targetPath,
-		});
-	}
 	const octokit = new Octokit({ auth: options.token });
-	let repositories: StarredRepository[];
+	let repositoryRecords: StarredRepositoryRecord[];
 	try {
 		const response = await withApiRetry(
 			() =>
@@ -355,9 +329,11 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 				}),
 			{ maxRetries: 2 }
 		);
-		repositories = response.map((repository) => ({
+		repositoryRecords = response.map((repository) => ({
 			clone_url: repository.clone_url,
+			id: repository.id,
 			name: repository.name,
+			slug: repository.full_name,
 		}));
 	} catch (err) {
 		return createCommandReport({
@@ -377,24 +353,34 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 
 	if (options.signal?.aborted) return interruptedReport('sync', targetPath, dryRun);
 
-	const starredNames = new Set(repositories.map((repository) => repository.name));
-	const retainedReports: CheckoutReport[] = [...existing]
-		.filter(
-			(folderName) => !starredNames.has(folderName) && checkoutExists(targetPath, folderName)
-		)
-		.map((name) => ({
+	let syncPlan: ManagedSyncPlan;
+	try {
+		syncPlan = await planManagedSync(targetPath, repositoryRecords);
+	} catch (err) {
+		return createCommandReport({
+			command: 'sync',
+			dryRun,
+			exitCode: 1,
 			findings: [
 				createFinding(
-					'info',
-					'checkout-retained',
-					'Checkout is no longer starred and was retained.'
+					'error',
+					'target-read-failed',
+					`Cannot inspect managed checkouts: ${sanitizeMessage(getErrorMessage(err))}`
 				),
 			],
-			lifecycle: 'retained',
-			name,
-			outcome: 'skipped',
-			pendingRename: false,
-		}));
+			targetPath,
+		});
+	}
+	const { blockedReports, repositories, retainedReports } = syncPlan;
+	if (blockedReports.length > 0 && repositories.length === 0) {
+		return createCommandReport({
+			checkouts: blockedReports,
+			command: 'sync',
+			dryRun,
+			exitCode: 1,
+			targetPath,
+		});
+	}
 
 	if (dryRun) {
 		options.onProgress?.('Dry run: querying stars and inspecting the archive without changes.');
@@ -410,12 +396,12 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 								'Repository was not inspected because interruption was requested.'
 							),
 						],
-						lifecycle: checkoutExists(targetPath, interruptedRepository.name)
+						lifecycle: checkoutExists(targetPath, interruptedRepository.folderName)
 							? 'active'
 							: null,
-						name: interruptedRepository.name,
+						name: interruptedRepository.folderName,
 						outcome: 'skipped',
-						pendingRename: false,
+						pendingRename: interruptedRepository.pendingRename,
 					}))
 				);
 			};
@@ -423,10 +409,10 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 				appendInterruptedReports();
 				break;
 			}
-			const isCloned = checkoutExists(targetPath, repository.name);
+			const isCloned = checkoutExists(targetPath, repository.folderName);
 			const plannedOutcome = isCloned ? 'updated' : 'added';
 			options.onProgress?.(
-				`Syncing ${index + 1}/${repositories.length} — ${repository.name} — would ${isCloned ? 'refresh' : 'clone'}`
+				`Syncing ${index + 1}/${repositories.length} — ${repository.folderName} — would ${isCloned ? 'refresh' : 'clone'}`
 			);
 			if (options.signal?.aborted) {
 				appendInterruptedReports();
@@ -441,18 +427,21 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 					),
 				],
 				lifecycle: isCloned ? 'active' : null,
-				name: repository.name,
+				name: repository.folderName,
 				outcome: 'skipped',
-				pendingRename: false,
+				pendingRename: repository.pendingRename,
 				plannedOutcome,
 			});
 		}
 		const interrupted = options.signal?.aborted ?? false;
+		const hasErrors = blockedReports.some((checkout) =>
+			checkout.findings.some((finding) => finding.severity === 'error')
+		);
 		return createCommandReport({
-			checkouts: [...plannedReports, ...retainedReports],
+			checkouts: [...plannedReports, ...blockedReports, ...retainedReports],
 			command: 'sync',
 			dryRun: true,
-			exitCode: interrupted ? 130 : 0,
+			exitCode: interrupted ? 130 : hasErrors ? 1 : 0,
 			findings: interrupted
 				? [
 						createFinding(
@@ -467,7 +456,7 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 		});
 	}
 
-	const validRepositories: StarredRepository[] = [];
+	const validRepositories: typeof repositories = [];
 	const invalidReports: CheckoutReport[] = [];
 	for (const repository of repositories) {
 		if (!isGitHubDotComUrl(repository.clone_url)) {
@@ -479,10 +468,10 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 						`Repository origin is not GitHub.com: ${sanitizeUrl(repository.clone_url)}`
 					),
 				],
-				lifecycle: checkoutExists(targetPath, repository.name) ? 'active' : null,
-				name: repository.name,
+				lifecycle: checkoutExists(targetPath, repository.folderName) ? 'active' : null,
+				name: repository.folderName,
 				outcome: 'failed',
-				pendingRename: false,
+				pendingRename: repository.pendingRename,
 			});
 		} else {
 			validRepositories.push(repository);
@@ -507,7 +496,7 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 	const reportedNames = new Set(poolResult.results.map((result) => result.name));
 	const interruptedReports = poolResult.interrupted
 		? validRepositories
-				.filter((repository) => !reportedNames.has(repository.name))
+				.filter((repository) => !reportedNames.has(repository.folderName))
 				.map((repository): CheckoutReport => ({
 					findings: [
 						createFinding(
@@ -516,16 +505,17 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 							'Operation was not scheduled because interruption was requested.'
 						),
 					],
-					lifecycle: checkoutExists(targetPath, repository.name) ? 'active' : null,
-					name: repository.name,
+					lifecycle: checkoutExists(targetPath, repository.folderName) ? 'active' : null,
+					name: repository.folderName,
 					outcome: 'skipped',
-					pendingRename: false,
+					pendingRename: repository.pendingRename,
 				}))
 		: [];
 	const checkouts = [
 		...refreshReports,
 		...interruptedReports,
 		...invalidReports,
+		...blockedReports,
 		...retainedReports,
 	];
 	const findings: Finding[] = poolResult.interrupted
@@ -589,46 +579,44 @@ const verifyArchiveUnlocked = async (options: VerifyArchiveOptions): Promise<Com
 const migrateArchiveUnlocked = async (options: MigrateArchiveOptions): Promise<CommandReport> => {
 	const targetPath = resolveExplicitTarget(options.targetPath);
 	if (targetPath === null) return invalidTargetReport('migrate');
-	if (options.signal?.aborted) return interruptedReport('migrate', targetPath, true);
-	if (options.apply) {
-		return createCommandReport({
-			command: 'migrate',
-			dryRun: true,
-			exitCode: 1,
-			findings: [
-				createFinding(
-					'error',
-					'command-unavailable',
-					'Migrate --apply is not available in this release.'
-				),
-			],
-			targetPath,
-		});
-	}
+	const apply = options.apply ?? false;
+	if (options.signal?.aborted) return interruptedReport('migrate', targetPath, !apply);
 	if (!options.token.trim()) {
 		return missingTokenReport(
 			'migrate',
 			targetPath,
 			'GITHUB_TOKEN is required to resolve repository identities.',
-			true
+			!apply
 		);
 	}
 
 	options.onProgress?.(`Archive: ${targetPath}`);
-	options.onProgress?.('Migration preview is read-only; no archive data will be changed.');
+	options.onProgress?.(
+		apply
+			? 'Applying managed checkout identity migration.'
+			: 'Migration preview is read-only; no archive data will be changed.'
+	);
 	try {
-		const result = await previewArchiveMigration(
-			targetPath,
-			createGitHubRepositoryResolver(options.token),
-			{
-				isInterruptionRequested: () => options.signal?.aborted ?? false,
-				...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
-			}
-		);
+		const migrationOptions = {
+			isInterruptionRequested: () => options.signal?.aborted ?? false,
+			...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
+		};
+		const resolver = createGitHubRepositoryResolver(options.token);
+		const result = apply
+			? await applyArchiveMigration(
+					targetPath,
+					resolver,
+					await getAuthenticatedArchiveOwner(options.token),
+					migrationOptions
+				)
+			: await previewArchiveMigration(targetPath, resolver, {
+					isInterruptionRequested: () => options.signal?.aborted ?? false,
+					...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
+				});
 		return createCommandReport({
 			checkouts: result.checkouts,
 			command: 'migrate',
-			dryRun: true,
+			dryRun: !apply,
 			exitCode: result.exitCode,
 			findings: result.findings,
 			interrupted: result.interrupted,
@@ -637,13 +625,13 @@ const migrateArchiveUnlocked = async (options: MigrateArchiveOptions): Promise<C
 	} catch (err) {
 		return createCommandReport({
 			command: 'migrate',
-			dryRun: true,
+			dryRun: !apply,
 			exitCode: 1,
 			findings: [
 				createFinding(
 					'error',
-					'migration-preview-failed',
-					`Migration preview failed: ${sanitizeMessage(getErrorMessage(err))}`
+					apply ? 'migration-apply-failed' : 'migration-preview-failed',
+					`Migration ${apply ? 'application' : 'preview'} failed: ${sanitizeMessage(getErrorMessage(err))}`
 				),
 			],
 			targetPath,
@@ -701,7 +689,12 @@ export const verifyArchive = (options: VerifyArchiveOptions): Promise<CommandRep
 	withArchiveOperationLock('verify', options, () => verifyArchiveUnlocked(options));
 
 export const migrateArchive = (options: MigrateArchiveOptions): Promise<CommandReport> =>
-	withArchiveOperationLock('migrate', options, () => migrateArchiveUnlocked(options), true);
+	withArchiveOperationLock(
+		'migrate',
+		options,
+		() => migrateArchiveUnlocked(options),
+		!(options.apply ?? false)
+	);
 
 export const normalizeArchiveDates = (options: NormalizeArchiveDatesOptions): CommandReport =>
 	withArchiveOperationLockSync(

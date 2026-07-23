@@ -119,6 +119,30 @@ export const writeArchiveConfig = (
 	}
 };
 
+export const writeMigratedArchiveConfig = (targetPath: string, owner: ArchiveOwner): void => {
+	const metadataPath = path.join(targetPath, ARCHIVE_CONFIG_DIRECTORY);
+	const configPath = path.join(metadataPath, ARCHIVE_CONFIG_FILE);
+	const temporaryPath = path.join(
+		metadataPath,
+		`${ARCHIVE_CONFIG_FILE}.${crypto.randomUUID()}.tmp`
+	);
+	const content = `${JSON.stringify({ archiveFormat: CURRENT_ARCHIVE_FORMAT, owner }, null, '\t')}\n`;
+	fs.mkdirSync(metadataPath, { recursive: true });
+	const descriptor = fs.openSync(temporaryPath, 'wx', 0o600);
+	try {
+		fs.writeFileSync(descriptor, content, 'utf-8');
+		fs.fsyncSync(descriptor);
+	} finally {
+		fs.closeSync(descriptor);
+	}
+	try {
+		fs.renameSync(temporaryPath, configPath);
+	} catch (err) {
+		fs.rmSync(temporaryPath, { force: true });
+		throw err;
+	}
+};
+
 export const getAuthenticatedArchiveOwner = async (token: string): Promise<ArchiveOwner> => {
 	const octokit = new Octokit({ auth: token });
 	const response = await withApiRetry(() => octokit.rest.users.getAuthenticated(), {
