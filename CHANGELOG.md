@@ -4,10 +4,85 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-23
+
+### Added
+
+- Added release validation on Windows, macOS, and Linux. The automated gate runs the locked Bun
+  install, quality checks, bundle build, platform compilation, and an offline copied-archive
+  journey. An opt-in live smoke can verify an explicit temporary archive copy without touching the
+  configured archive.
+- Added staged checkout publication. New managed repositories are cloned into unique
+  StarSync-owned sibling directories, checked for GitHub.com origin, Git object integrity,
+  archive-owner scope, and stable identity, then atomically renamed to their canonical folder.
+  Failed attempts remove only their owned staging directory, preserve occupied destinations, and
+  retain the bounded retry and credential-redaction contract.
+- Added managed Archive Dates. StarSync now calculates the newest committer time reachable from
+  every local Git reference, previews or repairs recognized checkout folder timestamps through
+  `starsync dates`, and aligns timestamps after successful additions and refreshes. Timestamp
+  failures preserve the successful Git outcome, add an error finding, and make sync exit 1.
+- Added stable repository identity for every managed checkout. New repositories use
+  `repository--owner` folders and store `starsync.repository-id` plus
+  `starsync.repository-slug` in checkout-local Git configuration.
+- Added resumable `migrate --apply`. It preserves successful identity writes and safe renames
+  across checkout failures, adopts dirty checkouts without moving their work, and finalizes the
+  archive format only after every checkout identity is recorded.
+- Added one archive-wide operation lock for initialization, synchronization and dry runs,
+  verification, migration preview, and date normalization. Locks identify their host, process,
+  command, and start time; confirmed-dead same-host locks recover automatically, while remote or
+  uncertain locks require a risk-reported `unlock --force`.
+
+### Changed
+
+- Synchronization now matches checkouts by stable GitHub repository ID instead of mutable slug or
+  short folder name. Slug changes remain attached to the same checkout and are reported as pending
+  renames until an explicit migration applies them.
+- Removed the deprecated standalone `set-folder-dates` script and package alias; Archive Date
+  management is available through the unified `dates` command and `normalizeArchiveDates` API.
+
+## [1.2.0] - 2026-07-23
+
+### Added
+
+- StarSync now provides explicit `sync`, `verify`, `migrate`, `dates`, `init`, and `unlock`
+  subcommands, including command-specific help and a read-only `sync --dry-run` mode. The
+  unimplemented mutation commands return a defined unavailable response during the 1.x transition.
+- Added fully local, read-only archive verification for Git integrity, repository identity,
+  origins, duplicate checkouts, blocked state, and pending renames.
+- Added a read-only migration preview for legacy archives. It resolves stable repository
+  identities, proposes `repository--owner` folder names, and reports blocked, unsafe, duplicate,
+  or conflicting checkouts without changing the archive.
+- Every subcommand now supports `--json` with one schema-versioned report, separate checkout
+  lifecycle and run outcome fields, severity-classified findings, predictable exit codes, and
+  partial results after a first interruption.
+- Added a Bun-only programmatic API for sync, verification, migration preview, date normalization,
+  and initialization operations, with progress callbacks and `AbortSignal` cancellation.
+- Added the full MIT license text declared by the package.
+
+### Changed
+
+- Sync now processes up to four repositories at once by default, preserves dirty or divergent
+  checkouts, retains repositories that are no longer starred, and retries only transient API or Git
+  transport failures.
+- Legacy and incompatible managed archives are protected from `sync` and `dates` mutations until
+  their supported migration path ships.
+
+### Security
+
+- GitHub API tokens are now separate from Git transport credentials. Git runs non-interactively,
+  repository origins are restricted to GitHub.com, and credentials or token patterns are removed
+  from reported URLs and errors.
+
+## [1.1.1] - 2026-07-14
+
 ### Fixed
 
-- Remote URL verification no longer reports false mismatches for cosmetic URL differences: comparison is now normalized (case-insensitive, trailing `.git` and slashes ignored), so repos like `Lissy93/web-check` vs `lissy93/web-check` or remotes saved without the `.git` suffix pull normally. Genuinely different remotes (different owner or repo path) are still skipped.
-- Already-cloned detection now falls back to a filesystem check when the folder name's casing differs from the GitHub repo name (e.g. a local `Profilarr` folder for the `profilarr` repo on Windows). Previously the case-sensitive name lookup missed, and the resulting `git clone` failed against the existing directory.
+- Remote checks now accept cosmetic URL differences such as owner casing, a missing `.git`
+  suffix, or trailing slashes. Repositories with genuinely different owners or names are still
+  skipped.
+- Existing clones are now found on case-insensitive filesystems even when the folder and GitHub
+  repository use different capitalization. This prevents StarSync from trying to clone over the
+  existing directory.
 
 ## [1.1.0] - 2026-06-11
 

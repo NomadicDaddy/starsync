@@ -4,7 +4,7 @@ node_modules/
 # generated
 .claude/
 CLAUDE.md
-.aidd/
+/.aidd/
 .claude/
 .windsurf/
 opencode.json

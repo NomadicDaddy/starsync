@@ -1,40 +1,92 @@
-import { Octokit } from '@octokit/rest';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { resolveTargetPath as resolveTargetPathImpl } from './lib/cli-utils.ts';
+import {
+	createGitHubRepositoryResolver as createGitHubRepositoryResolverImpl,
+	inspectArchive as inspectArchiveImpl,
+	parseGitHubRepositorySlug as parseGitHubRepositorySlugImpl,
+	previewArchiveMigration as previewArchiveMigrationImpl,
+} from './lib/archive-migration.ts';
+import { verifyArchive as verifyArchiveContentsImpl } from './lib/archive-verification.ts';
+import {
+	resolveTargetPath as resolveTargetPathImpl,
+	stripQuotes as stripQuotesImpl,
+} from './lib/cli-utils.ts';
+import {
+	isGitAuthError,
+	isGitHubDotComUrl,
+	sanitizeMessage,
+	sanitizeUrl,
+	CREDENTIAL_GUIDANCE,
+} from './lib/secret-safety.ts';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..');
 
-export const HELP_TEXT = `starsync - clone or pull every starred GitHub repository.
+export const HELP_TEXT = `starsync sync - add or refresh managed checkouts by stable repository identity.
 
 Usage:
-  starsync [options] [target-path]
-  bun src/cli.ts [options] [target-path]
+  starsync sync [options] [target-path]
+  bun src/cli.ts sync [options] [target-path]
 
 Options:
-  --help, -h        Show this help
+  --help, -h          Show this help
+  --json              Emit one schema-versioned JSON result document on stdout
+  --dry-run           Query stars and inspect the archive without cloning, pulling,
+                      renaming, or modifying any Git data, folder names, or timestamps
+  --concurrency=N     Number of repositories to process concurrently (default: 4,
+                      range: 1-8; --concurrency=1 is sequential and deterministic)
 
 Environment:
-  GITHUB_TOKEN      Required. Personal access token with repo + read:user scopes.
-  TARGET_PATH       Optional. Used if no positional target-path is given.
+  GITHUB_TOKEN        Required. Personal access token with repo + read:user scopes.
+  TARGET_PATH         Required if no positional target-path is given.
 
-A positional target-path argument overrides TARGET_PATH.
-Default target: <repo>/starred_repos.`;
+A positional target-path argument overrides TARGET_PATH.`;
 
 export interface ParsedArgs {
+	concurrency: number;
+	dryRun: boolean;
 	help: boolean;
+	json: boolean;
 	targetPath: null | string;
 }
 
+export const DEFAULT_CONCURRENCY = 4;
+const MAX_CONCURRENCY = 8;
+const MIN_CONCURRENCY = 1;
+
+const parseConcurrency = (value: string): number => {
+	const num = Number(value);
+	if (!Number.isInteger(num) || num < MIN_CONCURRENCY || num > MAX_CONCURRENCY) {
+		throw new Error(
+			`--concurrency must be an integer from ${MIN_CONCURRENCY} to ${MAX_CONCURRENCY}, got: ${value}`
+		);
+	}
+	return num;
+};
+
+/** @deprecated Use the explicit options accepted by syncArchive instead. */
 export const parseArgs = (argv: string[] = process.argv.slice(2)): ParsedArgs => {
-	const parsed: ParsedArgs = { help: false, targetPath: null };
+	const parsed: ParsedArgs = {
+		concurrency: DEFAULT_CONCURRENCY,
+		dryRun: false,
+		help: false,
+		json: false,
+		targetPath: null,
+	};
 	for (const arg of argv) {
 		if (arg === '--help' || arg === '-h') {
 			parsed.help = true;
+		} else if (arg === '--dry-run') {
+			parsed.dryRun = true;
+		} else if (arg === '--json') {
+			parsed.json = true;
+		} else if (arg.startsWith('--concurrency=')) {
+			parsed.concurrency = parseConcurrency(arg.slice('--concurrency='.length));
+		} else if (arg === '--concurrency') {
+			throw new Error('--concurrency requires a value: use --concurrency=N');
 		} else if (!arg.startsWith('-')) {
 			if (parsed.targetPath !== null) {
 				throw new Error(`Unexpected positional argument: ${arg}`);
@@ -47,14 +99,60 @@ export const parseArgs = (argv: string[] = process.argv.slice(2)): ParsedArgs =>
 	return parsed;
 };
 
-export { stripQuotes } from './lib/cli-utils.ts';
+/** @deprecated Explicit archive operation options do not require quote stripping. */
+export const stripQuotes = stripQuotesImpl;
 
+/** @deprecated Use migrateArchive, which returns a structured CommandReport. */
+export const createGitHubRepositoryResolver = createGitHubRepositoryResolverImpl;
+
+/** @deprecated Use verifyArchive or migrateArchive instead of inspecting archive internals. */
+export const inspectArchive = inspectArchiveImpl;
+
+/** @deprecated Repository slug parsing is internal to archive operations. */
+export const parseGitHubRepositorySlug = parseGitHubRepositorySlugImpl;
+
+/** @deprecated Use migrateArchive, which returns a structured CommandReport. */
+export const previewArchiveMigration = previewArchiveMigrationImpl;
+
+export {
+	DEFAULT_ARCHIVE_CONCURRENCY,
+	initArchive,
+	migrateArchive,
+	normalizeArchiveDates,
+	syncArchive,
+	unlockArchive,
+	verifyArchive,
+	type ArchiveOperationOptions,
+	type ArchiveProgressCallback,
+	type InitArchiveOptions,
+	type MigrateArchiveOptions,
+	type NormalizeArchiveDatesOptions,
+	type SyncArchiveOptions,
+	type UnlockArchiveOptions,
+	type VerifyArchiveOptions,
+} from './lib/archive-api.ts';
+export { REPOSITORY_ID_KEY, REPOSITORY_SLUG_KEY } from './lib/checkout-identity.ts';
+
+/** @deprecated Use verifyArchive, which returns a structured CommandReport. */
+export const verifyArchiveContents = verifyArchiveContentsImpl;
+export type {
+	CheckoutLifecycle,
+	CheckoutReport,
+	CommandExitCode,
+	CommandOutcome,
+	CommandReport,
+	Finding,
+	FindingSeverity,
+} from './lib/reporting.ts';
+
+/** @deprecated Pass targetPath explicitly to an archive operation instead. */
 export const resolveTargetPath = (
 	positional: null | string,
 	envTarget: string | undefined = process.env.TARGET_PATH,
 	baseDir: string = repoDir
 ): string => resolveTargetPathImpl(positional, envTarget, baseDir);
 
+/** @deprecated Archive discovery is internal to command-level archive operations. */
 export const listFolders = (dirPath: string): Set<string> => {
 	if (!fs.existsSync(dirPath)) return new Set();
 	return new Set(
@@ -78,19 +176,55 @@ export interface SyncFailure {
 
 export type SyncResult = { failure: null; ok: true } | { failure: SyncFailure; ok: false };
 
-export const normalizeRepoUrl = (url: string): string =>
-	url
+/** @deprecated Repository URL normalization is internal to archive operations. */
+export const normalizeRepoUrl = (url: string): string => {
+	const normalized = url
 		.trim()
-		.toLowerCase()
-		.replace(/\.git$/, '')
-		.replace(/\/+$/, '');
+		.normalize('NFC')
+		.replace(/\/+$/, '')
+		.replace(/\.git$/i, '');
+	const scpStyleSsh = /^git@([^:]+):(.+)$/i.exec(normalized);
+	if (scpStyleSsh !== null) {
+		return `${scpStyleSsh[1]}/${scpStyleSsh[2]}`.toLowerCase();
+	}
+	try {
+		const parsed = new URL(normalized);
+		if (
+			parsed.hostname.toLowerCase() === 'github.com' &&
+			['http:', 'https:', 'ssh:'].includes(parsed.protocol)
+		) {
+			const pathname = decodeURI(parsed.pathname).normalize('NFC');
+			return `${parsed.hostname}${pathname}`.replace(/^\/+|\/+$/g, '').toLowerCase();
+		}
+	} catch {
+		// Preserve compatibility for non-URL values accepted by this deprecated helper.
+	}
+	return normalized.toLowerCase();
+};
 
+/** @deprecated Use syncArchive, which returns a structured CommandReport. */
 export const cloneOrPull = (
 	repo: Repository,
 	targetBase: string,
 	existing: Set<string>
 ): SyncResult => {
 	console.log(`\n${repo.name}`);
+
+	// Validate that the repository origin is GitHub.com (reject GHE and other hosts)
+	if (!isGitHubDotComUrl(repo.clone_url)) {
+		const sanitized = sanitizeUrl(repo.clone_url);
+		const msg = `Repository origin is not GitHub.com: ${sanitized}`;
+		console.warn(`Skipping ${repo.name}: ${msg}`);
+		return {
+			failure: {
+				message: msg,
+				name: repo.name,
+				verb: 'clone',
+			},
+			ok: false,
+		};
+	}
+
 	const repoPath = path.join(targetBase, repo.name);
 	const isCloned =
 		(existing.has(repo.name) || fs.existsSync(repoPath)) &&
@@ -106,12 +240,13 @@ export const cloneOrPull = (
 				}
 			).trim();
 			if (normalizeRepoUrl(remoteUrl) !== normalizeRepoUrl(repo.clone_url)) {
-				console.warn(
-					`Skipping ${repo.name}: remote URL mismatch (expected ${repo.clone_url}, found ${remoteUrl})`
-				);
+				const expectedSanitized = sanitizeUrl(repo.clone_url);
+				const foundSanitized = sanitizeUrl(remoteUrl);
+				const msg = `Remote URL mismatch (expected ${expectedSanitized}, found ${foundSanitized})`;
+				console.warn(`Skipping ${repo.name}: ${msg}`);
 				return {
 					failure: {
-						message: `Remote URL mismatch (expected ${repo.clone_url}, found ${remoteUrl})`,
+						message: msg,
 						name: repo.name,
 						verb: 'clone',
 					},
@@ -119,83 +254,35 @@ export const cloneOrPull = (
 				};
 			}
 			console.log('Repository is already available -> pulling');
-			execFileSync('git', ['pull'], { cwd: repoPath, stdio: 'inherit' });
+			execFileSync('git', ['-c', 'core.askPass=', 'pull'], {
+				cwd: repoPath,
+				env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+				stdio: 'inherit',
+			});
 		} else {
 			console.log('Repository not available -> cloning');
-			execFileSync('git', ['clone', repo.clone_url], {
+			execFileSync('git', ['-c', 'core.askPass=', 'clone', repo.clone_url], {
 				cwd: targetBase,
+				env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
 				stdio: 'inherit',
 			});
 		}
 		return { failure: null, ok: true };
 	} catch (err) {
-		const message = (err as Error).message;
+		const rawMessage = (err as Error).message;
+		let message = sanitizeMessage(rawMessage);
+		if (isGitAuthError(rawMessage)) {
+			message = `${message}\n${CREDENTIAL_GUIDANCE}`;
+		}
 		console.error(`Failed to ${verb} ${repo.name}: ${message}`);
 		return { failure: { message, name: repo.name, verb }, ok: false };
 	}
 };
 
-const getErrorMessage = (err: unknown): string =>
-	err instanceof Error ? err.message : String(err);
-
+/**
+ * @deprecated Use syncArchive with explicit options and consume its CommandReport.
+ */
 export const runStarsync = async (argv: string[] = process.argv.slice(2)): Promise<number> => {
-	let args: ParsedArgs;
-	try {
-		args = parseArgs(argv);
-	} catch (err) {
-		console.error(getErrorMessage(err));
-		console.error(HELP_TEXT);
-		return 2;
-	}
-	if (args.help) {
-		console.log(HELP_TEXT);
-		return 0;
-	}
-
-	const token = process.env.GITHUB_TOKEN;
-	if (!token) {
-		console.error('GITHUB_TOKEN is not set');
-		return 1;
-	}
-
-	const targetBase = resolveTargetPath(args.targetPath);
-	fs.mkdirSync(targetBase, { recursive: true });
-	console.log(`Target: ${targetBase}`);
-
-	const existing = listFolders(targetBase);
-	const octokit = new Octokit({ auth: token });
-
-	let repos: Repository[];
-	try {
-		console.log('\nFetching starred repos...');
-		const response = await octokit.paginate(
-			octokit.rest.activity.listReposStarredByAuthenticatedUser,
-			{ per_page: 100 }
-		);
-		repos = response.map((r) => ({ clone_url: r.clone_url, name: r.name }));
-	} catch (err) {
-		console.error(`Error fetching repositories: ${getErrorMessage(err)}`);
-		return 1;
-	}
-
-	let succeeded = 0;
-	const failures: SyncFailure[] = [];
-	for (const repo of repos) {
-		const result = cloneOrPull(repo, targetBase, existing);
-		if (result.ok) {
-			succeeded++;
-		} else {
-			failures.push(result.failure);
-		}
-	}
-
-	console.log(`\nSync complete. Succeeded: ${succeeded}. Failed: ${failures.length}.`);
-	if (failures.length > 0) {
-		console.error('\nFailed repositories:');
-		for (const failure of failures) {
-			console.error(`- ${failure.name} (${failure.verb}): ${failure.message}`);
-		}
-		return 1;
-	}
-	return 0;
+	const { dispatchSync } = await import('./lib/subcommands.ts');
+	return dispatchSync(argv);
 };
