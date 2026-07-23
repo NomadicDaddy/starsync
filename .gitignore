@@ -6,8 +6,7 @@ node_modules/
 .agents/
 AGENTS.md
 CLAUDE.md
-.aidd/
-.claude/
+/.aidd/
 .windsurf/
 opencode.json
 dist/
@@ -23,7 +22,6 @@ logs/
 nul/
 
 # build/cache
-dist/
 *.tsbuildinfo
 
 # Environment
