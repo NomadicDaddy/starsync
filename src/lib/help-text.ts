@@ -133,20 +133,3 @@ Environment:
   TARGET_PATH       Required if no positional target-path is given.
 
 Confirmed-dead same-host locks are removed without --force.`;
-
-const SUBCOMMAND_HELP: Record<string, string> = {
-	dates: DATES_HELP_TEXT,
-	init: INIT_HELP_TEXT,
-	migrate: MIGRATE_HELP_TEXT,
-	sync: SYNC_HELP_TEXT,
-	unlock: UNLOCK_HELP_TEXT,
-	verify: VERIFY_HELP_TEXT,
-};
-
-export const getSubcommandHelp = (subcommand: string): string => {
-	const text = SUBCOMMAND_HELP[subcommand];
-	if (!text) {
-		throw new Error(`No help text registered for subcommand: ${subcommand}`);
-	}
-	return text;
-};

@@ -110,32 +110,3 @@ export const withArchiveOperationLock = async (
 	}
 	return finishLockedOperation(report, acquisition.held, reclaimedFinding);
 };
-
-export const withArchiveOperationLockSync = (
-	command: Exclude<Subcommand, 'unlock'>,
-	options: LockableOperationOptions,
-	operation: (held: HeldArchiveLock | null) => CommandReport,
-	dryRun = false
-): CommandReport => {
-	const targetPath = resolveLockableTarget(options.targetPath);
-	if (targetPath === null) return operation(null);
-	const acquisition = acquireArchiveLock(targetPath, command);
-	if (!acquisition.ok) {
-		return lockFailureReport(
-			command,
-			targetPath,
-			acquisition.code,
-			acquisition.message,
-			dryRun
-		);
-	}
-	const reclaimedFinding = getReclaimedFinding(acquisition.reclaimed, options.onProgress);
-	let report: CommandReport;
-	try {
-		report = operation(acquisition.held);
-	} catch (err) {
-		releaseArchiveLock(acquisition.held);
-		throw err;
-	}
-	return finishLockedOperation(report, acquisition.held, reclaimedFinding);
-};
