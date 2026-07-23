@@ -143,10 +143,6 @@ export const planManagedSync = async (
 	repositories: StarredRepositoryRecord[]
 ): Promise<ManagedSyncPlan> => {
 	const scan = await scanManagedCheckouts(targetPath);
-	if (scan.reports.length > 0) {
-		return { blockedReports: scan.reports, repositories: [], retainedReports: [] };
-	}
-
 	const existingById = new Map(
 		scan.checkouts.map((checkout) => [checkout.repositoryId, checkout])
 	);
@@ -160,7 +156,7 @@ export const planManagedSync = async (
 	const retainedReports = scan.checkouts
 		.filter((checkout) => !starredIds.has(checkout.repositoryId))
 		.map(retainedReport);
-	const blockedReports: CheckoutReport[] = [];
+	const blockedReports = [...scan.reports];
 	const planned: StarredRepository[] = [];
 
 	const idCounts = new Map<number, number>();

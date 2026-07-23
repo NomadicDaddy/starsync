@@ -752,6 +752,78 @@ describe('programmatic archive API', () => {
 			rmSync(target, { force: true, recursive: true });
 		}
 	});
+
+	test('continues valid synchronization when another checkout has invalid identity', async () => {
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
+
+		for (const dryRun of [false, true]) {
+			const target = mkdtempSync(path.join(tmpdir(), 'starsync-partial-invalid-'));
+			try {
+				writeManagedArchiveConfig(target);
+				createCheckout(target, 'invalid--example');
+				mockSuccessfulCloneAndDateOperations();
+
+				const report = await syncArchive({
+					concurrency: 1,
+					dryRun,
+					targetPath: target,
+					token: 'test-token',
+				});
+				const byName = new Map(
+					report.checkouts.map((checkout) => [checkout.name, checkout])
+				);
+
+				expect(report.exitCode).toBe(1);
+				expect(report.checkouts).toHaveLength(2);
+				expect(byName.get('invalid--example')).toEqual(
+					expect.objectContaining({ lifecycle: 'blocked', outcome: 'failed' })
+				);
+				expect(byName.get('invalid--example')?.findings[0]?.code).toBe(
+					'invalid-identity-metadata'
+				);
+				expect(byName.get('repo-a--example')).toEqual(
+					expect.objectContaining(
+						dryRun
+							? { outcome: 'skipped', plannedOutcome: 'added' }
+							: { lifecycle: 'active', outcome: 'added' }
+					)
+				);
+				expect(existsSync(path.join(target, 'invalid--example'))).toBe(true);
+				expect(existsSync(path.join(target, 'repo-a--example'))).toBe(!dryRun);
+			} finally {
+				rmSync(target, { force: true, recursive: true });
+			}
+		}
+	});
+
+	test('reports valid retained checkouts alongside invalid managed checkouts', async () => {
+		mockPaginate.mockResolvedValue([]);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-partial-retained-'));
+		try {
+			writeManagedArchiveConfig(target);
+			createCheckout(target, 'invalid--example');
+			createCheckout(target, 'retained--example');
+			mockManagedCheckoutIdentity('retained--example', 102, 'example/retained');
+
+			const report = await syncArchive({
+				concurrency: 1,
+				targetPath: target,
+				token: 'test-token',
+			});
+			const byName = new Map(report.checkouts.map((checkout) => [checkout.name, checkout]));
+
+			expect(report.exitCode).toBe(1);
+			expect(report.checkouts).toHaveLength(2);
+			expect(byName.get('invalid--example')).toEqual(
+				expect.objectContaining({ lifecycle: 'blocked', outcome: 'failed' })
+			);
+			expect(byName.get('retained--example')).toEqual(
+				expect.objectContaining({ lifecycle: 'retained', outcome: 'skipped' })
+			);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
 });
 
 describe('managed archive initialization', () => {

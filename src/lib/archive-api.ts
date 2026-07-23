@@ -409,15 +409,6 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 		});
 	}
 	const { blockedReports, repositories, retainedReports } = syncPlan;
-	if (blockedReports.length > 0 && repositories.length === 0) {
-		return createCommandReport({
-			checkouts: blockedReports,
-			command: 'sync',
-			dryRun,
-			exitCode: 1,
-			targetPath,
-		});
-	}
 
 	if (dryRun) {
 		options.onProgress?.('Dry run: querying stars and inspecting the archive without changes.');
