@@ -554,7 +554,9 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 	const poolResult = await runSyncPool(
 		validRepositories,
 		(repository, isInterruptionRequested) =>
-			processRepository(repository, targetPath, isInterruptionRequested),
+			processRepository(repository, targetPath, isInterruptionRequested, {
+				archiveOwnerId: configuredOwner.id,
+			}),
 		{
 			concurrency,
 			onProgress: options.onProgress ?? (() => {}),

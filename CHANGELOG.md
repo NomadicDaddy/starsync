@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Added
 
+- Added staged checkout publication. New managed repositories are cloned into unique
+  StarSync-owned sibling directories, checked for GitHub.com origin, Git object integrity,
+  archive-owner scope, and stable identity, then atomically renamed to their canonical folder.
+  Failed attempts remove only their owned staging directory, preserve occupied destinations, and
+  retain the bounded retry and credential-redaction contract.
 - Added managed Archive Dates. StarSync now calculates the newest committer time reachable from
   every local Git reference, previews or repairs recognized checkout folder timestamps through
   `starsync dates`, and aligns timestamps after successful additions and refreshes. Timestamp

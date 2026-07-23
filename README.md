@@ -100,10 +100,14 @@ recorded, their folder stays in place, and they remain blocked with a pending re
 explicit migration.
 
 Normal synchronization uses repository IDs rather than slugs or folder labels. New repositories
-use `repository--owner`; a rename or ownership transfer keeps using the existing checkout and
-reports a pending rename until migration is explicitly applied. Duplicate identities and occupied
-canonical folders are errors and are never published or renamed over. After each successful add or
-refresh, StarSync aligns the checkout folder timestamp with its Archive Date.
+use `repository--owner`, but are first cloned into a unique StarSync-owned sibling staging
+directory. StarSync validates the GitHub.com origin, Git objects, archive owner, and checkout
+identity there before atomically publishing the canonical folder. Failed attempts clean up only
+their owned staging directory, while occupied destinations remain untouched. A rename or ownership
+transfer keeps using the existing checkout and reports a pending rename until migration is
+explicitly applied. Duplicate identities and occupied canonical folders are errors and are never
+published or renamed over. After each successful add or refresh, StarSync aligns the checkout
+folder timestamp with its Archive Date.
 
 `dates` is fully local and does not require `GITHUB_TOKEN` or network access. It recognizes managed
 checkouts by their stable local identity, calculates each Archive Date from the newest committer

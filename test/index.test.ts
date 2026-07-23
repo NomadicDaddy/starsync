@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
@@ -191,8 +192,24 @@ const mockManagedCheckoutIdentity = (
 	});
 };
 
-const mockSuccessfulCloneAndDateOperations = (failingRepository?: string): void => {
+interface SuccessfulCloneHooks {
+	afterClone?: (cloneUrl: string, stagingPath: string) => void;
+	cloneFailure?: (cloneUrl: string, stagingPath: string) => Error | null;
+	onArchiveDateRead?: (
+		cwd: string,
+		callback: (err: Error | null, stdout: string, stderr: string) => void
+	) => boolean;
+}
+
+const mockSuccessfulCloneAndDateOperations = (
+	failingRepository?: string,
+	hooks: SuccessfulCloneHooks = {}
+): void => {
+	const origins = new Map<string, string>();
+	const repositoryIds = new Map<string, string>();
+	const repositorySlugs = new Map<string, string>();
 	mockExecFile.mockImplementation((_cmd, args, options, callback) => {
+		const cwd = (options as { cwd?: string } | undefined)?.cwd;
 		if (
 			failingRepository !== undefined &&
 			args.some((arg) => arg.includes(failingRepository))
@@ -201,11 +218,44 @@ const mockSuccessfulCloneAndDateOperations = (failingRepository?: string): void 
 			return;
 		}
 		if (args[0] === 'clone') {
-			const cwd = (options as { cwd?: string } | undefined)?.cwd;
 			const folderName = args.at(-1);
-			if (cwd !== undefined && folderName !== undefined) {
-				mkdirSync(path.join(cwd, folderName, '.git'), { recursive: true });
+			const cloneUrl = args[1];
+			if (cwd !== undefined && folderName !== undefined && cloneUrl !== undefined) {
+				const stagingPath = path.join(cwd, folderName);
+				mkdirSync(path.join(stagingPath, '.git'), { recursive: true });
+				const cloneFailure = hooks.cloneFailure?.(cloneUrl, stagingPath);
+				if (cloneFailure !== null && cloneFailure !== undefined) {
+					callback(cloneFailure, '', '');
+					return;
+				}
+				origins.set(stagingPath, cloneUrl);
+				hooks.afterClone?.(cloneUrl, stagingPath);
 			}
+		}
+		if (cwd !== undefined && args[0] === 'config') {
+			if (args.includes('--get')) {
+				if (args.includes('remote.origin.url')) {
+					callback(null, `${origins.get(cwd) ?? ''}\n`, '');
+					return;
+				}
+				if (args.includes('starsync.repository-id')) {
+					callback(null, `${repositoryIds.get(cwd) ?? ''}\n`, '');
+					return;
+				}
+				if (args.includes('starsync.repository-slug')) {
+					callback(null, `${repositorySlugs.get(cwd) ?? ''}\n`, '');
+					return;
+				}
+			}
+			if (args.includes('starsync.repository-id')) {
+				repositoryIds.set(cwd, args.at(-1) ?? '');
+			}
+			if (args.includes('starsync.repository-slug')) {
+				repositorySlugs.set(cwd, args.at(-1) ?? '');
+			}
+		}
+		if (cwd !== undefined && args.includes('log') && hooks.onArchiveDateRead?.(cwd, callback)) {
+			return;
 		}
 		callback(null, args.includes('log') ? '2026-07-16T10:00:00Z\n' : '', '');
 	});
@@ -915,17 +965,12 @@ describe('runStarsync', () => {
 		'keeps the Git outcome and exits 1 when Archive Date maintenance fails',
 		withToken(async () => {
 			mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
-			mockExecFile.mockImplementation((_cmd, args, options, callback) => {
-				const cwd = (options as { cwd?: string } | undefined)?.cwd;
-				if (args[0] === 'clone' && cwd !== undefined) {
-					mkdirSync(path.join(cwd, 'repo-a--example', '.git'), { recursive: true });
-				}
-				if (args.includes('log') && cwd !== undefined) {
+			mockSuccessfulCloneAndDateOperations(undefined, {
+				onArchiveDateRead: (cwd, callback) => {
 					rmSync(cwd, { force: true, recursive: true });
 					callback(null, '2026-07-16T10:00:00Z\n', '');
-					return;
-				}
-				callback(null, '', '');
+					return true;
+				},
 			});
 
 			const target = mkdtempSync(path.join(tmpdir(), 'starsync-date-failure-'));
@@ -1907,65 +1952,180 @@ describe('refresh pipeline', () => {
 	test('processRepository clones new repo and returns added', async () => {
 		const { processRepository } = (await import('../src/lib/refresh.ts')) as {
 			processRepository: (
-				repo: { clone_url: string; name: string },
+				repo: {
+					clone_url: string;
+					folderName: string;
+					id: number;
+					name: string;
+					slug: string;
+				},
 				targetBase: string,
-				isInterruptionRequested: () => boolean
+				isInterruptionRequested: () => boolean,
+				options: { archiveOwnerId: number }
 			) => Promise<{ name: string; outcome: string }>;
 		};
 		const repo = {
 			clone_url: 'https://github.com/example/new-repo.git',
+			folderName: 'new-repo--example',
+			id: 321,
 			name: 'new-repo',
+			slug: 'example/new-repo',
 		};
-		const result = await processRepository(repo, '/tmp/test-target', () => false);
-		expect(result.outcome).toBe('added');
-		expect(result.name).toBe('new-repo');
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-staged-unit-'));
+		writeManagedArchiveConfig(target);
+		mockSuccessfulCloneAndDateOperations();
+		try {
+			const result = await processRepository(repo, target, () => false, {
+				archiveOwnerId: 7,
+			});
+			expect(result.outcome).toBe('added');
+			expect(result.name).toBe('new-repo--example');
+			expect(existsSync(path.join(target, 'new-repo--example', '.git'))).toBe(true);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
 	});
 
 	test('processRepository clones to the canonical folder and records stable identity', async () => {
 		const { processRepository } = await import('../src/lib/refresh.ts');
-		mockExecFile.mockImplementation((_cmd, _args, _options, callback) =>
-			callback(null, '', '')
-		);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-staged-metadata-'));
+		writeManagedArchiveConfig(target);
+		mockSuccessfulCloneAndDateOperations();
+		try {
+			const result = await processRepository(
+				{
+					clone_url: 'https://github.com/example/new-repo.git',
+					folderName: 'new-repo--example',
+					id: 321,
+					name: 'new-repo',
+					slug: 'example/new-repo',
+				},
+				target,
+				() => false,
+				{ archiveOwnerId: 7 }
+			);
 
-		const result = await processRepository(
-			{
-				clone_url: 'https://github.com/example/new-repo.git',
-				folderName: 'new-repo--example',
-				id: 321,
-				name: 'new-repo',
-				slug: 'example/new-repo',
+			expect(result).toEqual(
+				expect.objectContaining({ name: 'new-repo--example', outcome: 'added' })
+			);
+			expect(mockExecFile).toHaveBeenCalledWith(
+				'git',
+				[
+					'clone',
+					'https://github.com/example/new-repo.git',
+					expect.stringMatching(/^\.starsync-checkout-/),
+				],
+				expect.objectContaining({ cwd: target }),
+				expect.any(Function)
+			);
+			expect(mockExecFile).toHaveBeenCalledWith(
+				'git',
+				['fsck', '--full'],
+				expect.objectContaining({
+					cwd: expect.stringContaining('.starsync-checkout-'),
+				}),
+				expect.any(Function)
+			);
+			expect(mockExecFile).toHaveBeenCalledWith(
+				'git',
+				['config', '--local', 'starsync.repository-id', '321'],
+				expect.objectContaining({
+					cwd: expect.stringContaining('.starsync-checkout-'),
+				}),
+				expect.any(Function)
+			);
+			expect(mockExecFile).toHaveBeenCalledWith(
+				'git',
+				['config', '--local', 'starsync.repository-slug', 'example/new-repo'],
+				expect.any(Object),
+				expect.any(Function)
+			);
+			expect(
+				readdirSync(target).filter((name) => name.startsWith('.starsync-checkout-'))
+			).toEqual([]);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('staged clone preserves a destination that appears before publication', async () => {
+		const { processRepository } = await import('../src/lib/refresh.ts');
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-staged-collision-'));
+		const destination = path.join(target, 'new-repo--example');
+		const marker = path.join(destination, 'user-owned.txt');
+		writeManagedArchiveConfig(target);
+		mockSuccessfulCloneAndDateOperations(undefined, {
+			afterClone: () => {
+				mkdirSync(destination);
+				writeFileSync(marker, 'preserve');
 			},
-			'/tmp/test-target',
-			() => false
-		);
+		});
+		try {
+			const result = await processRepository(
+				{
+					clone_url: 'https://github.com/example/new-repo.git',
+					folderName: 'new-repo--example',
+					id: 321,
+					name: 'new-repo',
+					slug: 'example/new-repo',
+				},
+				target,
+				() => false,
+				{ archiveOwnerId: 7 }
+			);
 
-		expect(result).toEqual(
-			expect.objectContaining({ name: 'new-repo--example', outcome: 'added' })
-		);
-		expect(mockExecFile).toHaveBeenCalledWith(
-			'git',
-			['clone', 'https://github.com/example/new-repo.git', 'new-repo--example'],
-			expect.any(Object),
-			expect.any(Function)
-		);
-		expect(mockExecFile).toHaveBeenCalledWith(
-			'git',
-			['remote', 'set-url', 'origin', 'https://github.com/example/new-repo.git'],
-			expect.any(Object),
-			expect.any(Function)
-		);
-		expect(mockExecFile).toHaveBeenCalledWith(
-			'git',
-			['config', '--local', 'starsync.repository-id', '321'],
-			expect.objectContaining({ cwd: path.join('/tmp/test-target', 'new-repo--example') }),
-			expect.any(Function)
-		);
-		expect(mockExecFile).toHaveBeenCalledWith(
-			'git',
-			['config', '--local', 'starsync.repository-slug', 'example/new-repo'],
-			expect.any(Object),
-			expect.any(Function)
-		);
+			expect(result.outcome).toBe('failed');
+			expect(result.message).toContain('already occupied');
+			expect(readFileSync(marker, 'utf8')).toBe('preserve');
+			expect(
+				readdirSync(target).filter((name) => name.startsWith('.starsync-checkout-'))
+			).toEqual([]);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('staged clone retries once with fresh directories and redacts the final failure', async () => {
+		const { processRepository } = await import('../src/lib/refresh.ts');
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-staged-retry-'));
+		const attempts: string[] = [];
+		const token = `ghp_${'a'.repeat(36)}`;
+		writeManagedArchiveConfig(target);
+		mockSuccessfulCloneAndDateOperations(undefined, {
+			cloneFailure: (_cloneUrl, stagingPath) => {
+				attempts.push(stagingPath);
+				return attempts.length === 1
+					? new Error('fatal: connection was reset')
+					: new Error(
+							`fatal: Authentication failed for https://${token}@github.com/example/new-repo.git`
+						);
+			},
+		});
+		try {
+			const result = await processRepository(
+				{
+					clone_url: 'https://github.com/example/new-repo.git',
+					folderName: 'new-repo--example',
+					id: 321,
+					name: 'new-repo',
+					slug: 'example/new-repo',
+				},
+				target,
+				() => false,
+				{ archiveOwnerId: 7 }
+			);
+
+			expect(result.outcome).toBe('failed');
+			expect(result.message).not.toContain(token);
+			expect(result.message).toContain('https://github.com/example/new-repo.git');
+			expect(result.message).toContain('Git Credential Manager');
+			expect(attempts).toHaveLength(2);
+			expect(new Set(attempts).size).toBe(2);
+			expect(attempts.every((stagingPath) => !existsSync(stagingPath))).toBe(true);
+			expect(existsSync(path.join(target, 'new-repo--example'))).toBe(false);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
 	});
 
 	test('processRepository normalizes origin before recording a renamed repository slug', async () => {
@@ -1987,7 +2147,8 @@ describe('refresh pipeline', () => {
 					slug: 'new-owner/renamed-repo',
 				},
 				target,
-				() => false
+				() => false,
+				{ archiveOwnerId: 7 }
 			);
 
 			expect(result).toEqual(
@@ -2091,7 +2252,8 @@ describe('refresh pipeline', () => {
 					name: 'existing-repo',
 				},
 				root,
-				() => true
+				() => true,
+				{ archiveOwnerId: 7 }
 			);
 			expect(result.outcome).toBe('skipped');
 			expect(result.name).toBe('existing-repo');
@@ -2412,19 +2574,13 @@ describe('structured command reporting', () => {
 			mockStarredRepository('repo-a', 101),
 			mockStarredRepository('repo-b', 102),
 		]);
-		mockExecFile.mockImplementation(
-			(
-				_cmd: string,
-				args: string[],
-				_options: unknown,
-				callback: (err: Error | null, stdout: string, stderr: string) => void
-			): void => {
-				if (args.some((arg) => arg.includes('repo-a'))) {
+		mockSuccessfulCloneAndDateOperations(undefined, {
+			afterClone: (cloneUrl) => {
+				if (cloneUrl.includes('repo-a')) {
 					controller.abort();
 				}
-				callback(null, '', '');
-			}
-		);
+			},
+		});
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-interrupted-json-'));
 		try {
 			writeManagedArchiveConfig(target);

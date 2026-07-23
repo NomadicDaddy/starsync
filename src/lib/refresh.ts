@@ -4,6 +4,7 @@ import path from 'node:path';
 import { finalizeCheckoutIdentity } from './checkout-identity.ts';
 import { isTransientGitError, runGit } from './git-exec.ts';
 import { isGitAuthError, sanitizeMessage, CREDENTIAL_GUIDANCE } from './secret-safety.ts';
+import { createStagedCheckout } from './staged-checkout.ts';
 
 /** The sync outcome for a single checkout attempt. */
 export type SyncOutcome =
@@ -27,35 +28,38 @@ export interface RefreshResult {
 	pendingRename?: boolean;
 }
 
+export interface ProcessRepositoryOptions {
+	archiveOwnerId: number;
+}
+
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => {
 		setTimeout(resolve, ms);
 	});
 
-/**
- * Clones a new repository. Retries transient transport failures once.
- */
-const cloneRepository = async (repo: RepoRecord, targetBase: string): Promise<RefreshResult> => {
+/** Clones, validates, and atomically publishes a new managed checkout. */
+const cloneRepository = async (
+	repo: RepoRecord,
+	targetBase: string,
+	options: ProcessRepositoryOptions
+): Promise<RefreshResult> => {
 	const folderName = repo.folderName ?? repo.name;
-	const attempt = async (): Promise<void> => {
-		await runGit(['clone', repo.clone_url, folderName], { cwd: targetBase });
-	};
-
 	try {
-		await attempt();
+		if (repo.id === undefined || repo.slug === undefined) {
+			throw new Error('New managed checkout is missing its stable repository identity.');
+		}
+		await createStagedCheckout(
+			{
+				cloneUrl: repo.clone_url,
+				folderName,
+				repositoryId: repo.id,
+				repositorySlug: repo.slug,
+			},
+			targetBase,
+			options
+		);
 		return { name: folderName, outcome: 'added' };
 	} catch (err) {
-		const message = (err as Error).message;
-		if (isTransientGitError(sanitizeMessage(message))) {
-			// Single retry for transient transport failure
-			await sleep(1000);
-			try {
-				await attempt();
-				return { name: folderName, outcome: 'added' };
-			} catch (err) {
-				return buildFailure(folderName, err);
-			}
-		}
 		return buildFailure(folderName, err);
 	}
 };
@@ -192,22 +196,23 @@ const refreshCheckout = async (repoPath: string, name: string): Promise<RefreshR
 export const processRepository = async (
 	repo: RepoRecord,
 	targetBase: string,
-	isInterruptionRequested: () => boolean
+	isInterruptionRequested: () => boolean,
+	options: ProcessRepositoryOptions
 ): Promise<RefreshResult> => {
 	const folderName = repo.folderName ?? repo.name;
 	const repoPath = path.join(targetBase, folderName);
 	const hasGitDir = fs.existsSync(repoPath) && fs.existsSync(path.join(repoPath, '.git'));
 
 	let result: RefreshResult;
-	if (!hasGitDir) {
-		result = await cloneRepository(repo, targetBase);
-	} else if (isInterruptionRequested()) {
+	if (isInterruptionRequested()) {
 		// We've already started: let in-flight Git ops finish but don't start new fetches
 		result = {
-			message: 'Interrupted before refresh could start.',
+			message: 'Interrupted before Git work could start.',
 			name: folderName,
 			outcome: 'skipped',
 		};
+	} else if (!hasGitDir) {
+		result = await cloneRepository(repo, targetBase, options);
 	} else {
 		result = await refreshCheckout(repoPath, folderName);
 	}
@@ -215,6 +220,7 @@ export const processRepository = async (
 	if (
 		repo.id !== undefined &&
 		repo.slug !== undefined &&
+		result.outcome !== 'added' &&
 		result.outcome !== 'failed' &&
 		result.outcome !== 'skipped'
 	) {
