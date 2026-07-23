@@ -101,6 +101,7 @@ describe('staged checkout creation process boundary', () => {
 			const result = runStagedCheckout(
 				{
 					clone_url: cloneUrl,
+					defaultBranch: 'main',
 					folderName: 'repository--example',
 					id: 321,
 					name: 'repository',
@@ -147,6 +148,7 @@ describe('staged checkout creation process boundary', () => {
 			const result = runStagedCheckout(
 				{
 					clone_url: cloneUrl,
+					defaultBranch: 'main',
 					folderName: 'missing--example',
 					id: 654,
 					name: 'missing',
@@ -180,6 +182,7 @@ describe('staged checkout creation process boundary', () => {
 		try {
 			const repository = {
 				clone_url: 'https://github.com/example/repository.git',
+				defaultBranch: 'main',
 				folderName: 'repository--example',
 				id: 321,
 				name: 'repository',

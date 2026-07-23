@@ -368,6 +368,7 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 		);
 		repositoryRecords = response.map((repository) => ({
 			clone_url: repository.clone_url,
+			defaultBranch: repository.default_branch,
 			id: repository.id,
 			name: repository.name,
 			slug: repository.full_name,
