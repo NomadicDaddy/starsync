@@ -4,21 +4,38 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-23
+
 ### Added
 
-- Added a Bun-only programmatic archive API with explicit options, progress callbacks,
-  `AbortSignal` cancellation, and schema-versioned `CommandReport` results for sync, verify,
-  migration, date normalization, and initialization operations. The CLI now delegates to these
-  operations, while process-coupled low-level exports are deprecated for the 1.x transition.
-- Added a read-only `migrate` preview for legacy archives. It resolves stable repository identities,
-  proposes `repository--owner` folder names, classifies blocked and failed checkouts, detects
-  collisions and unsafe origins, and emits complete human or schema-versioned JSON reports without
-  changing the archive.
-- Legacy and incompatible managed archives are now protected from `sync` and `dates` mutations
-  until explicit migration support ships.
-- Added `--json` to every subcommand with a stable schema-versioned report, separate checkout
+- StarSync now provides explicit `sync`, `verify`, `migrate`, `dates`, `init`, and `unlock`
+  subcommands, including command-specific help and a read-only `sync --dry-run` mode. The
+  unimplemented mutation commands return a defined unavailable response during the 1.x transition.
+- Added fully local, read-only archive verification for Git integrity, repository identity,
+  origins, duplicate checkouts, blocked state, and pending renames.
+- Added a read-only migration preview for legacy archives. It resolves stable repository
+  identities, proposes `repository--owner` folder names, and reports blocked, unsafe, duplicate,
+  or conflicting checkouts without changing the archive.
+- Every subcommand now supports `--json` with one schema-versioned report, separate checkout
   lifecycle and run outcome fields, severity-classified findings, predictable exit codes, and
   partial results after a first interruption.
+- Added a Bun-only programmatic API for sync, verification, migration preview, date normalization,
+  and initialization operations, with progress callbacks and `AbortSignal` cancellation.
+- Added the full MIT license text declared by the package.
+
+### Changed
+
+- Sync now processes up to four repositories at once by default, preserves dirty or divergent
+  checkouts, retains repositories that are no longer starred, and retries only transient API or Git
+  transport failures.
+- Legacy and incompatible managed archives are protected from `sync` and `dates` mutations until
+  their supported migration path ships.
+
+### Security
+
+- GitHub API tokens are now separate from Git transport credentials. Git runs non-interactively,
+  repository origins are restricted to GitHub.com, and credentials or token patterns are removed
+  from reported URLs and errors.
 
 ## [1.1.1] - 2026-07-14
 
