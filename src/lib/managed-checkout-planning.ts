@@ -24,7 +24,7 @@ export interface StarredRepository extends RepoRecord {
 
 export type StarredRepositoryRecord = Omit<StarredRepository, 'folderName' | 'pendingRename'>;
 
-interface ManagedCheckout {
+export interface ManagedCheckout {
 	name: string;
 	repositoryId: number;
 	repositorySlug: string;
@@ -44,7 +44,7 @@ const blockedReport = (name: string, code: string, message: string): CheckoutRep
 	pendingRename: false,
 });
 
-const scanManagedCheckouts = async (
+export const scanManagedCheckouts = async (
 	targetPath: string
 ): Promise<{ checkouts: ManagedCheckout[]; reports: CheckoutReport[] }> => {
 	const checkouts: ManagedCheckout[] = [];

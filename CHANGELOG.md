@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Added
 
+- Added managed Archive Dates. StarSync now calculates the newest committer time reachable from
+  every local Git reference, previews or repairs recognized checkout folder timestamps through
+  `starsync dates`, and aligns timestamps after successful additions and refreshes. Timestamp
+  failures preserve the successful Git outcome, add an error finding, and make sync exit 1.
 - Added stable repository identity for every managed checkout. New repositories use
   `repository--owner` folders and store `starsync.repository-id` plus
   `starsync.repository-slug` in checkout-local Git configuration.
@@ -13,16 +17,17 @@ All notable changes to this project will be documented in this file. Format foll
   across checkout failures, adopts dirty checkouts without moving their work, and finalizes the
   archive format only after every checkout identity is recorded.
 - Added one archive-wide operation lock for initialization, synchronization and dry runs,
-  verification, migration preview, date normalization, and its deprecated companion entrypoint.
-  Locks identify their host, process, command, and start time; confirmed-dead same-host locks
-  recover automatically, while remote or uncertain locks require a risk-reported
-  `unlock --force`.
+  verification, migration preview, and date normalization. Locks identify their host, process,
+  command, and start time; confirmed-dead same-host locks recover automatically, while remote or
+  uncertain locks require a risk-reported `unlock --force`.
 
 ### Changed
 
 - Synchronization now matches checkouts by stable GitHub repository ID instead of mutable slug or
   short folder name. Slug changes remain attached to the same checkout and are reported as pending
   renames until an explicit migration applies them.
+- Removed the deprecated standalone `set-folder-dates` script and package alias; Archive Date
+  management is available through the unified `dates` command and `normalizeArchiveDates` API.
 
 ## [1.2.0] - 2026-07-23
 

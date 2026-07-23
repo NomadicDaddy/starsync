@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -156,7 +164,8 @@ const mockManagedCheckoutIdentity = (
 	folderName: string,
 	repositoryId: number,
 	repositorySlug: string,
-	status = ''
+	status = '',
+	archiveDate = '2026-07-16T10:00:00Z'
 ): void => {
 	mockExecFile.mockImplementation((_cmd, args, options, callback) => {
 		const cwd = (options as { cwd?: string } | undefined)?.cwd ?? '';
@@ -174,7 +183,31 @@ const mockManagedCheckoutIdentity = (
 			);
 			return;
 		}
+		if (args.includes('log')) {
+			callback(null, `${archiveDate}\n`, '');
+			return;
+		}
 		callback(null, args.includes('status') ? status : '', '');
+	});
+};
+
+const mockSuccessfulCloneAndDateOperations = (failingRepository?: string): void => {
+	mockExecFile.mockImplementation((_cmd, args, options, callback) => {
+		if (
+			failingRepository !== undefined &&
+			args.some((arg) => arg.includes(failingRepository))
+		) {
+			callback(new Error('fatal: repository not found'), '', '');
+			return;
+		}
+		if (args[0] === 'clone') {
+			const cwd = (options as { cwd?: string } | undefined)?.cwd;
+			const folderName = args.at(-1);
+			if (cwd !== undefined && folderName !== undefined) {
+				mkdirSync(path.join(cwd, folderName, '.git'), { recursive: true });
+			}
+		}
+		callback(null, args.includes('log') ? '2026-07-16T10:00:00Z\n' : '', '');
 	});
 };
 
@@ -557,7 +590,7 @@ describe('programmatic archive API', () => {
 			const captured = await captureConsole(async () => [
 				await initArchive({ targetPath: target, token: 'test-token' }),
 				await migrateArchive({ apply: true, targetPath: target, token: 'test-token' }),
-				normalizeArchiveDates({ dryRun: true, targetPath: target }),
+				await normalizeArchiveDates({ dryRun: true, targetPath: target }),
 				await verifyArchive({ targetPath: path.join(target, 'missing') }),
 			]);
 
@@ -787,7 +820,7 @@ describe('managed archive initialization', () => {
 					targetPath: target,
 					token: 'test-token',
 				});
-				const datesReport = normalizeArchiveDates({
+				const datesReport = await normalizeArchiveDates({
 					dryRun: true,
 					targetPath: target,
 				});
@@ -857,22 +890,60 @@ describe('runStarsync', () => {
 				mockStarredRepository('repo-a', 101),
 				mockStarredRepository('repo-b', 102),
 			]);
-			mockExecFile.mockImplementation(
-				(
-					_cmd: string,
-					_args: string[],
-					_options: unknown,
-					callback: (err: Error | null, stdout: string, stderr: string) => void
-				): void => {
-					callback(null, '', '');
-				}
-			);
+			mockSuccessfulCloneAndDateOperations();
 
 			const target = mkdtempSync(path.join(tmpdir(), 'starsync-sync-'));
 			try {
 				writeManagedArchiveConfig(target);
 				const exitCode = await runStarsync([target]);
 				expect(exitCode).toBe(0);
+				for (const folderName of ['repo-a--example', 'repo-b--example']) {
+					expect(
+						Math.abs(
+							statSync(path.join(target, folderName)).mtimeMs -
+								new Date('2026-07-16T10:00:00Z').getTime()
+						)
+					).toBeLessThan(1_000);
+				}
+			} finally {
+				rmSync(target, { force: true, recursive: true });
+			}
+		})
+	);
+
+	test(
+		'keeps the Git outcome and exits 1 when Archive Date maintenance fails',
+		withToken(async () => {
+			mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
+			mockExecFile.mockImplementation((_cmd, args, options, callback) => {
+				const cwd = (options as { cwd?: string } | undefined)?.cwd;
+				if (args[0] === 'clone' && cwd !== undefined) {
+					mkdirSync(path.join(cwd, 'repo-a--example', '.git'), { recursive: true });
+				}
+				if (args.includes('log') && cwd !== undefined) {
+					rmSync(cwd, { force: true, recursive: true });
+					callback(null, '2026-07-16T10:00:00Z\n', '');
+					return;
+				}
+				callback(null, '', '');
+			});
+
+			const target = mkdtempSync(path.join(tmpdir(), 'starsync-date-failure-'));
+			try {
+				writeManagedArchiveConfig(target);
+				const report = await syncArchive({
+					targetPath: target,
+					token: 'test-token',
+				});
+
+				expect(report.exitCode).toBe(1);
+				expect(report.checkouts[0]?.outcome).toBe('added');
+				expect(report.checkouts[0]?.findings).toContainEqual(
+					expect.objectContaining({
+						code: 'archive-date-update-failed',
+						severity: 'error',
+					})
+				);
 			} finally {
 				rmSync(target, { force: true, recursive: true });
 			}
@@ -887,20 +958,7 @@ describe('runStarsync', () => {
 				mockStarredRepository('repo-b', 102),
 			]);
 			// repo-a succeeds, repo-b fails
-			mockExecFile.mockImplementation(
-				(
-					_cmd: string,
-					args: string[],
-					_options: unknown,
-					callback: (err: Error | null, stdout: string, stderr: string) => void
-				): void => {
-					if (args.some((arg) => arg.includes('repo-b'))) {
-						callback(new Error('fatal: repository not found'), '', '');
-					} else {
-						callback(null, '', '');
-					}
-				}
-			);
+			mockSuccessfulCloneAndDateOperations('repo-b');
 
 			const target = mkdtempSync(path.join(tmpdir(), 'starsync-sync-'));
 			try {
@@ -934,8 +992,14 @@ describe('sync --dry-run', () => {
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dryrun-'));
 		try {
 			writeManagedArchiveConfig(target);
-			const exitCode = await runStarsync([target, '--dry-run']);
-			expect(exitCode).toBe(0);
+			const captured = await captureConsole(() =>
+				runStarsync(['--json', target, '--dry-run'])
+			);
+			const report = parseReport(captured.stdout);
+			expect(captured.result).toBe(0);
+			expect(report.checkouts[0]?.findings).toContainEqual(
+				expect.objectContaining({ code: 'date-update-planned' })
+			);
 			// In dry-run mode, no git clone/pull should be called
 			expect(mockExecFileSync).not.toHaveBeenCalled();
 		} finally {
@@ -954,9 +1018,20 @@ describe('sync --dry-run', () => {
 			mkdirSync(path.join(target, 'repo-a--example', '.git'), { recursive: true });
 			mockManagedCheckoutIdentity('repo-a--example', 101, 'example/repo-a');
 
-			const exitCode = await runStarsync([target, '--dry-run']);
-			expect(exitCode).toBe(0);
-			// In dry-run mode, no git operations at all
+			const report = await syncArchive({
+				dryRun: true,
+				targetPath: target,
+				token: 'test-token',
+			});
+			expect(report.exitCode).toBe(0);
+			expect(report.checkouts[0]?.findings).toContainEqual(
+				expect.objectContaining({ code: 'date-update-planned' })
+			);
+			expect(
+				mockExecFile.mock.calls.some((call) =>
+					(call[1] as string[]).some((arg) => ['clone', 'fetch', 'merge'].includes(arg))
+				)
+			).toBe(false);
 			expect(mockExecFileSync).not.toHaveBeenCalled();
 		} finally {
 			rmSync(target, { force: true, recursive: true });
@@ -1145,13 +1220,13 @@ describe('subcommand dispatch', () => {
 
 	test('dispatchDates exits 1 for nonexistent target path', async () => {
 		const { dispatchDates } = await import('../src/lib/subcommands.ts');
-		const exitCode = dispatchDates(['./nonexistent-test-dir-xyz']);
+		const exitCode = await dispatchDates(['./nonexistent-test-dir-xyz']);
 		expect(exitCode).toBe(1);
 	});
 
 	test('dispatchDates --help exits 0', async () => {
 		const { dispatchDates } = await import('../src/lib/subcommands.ts');
-		const exitCode = dispatchDates(['--help']);
+		const exitCode = await dispatchDates(['--help']);
 		expect(exitCode).toBe(0);
 	});
 
@@ -1163,9 +1238,9 @@ describe('subcommand dispatch', () => {
 			mkdirSync(path.join(target, 'repo-a'));
 			mkdirSync(path.join(target, 'repo-a', '.git'));
 			mkdirSync(path.join(target, 'repo-b'));
-			mockExecFileSync.mockReturnValue('2026-07-16T10:00:00Z\n');
+			mockManagedCheckoutIdentity('repo-a', 101, 'example/repo-a');
 
-			const exitCode = dispatchDates([target, '--dry-run']);
+			const exitCode = await dispatchDates([target, '--dry-run']);
 			expect(exitCode).toBe(0);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
@@ -2177,8 +2252,8 @@ describe('structured command reporting', () => {
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dates-json-'));
 		try {
 			writeManagedArchiveConfig(target);
-			mkdirSync(path.join(target, 'repo-a', '.git'), { recursive: true });
-			mockExecFileSync.mockReturnValue('2026-07-16T10:00:00Z\n');
+			mkdirSync(path.join(target, 'repo-a--example', '.git'), { recursive: true });
+			mockManagedCheckoutIdentity('repo-a--example', 101, 'example/repo-a');
 
 			const captured = await captureConsole(() =>
 				dispatchDates(['--json', '--dry-run', target])
@@ -2207,8 +2282,8 @@ describe('structured command reporting', () => {
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-dates-human-'));
 		try {
 			writeManagedArchiveConfig(target);
-			mkdirSync(path.join(target, 'repo-a', '.git'), { recursive: true });
-			mockExecFileSync.mockReturnValue('2026-07-16T10:00:00Z\n');
+			mkdirSync(path.join(target, 'repo-a--example', '.git'), { recursive: true });
+			mockManagedCheckoutIdentity('repo-a--example', 101, 'example/repo-a');
 
 			const captured = await captureConsole(() => dispatchDates(['--dry-run', target]));
 
@@ -2224,14 +2299,7 @@ describe('structured command reporting', () => {
 		const savedToken = process.env.GITHUB_TOKEN;
 		process.env.GITHUB_TOKEN = 'test-token';
 		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
-		mockExecFile.mockImplementation(
-			(
-				_cmd: string,
-				_args: string[],
-				_options: unknown,
-				callback: (err: Error | null, stdout: string, stderr: string) => void
-			): void => callback(null, '', '')
-		);
+		mockSuccessfulCloneAndDateOperations();
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-json-'));
 		try {
 			writeManagedArchiveConfig(target);
@@ -2252,7 +2320,7 @@ describe('structured command reporting', () => {
 				})
 			);
 			expect(report.summary.outcomes.added).toBe(1);
-			expect(readdirSync(target)).toEqual(['.starsync']);
+			expect(readdirSync(target).sort()).toEqual(['.starsync', 'repo-a--example']);
 		} finally {
 			if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
 			else process.env.GITHUB_TOKEN = savedToken;
@@ -2264,14 +2332,7 @@ describe('structured command reporting', () => {
 		const savedToken = process.env.GITHUB_TOKEN;
 		process.env.GITHUB_TOKEN = 'test-token';
 		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
-		mockExecFile.mockImplementation(
-			(
-				_cmd: string,
-				_args: string[],
-				_options: unknown,
-				callback: (err: Error | null, stdout: string, stderr: string) => void
-			): void => callback(null, '', '')
-		);
+		mockSuccessfulCloneAndDateOperations();
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-human-'));
 		try {
 			writeManagedArchiveConfig(target);

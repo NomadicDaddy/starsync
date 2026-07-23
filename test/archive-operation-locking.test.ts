@@ -189,8 +189,8 @@ describe('archive operation locking', () => {
 		expect(existsSync(getArchiveLockPath(target))).toBe(false);
 	});
 
-	test('locks the deprecated set-folder-dates entrypoint through the dates dispatcher', () => {
-		const target = createTarget('lock-dates-alias');
+	test('locks the dates CLI entrypoint through the unified dispatcher', () => {
+		const target = createTarget('lock-dates-cli');
 		const acquisition = acquireArchiveLock(
 			target,
 			'verify',
@@ -201,7 +201,7 @@ describe('archive operation locking', () => {
 		const originalLock = readArchiveLock(target)?.raw;
 
 		const result = Bun.spawnSync({
-			cmd: [process.execPath, 'scripts/set-folder-dates.ts', '--dry-run', target],
+			cmd: [process.execPath, 'src/cli.ts', 'dates', '--dry-run', target],
 			cwd: projectRoot,
 			stderr: 'pipe',
 			stdout: 'pipe',
@@ -226,7 +226,7 @@ describe('archive operation locking', () => {
 			syncArchive({ targetPath: target, token: '' }),
 			syncArchive({ dryRun: true, targetPath: target, token: '' }),
 			verifyArchive({ targetPath: target }),
-			Promise.resolve(normalizeArchiveDates({ targetPath: target })),
+			normalizeArchiveDates({ targetPath: target }),
 		]);
 		for (const report of reports) {
 			expect(report.exitCode).toBe(1);

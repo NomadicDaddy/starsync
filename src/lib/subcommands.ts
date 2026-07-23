@@ -206,7 +206,7 @@ export const dispatchMigrate = async (argv: string[]): Promise<number> => {
 	return report.exitCode;
 };
 
-export const dispatchDates = (argv: string[]): number => {
+export const dispatchDates = async (argv: string[]): Promise<number> => {
 	let args: ParsedSubcommandArgs;
 	try {
 		args = parseSubcommandArgs(argv);
@@ -224,7 +224,7 @@ export const dispatchDates = (argv: string[]): number => {
 	);
 	let report: CommandReport;
 	try {
-		report = normalizeArchiveDates({
+		report = await normalizeArchiveDates({
 			dryRun: args.dryRun,
 			onProgress: reporter.progress,
 			signal: interrupt.signal,

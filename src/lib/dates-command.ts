@@ -1,10 +1,16 @@
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import type { CheckoutReport, CommandExitCode, Finding } from './reporting.ts';
 
 import { ARCHIVE_CONFIG_DIRECTORY } from './archive-config.ts';
+import {
+	inspectArchiveDate,
+	setCheckoutArchiveDate,
+	type ArchiveDateState,
+} from './archive-dates.ts';
+import { canonicalCheckoutName } from './checkout-identity.ts';
+import { scanManagedCheckouts } from './managed-checkout-planning.ts';
 import { createFinding } from './reporting.ts';
 
 interface DatesOptions {
@@ -13,7 +19,13 @@ interface DatesOptions {
 	signal?: AbortSignal;
 }
 
-type DatesStatus = 'skipped:no-commit' | 'skipped:not-git' | 'updated' | 'would-update';
+type DatesStatus =
+	| 'current'
+	| 'skipped:no-commit'
+	| 'skipped:not-git'
+	| 'skipped:update-failed'
+	| 'updated'
+	| 'would-update';
 
 export interface DatesDisplayRow {
 	name: string;
@@ -50,7 +62,7 @@ const formatTable = <T extends Record<string, string>>(
 
 export const formatDatesTables = (rows: DatesDisplayRow[]): string[] => {
 	const changed = rows.filter((row) => row.status === 'updated' || row.status === 'would-update');
-	const skipped = rows.filter((row) => row.status !== 'updated' && row.status !== 'would-update');
+	const skipped = rows.filter((row) => row.status.startsWith('skipped:'));
 	const lines: string[] = [];
 	const toTimestampRow = (row: DatesDisplayRow) => ({
 		Name: row.name,
@@ -89,16 +101,20 @@ const failedCheckout = (
 	name: string,
 	lifecycle: CheckoutReport['lifecycle'],
 	code: string,
-	message: string
+	message: string,
+	pendingRename = false
 ): CheckoutReport => ({
 	findings: [createFinding('error', code, message)],
 	lifecycle,
 	name,
 	outcome: 'failed',
-	pendingRename: false,
+	pendingRename,
 });
 
-export const runDatesCommand = (target: string, options: DatesOptions): DatesResult => {
+export const runDatesCommand = async (
+	target: string,
+	options: DatesOptions
+): Promise<DatesResult> => {
 	if (!fs.existsSync(target)) {
 		return {
 			checkouts: [],
@@ -132,9 +148,64 @@ export const runDatesCommand = (target: string, options: DatesOptions): DatesRes
 	const directories = entries.filter(
 		(entry) => entry.isDirectory() && entry.name !== ARCHIVE_CONFIG_DIRECTORY
 	);
-	for (const [index, entry] of directories.entries()) {
+	for (const entry of directories) {
+		const checkoutPath = path.join(target, entry.name);
+		if (fs.existsSync(path.join(checkoutPath, '.git'))) continue;
+		let folderTime: Date;
+		try {
+			folderTime = fs.statSync(checkoutPath).mtime;
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			checkouts.push(
+				failedCheckout(
+					entry.name,
+					null,
+					'checkout-stat-failed',
+					`Cannot stat ${checkoutPath}: ${message}`
+				)
+			);
+			continue;
+		}
+		displayRows.push({
+			name: entry.name,
+			newTime: folderTime,
+			oldTime: folderTime,
+			status: 'skipped:not-git',
+		});
+		checkouts.push({
+			findings: [createFinding('info', 'not-git-checkout', 'Folder is not a Git checkout.')],
+			lifecycle: null,
+			name: entry.name,
+			outcome: 'skipped',
+			pendingRename: false,
+		});
+	}
+
+	let managedScan: Awaited<ReturnType<typeof scanManagedCheckouts>>;
+	try {
+		managedScan = await scanManagedCheckouts(target);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		return {
+			checkouts,
+			displayRows,
+			exitCode: 1,
+			findings: [
+				createFinding(
+					'error',
+					'managed-checkout-scan-failed',
+					`Cannot discover managed checkouts: ${message}`
+				),
+			],
+			interrupted: false,
+		};
+	}
+	checkouts.push(...managedScan.reports);
+
+	for (const [index, checkout] of managedScan.checkouts.entries()) {
+		const pendingRename = canonicalCheckoutName(checkout.repositorySlug) !== checkout.name;
 		if (options.signal?.aborted) {
-			for (const interruptedEntry of directories.slice(index)) {
+			for (const interruptedCheckout of managedScan.checkouts.slice(index)) {
 				checkouts.push({
 					findings: [
 						createFinding(
@@ -143,104 +214,120 @@ export const runDatesCommand = (target: string, options: DatesOptions): DatesRes
 							'Checkout was not processed because interruption was requested.'
 						),
 					],
-					lifecycle: fs.existsSync(path.join(target, interruptedEntry.name, '.git'))
-						? 'active'
-						: null,
-					name: interruptedEntry.name,
+					lifecycle: 'active',
+					name: interruptedCheckout.name,
 					outcome: 'skipped',
-					pendingRename: false,
+					pendingRename:
+						canonicalCheckoutName(interruptedCheckout.repositorySlug) !==
+						interruptedCheckout.name,
 				});
 			}
 			break;
 		}
-		options.onProgress?.(`Normalizing ${index + 1}/${directories.length} — ${entry.name}`);
+		options.onProgress?.(
+			`Normalizing ${index + 1}/${managedScan.checkouts.length} — ${checkout.name}`
+		);
 
-		const repoPath = path.join(target, entry.name);
-		let oldTime: Date;
+		const repoPath = path.join(target, checkout.name);
+		let state: ArchiveDateState;
 		try {
-			oldTime = fs.statSync(repoPath).mtime;
+			state = await inspectArchiveDate(repoPath);
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
+			let folderTime: Date | null = null;
+			try {
+				folderTime = fs.statSync(repoPath).mtime;
+			} catch {
+				// The checkout-level finding below carries the actionable failure.
+			}
+			if (folderTime !== null) {
+				displayRows.push({
+					name: checkout.name,
+					newTime: folderTime,
+					oldTime: folderTime,
+					status: 'skipped:no-commit',
+				});
+			}
 			checkouts.push(
 				failedCheckout(
-					entry.name,
-					null,
-					'checkout-stat-failed',
-					`Cannot stat ${repoPath}: ${message}`
+					checkout.name,
+					'active',
+					'archive-date-read-failed',
+					`Cannot calculate the Archive Date: ${message}`,
+					pendingRename
 				)
 			);
 			continue;
 		}
 
-		if (!fs.existsSync(path.join(repoPath, '.git'))) {
+		if (!state.needsUpdate) {
 			displayRows.push({
-				name: entry.name,
-				newTime: oldTime,
-				oldTime,
-				status: 'skipped:not-git',
+				name: checkout.name,
+				newTime: state.archiveDate,
+				oldTime: state.currentDate,
+				status: 'current',
 			});
 			checkouts.push({
 				findings: [
-					createFinding('info', 'not-git-checkout', 'Folder is not a Git checkout.'),
+					createFinding(
+						'info',
+						'archive-date-current',
+						'Folder timestamp already matches the Archive Date.'
+					),
 				],
-				lifecycle: null,
-				name: entry.name,
-				outcome: 'skipped',
-				pendingRename: false,
+				lifecycle: 'active',
+				name: checkout.name,
+				outcome: 'current',
+				pendingRename,
 			});
 			continue;
 		}
 
-		try {
-			const output = execFileSync('git', ['-C', repoPath, 'log', '-1', '--format=%cI'], {
-				stdio: ['pipe', 'pipe', 'ignore'],
-			});
-			const iso = output.toString().trim();
-			if (!iso) throw new Error('No commit found');
-
-			const commitTime = new Date(iso);
-			if (Number.isNaN(commitTime.getTime())) throw new Error('Invalid commit date');
-
-			if (!options.dryRun) fs.utimesSync(repoPath, commitTime, commitTime);
-			displayRows.push({
-				name: entry.name,
-				newTime: commitTime,
-				oldTime,
-				status: options.dryRun ? 'would-update' : 'updated',
-			});
-			checkouts.push({
-				findings: options.dryRun
-					? [
-							createFinding(
-								'info',
-								'date-update-planned',
-								'Folder timestamp would be updated.'
-							),
-						]
-					: [],
-				lifecycle: 'active',
-				name: entry.name,
-				outcome: options.dryRun ? 'skipped' : 'updated',
-				pendingRename: false,
-				...(options.dryRun ? { plannedOutcome: 'updated' as const } : {}),
-			});
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			displayRows.push({
-				name: entry.name,
-				newTime: oldTime,
-				oldTime,
-				status: 'skipped:no-commit',
-			});
-			checkouts.push(
-				failedCheckout(
-					entry.name,
-					'active',
-					'date-read-failed',
-					`Cannot read the latest commit date: ${message}`
-				)
-			);
+		if (!options.dryRun) {
+			try {
+				setCheckoutArchiveDate(repoPath, state.archiveDate);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				displayRows.push({
+					name: checkout.name,
+					newTime: state.archiveDate,
+					oldTime: state.currentDate,
+					status: 'skipped:update-failed',
+				});
+				checkouts.push(
+					failedCheckout(
+						checkout.name,
+						'active',
+						'archive-date-update-failed',
+						`Cannot set the folder timestamp to its Archive Date: ${message}`,
+						pendingRename
+					)
+				);
+				continue;
+			}
 		}
+		displayRows.push({
+			name: checkout.name,
+			newTime: state.archiveDate,
+			oldTime: state.currentDate,
+			status: options.dryRun ? 'would-update' : 'updated',
+		});
+		checkouts.push({
+			findings: [
+				createFinding(
+					'info',
+					options.dryRun ? 'date-update-planned' : 'archive-date-updated',
+					options.dryRun
+						? `Folder timestamp would be set to Archive Date ${state.archiveDate.toISOString()}.`
+						: `Folder timestamp was set to Archive Date ${state.archiveDate.toISOString()}.`
+				),
+			],
+			lifecycle: 'active',
+			name: checkout.name,
+			outcome: options.dryRun ? 'skipped' : 'updated',
+			pendingRename,
+			...(options.dryRun ? { plannedOutcome: 'updated' as const } : {}),
+		});
 	}
 
 	const hasErrors = checkouts.some((checkout) =>

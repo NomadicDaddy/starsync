@@ -95,15 +95,20 @@ archive.
 `migrate --apply` records the ID and current slug in checkout-local Git configuration before
 renaming a safe checkout. Successful checkout changes remain in place if another checkout fails.
 The temporary `.starsync/migration-state.json` records only the authenticated archive owner needed
-to resume, and is removed after all identities are recorded and the archive config reaches format
-2. Dirty or unverifiable checkouts are adopted without changing their work; their identity is
+to resume, and is removed after all identities are recorded and the archive config reaches format 2. Dirty or unverifiable checkouts are adopted without changing their work; their identity is
 recorded, their folder stays in place, and they remain blocked with a pending rename for a later
 explicit migration.
 
 Normal synchronization uses repository IDs rather than slugs or folder labels. New repositories
 use `repository--owner`; a rename or ownership transfer keeps using the existing checkout and
 reports a pending rename until migration is explicitly applied. Duplicate identities and occupied
-canonical folders are errors and are never published or renamed over.
+canonical folders are errors and are never published or renamed over. After each successful add or
+refresh, StarSync aligns the checkout folder timestamp with its Archive Date.
+
+`dates` is fully local and does not require `GITHUB_TOKEN` or network access. It recognizes managed
+checkouts by their stable local identity, calculates each Archive Date from the newest committer
+time reachable across all local Git references, and repairs folder timestamps. Use `--dry-run` to
+preview the same repairs without changing the archive.
 
 `verify` is fully local and does not require `GITHUB_TOKEN` or network access. It runs Git object
 integrity checks, validates origins and checkout state, detects duplicate identities and pending
@@ -121,13 +126,7 @@ Common options:
 | `--json`          | Emit one schema-versioned result document on stdout              |
 | `--dry-run`       | Preview `sync` or `dates` without changing the archive           |
 | `--concurrency=N` | Process 1-8 repositories concurrently during `sync` (default: 4) |
-| `--apply`         | Apply `migrate` identity backfill and safe canonical renames      |
-
-The legacy folder-date command remains available as a deprecated alias:
-
-```sh
-bun run set-folder-dates -- [--dry-run] [target-path]
-```
+| `--apply`         | Apply `migrate` identity backfill and safe canonical renames     |
 
 ### Structured reporting
 
@@ -175,14 +174,14 @@ if (report.exitCode !== 0) {
 
 The public entry point exports:
 
-| Operation               | Purpose                                     |
-| ----------------------- | ------------------------------------------- |
-| `syncArchive`           | Synchronize or preview an archive refresh   |
-| `verifyArchive`         | Run read-only local archive verification    |
-| `migrateArchive`        | Preview or apply archive migration          |
-| `normalizeArchiveDates` | Preview or normalize checkout folder dates  |
-| `initArchive`           | Initialize an empty managed archive         |
-| `unlockArchive`         | Inspect or conservatively remove its lock   |
+| Operation               | Purpose                                    |
+| ----------------------- | ------------------------------------------ |
+| `syncArchive`           | Synchronize or preview an archive refresh  |
+| `verifyArchive`         | Run read-only local archive verification   |
+| `migrateArchive`        | Preview or apply archive migration         |
+| `normalizeArchiveDates` | Preview or normalize checkout folder dates |
+| `initArchive`           | Initialize an empty managed archive        |
+| `unlockArchive`         | Inspect or conservatively remove its lock  |
 
 Pass `apply: true` to `migrateArchive` to apply the resumable migration; omit it for a read-only
 preview. The deprecated low-level exports remain during the 1.x transition for compatibility;
@@ -191,18 +190,17 @@ clone/pull helpers to these command-level operations before 2.0.
 
 ## Scripts
 
-| Script                     | What it runs                                                      |
-| -------------------------- | ----------------------------------------------------------------- |
-| `bun run sync`             | `bun ./src/cli.ts`                                                |
-| `bun start`                | `bun src/cli.ts`                                                  |
-| `bun run set-folder-dates` | `bun ./scripts/set-folder-dates.ts`                               |
-| `bun run build`            | `bun build ./src/cli.ts --target=bun`                             |
-| `bun run compile`          | standalone binary in `dist/`                                      |
-| `bun run typecheck`        | `tsc --noEmit`                                                    |
-| `bun run lint`             | `eslint "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
-| `bun run smoke:qc`         | typecheck, lint, format check, test                               |
-| `bun run format`           | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
-| `bun run format:check`     | `prettier --check "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
+| Script                 | What it runs                                                      |
+| ---------------------- | ----------------------------------------------------------------- |
+| `bun run sync`         | `bun ./src/cli.ts`                                                |
+| `bun start`            | `bun src/cli.ts`                                                  |
+| `bun run build`        | `bun build ./src/cli.ts --target=bun`                             |
+| `bun run compile`      | standalone binary in `dist/`                                      |
+| `bun run typecheck`    | `tsc --noEmit`                                                    |
+| `bun run lint`         | `eslint "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
+| `bun run smoke:qc`     | typecheck, lint, format check, test                               |
+| `bun run format`       | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
+| `bun run format:check` | `prettier --check "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
 
 ## Scheduling
 

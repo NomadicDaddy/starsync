@@ -7,16 +7,16 @@ Usage:
 
 Commands:
   sync       Add or refresh managed checkouts by stable repository identity
-  verify     Inspect the archive for integrity without changing it (1.x)
+  verify     Inspect the archive for integrity without changing it
   migrate    Preview or apply managed checkout identity migration
-  dates      Set each repo folder's mtime to its latest commit time (1.x)
-  init       Initialize a managed archive with owner and format (2.0)
-  unlock     Release an archive operation lock (2.0)
+  dates      Normalize managed checkout folders to their Archive Dates
+  init       Initialize a managed archive with owner and format
+  unlock     Release an archive operation lock
 
 Options:
   --help, -h        Show help (use after a subcommand for subcommand help)
   --json            Emit one schema-versioned JSON result document on stdout
-  --dry-run         Sync only: query stars and inspect without changing anything
+  --dry-run         Sync/dates: preview without changing the archive
   --concurrency=N   Sync only: concurrent repository processing (default: 4, range: 1-8)
   --apply           Migrate only: apply the previewed identity and folder migration
   --force           Unlock only: remove a remote or uncertain lock after assessing the risk
@@ -27,7 +27,7 @@ Environment:
 
 Run 'starsync <command> --help' for command-specific options.`;
 
-export const SYNC_HELP_TEXT = `starsync sync - clone or pull every starred GitHub repository.
+export const SYNC_HELP_TEXT = `starsync sync - add or refresh managed checkouts by stable repository identity.
 
 Usage:
   starsync sync [options] [target-path]
@@ -83,7 +83,7 @@ A positional target-path argument overrides TARGET_PATH.
 Without --apply, migration is read-only. Applied migrations preserve completed checkout work
 across failures and resume from checkout-local identity plus temporary owner state.`;
 
-export const DATES_HELP_TEXT = `starsync dates - set each repo folder's mtime to its latest commit time.
+export const DATES_HELP_TEXT = `starsync dates - normalize managed checkout folders to their Archive Dates.
 
 Usage:
   starsync dates [options] [target-path]
@@ -92,12 +92,14 @@ Usage:
 Options:
   --help, -h        Show this help
   --json            Emit one schema-versioned JSON result document on stdout
-  --dry-run         Print actions without modifying timestamps
+  --dry-run         Preview timestamp repairs without modifying the archive
 
 Environment:
   TARGET_PATH       Required if no positional target-path is given.
 
-A positional target-path argument overrides TARGET_PATH.`;
+A positional target-path argument overrides TARGET_PATH.
+Archive Date is the newest committer time reachable from any local Git reference.
+Date calculation is local and does not use GITHUB_TOKEN or network access.`;
 
 export const INIT_HELP_TEXT = `starsync init - initialize a managed archive with owner and format.
 

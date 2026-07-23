@@ -31,7 +31,6 @@
 		"format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\" \"test/**/*.ts\"",
 		"lint": "eslint \"src/**/*.ts\" \"scripts/**/*.ts\" \"test/**/*.ts\" --max-warnings 0",
 		"lint:fix": "eslint --fix \"src/**/*.ts\" \"scripts/**/*.ts\" \"test/**/*.ts\" --max-warnings 0",
-		"set-folder-dates": "bun ./scripts/set-folder-dates.ts",
 		"smoke:qc": "bun run typecheck && bun run lint && bun run format:check && bun test",
 		"start": "bun src/cli.ts",
 		"sync": "bun ./src/cli.ts",

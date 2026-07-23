@@ -7,6 +7,7 @@ import type { CheckoutReport, CommandReport, Finding } from './reporting.ts';
 
 import { withApiRetry } from './api-retry.ts';
 import { getAuthenticatedArchiveOwner, readArchiveConfig } from './archive-config.ts';
+import { inspectArchiveDate, setCheckoutArchiveDate } from './archive-dates.ts';
 import { initArchiveUnlocked, type InitArchiveOptions } from './archive-initialization.ts';
 import { applyArchiveMigration } from './archive-migration-apply.ts';
 import {
@@ -14,10 +15,7 @@ import {
 	getArchiveModificationFinding,
 	previewArchiveMigration,
 } from './archive-migration.ts';
-import {
-	withArchiveOperationLock,
-	withArchiveOperationLockSync,
-} from './archive-operation-lock.ts';
+import { withArchiveOperationLock } from './archive-operation-lock.ts';
 import { unlockArchive, type UnlockArchiveOptions } from './archive-unlock.ts';
 import { verifyArchive as verifyArchiveContents } from './archive-verification.ts';
 import { formatDatesTables, runDatesCommand } from './dates-command.ts';
@@ -212,6 +210,45 @@ const reportRefreshResult = (result: RefreshResult, targetBase: string): Checkou
 				outcome: 'updated',
 				pendingRename,
 			};
+	}
+};
+
+const maintainCheckoutArchiveDate = async (
+	report: CheckoutReport,
+	targetPath: string
+): Promise<CheckoutReport> => {
+	if (!['added', 'current', 'updated'].includes(report.outcome)) return report;
+
+	try {
+		const checkoutPath = path.join(targetPath, report.name);
+		const state = await inspectArchiveDate(checkoutPath);
+		if (!state.needsUpdate) return report;
+		setCheckoutArchiveDate(checkoutPath, state.archiveDate);
+		return {
+			...report,
+			findings: [
+				...report.findings,
+				createFinding(
+					'info',
+					'archive-date-updated',
+					`Folder timestamp was set to Archive Date ${state.archiveDate.toISOString()}.`
+				),
+			],
+		};
+	} catch (err) {
+		return {
+			...report,
+			findings: [
+				...report.findings,
+				createFinding(
+					'error',
+					'archive-date-update-failed',
+					`Git operation succeeded, but the folder timestamp could not be aligned with its Archive Date: ${sanitizeMessage(
+						getErrorMessage(err)
+					)}`
+				),
+			],
+		};
 	}
 };
 
@@ -418,14 +455,49 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 				appendInterruptedReports();
 				break;
 			}
-			plannedReports.push({
-				findings: [
+			const findings = [
+				createFinding(
+					'info',
+					isCloned ? 'refresh-planned' : 'clone-planned',
+					isCloned ? 'Checkout would be refreshed.' : 'Repository would be added.'
+				),
+			];
+			if (isCloned) {
+				try {
+					const state = await inspectArchiveDate(
+						path.join(targetPath, repository.folderName)
+					);
+					if (state.needsUpdate) {
+						findings.push(
+							createFinding(
+								'info',
+								'date-update-planned',
+								`Folder timestamp would be set to Archive Date ${state.archiveDate.toISOString()}.`
+							)
+						);
+					}
+				} catch (err) {
+					findings.push(
+						createFinding(
+							'error',
+							'archive-date-read-failed',
+							`Cannot calculate the planned Archive Date: ${sanitizeMessage(
+								getErrorMessage(err)
+							)}`
+						)
+					);
+				}
+			} else {
+				findings.push(
 					createFinding(
 						'info',
-						isCloned ? 'refresh-planned' : 'clone-planned',
-						isCloned ? 'Checkout would be refreshed.' : 'Repository would be added.'
-					),
-				],
+						'date-update-planned',
+						'After cloning, the folder timestamp would be set to its Archive Date.'
+					)
+				);
+			}
+			plannedReports.push({
+				findings,
 				lifecycle: isCloned ? 'active' : null,
 				name: repository.folderName,
 				outcome: 'skipped',
@@ -434,7 +506,7 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 			});
 		}
 		const interrupted = options.signal?.aborted ?? false;
-		const hasErrors = blockedReports.some((checkout) =>
+		const hasErrors = [...plannedReports, ...blockedReports].some((checkout) =>
 			checkout.findings.some((finding) => finding.severity === 'error')
 		);
 		return createCommandReport({
@@ -490,8 +562,10 @@ const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<Command
 			totalCount: validRepositories.length,
 		}
 	);
-	const refreshReports = poolResult.results.map((result) =>
-		reportRefreshResult(result, targetPath)
+	const refreshReports = await Promise.all(
+		poolResult.results.map((result) =>
+			maintainCheckoutArchiveDate(reportRefreshResult(result, targetPath), targetPath)
+		)
 	);
 	const reportedNames = new Set(poolResult.results.map((result) => result.name));
 	const interruptedReports = poolResult.interrupted
@@ -639,7 +713,9 @@ const migrateArchiveUnlocked = async (options: MigrateArchiveOptions): Promise<C
 	}
 };
 
-const normalizeArchiveDatesUnlocked = (options: NormalizeArchiveDatesOptions): CommandReport => {
+const normalizeArchiveDatesUnlocked = async (
+	options: NormalizeArchiveDatesOptions
+): Promise<CommandReport> => {
 	const targetPath = resolveExplicitTarget(options.targetPath);
 	if (targetPath === null) return invalidTargetReport('dates');
 	const dryRun = options.dryRun ?? false;
@@ -657,7 +733,7 @@ const normalizeArchiveDatesUnlocked = (options: NormalizeArchiveDatesOptions): C
 	}
 
 	options.onProgress?.(`Root: ${targetPath}`);
-	const result = runDatesCommand(targetPath, {
+	const result = await runDatesCommand(targetPath, {
 		dryRun,
 		...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
 		...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -696,8 +772,10 @@ export const migrateArchive = (options: MigrateArchiveOptions): Promise<CommandR
 		!(options.apply ?? false)
 	);
 
-export const normalizeArchiveDates = (options: NormalizeArchiveDatesOptions): CommandReport =>
-	withArchiveOperationLockSync(
+export const normalizeArchiveDates = (
+	options: NormalizeArchiveDatesOptions
+): Promise<CommandReport> =>
+	withArchiveOperationLock(
 		'dates',
 		options,
 		() => normalizeArchiveDatesUnlocked(options),
