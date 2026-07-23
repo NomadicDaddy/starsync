@@ -1,0 +1,46 @@
+name: Release Validation
+
+on:
+    pull_request:
+    push:
+        branches:
+            - main
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    cross-platform:
+        name: Bun 1.3.14 / ${{ matrix.os }}
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                os:
+                    - macos-latest
+                    - ubuntu-latest
+                    - windows-latest
+        env:
+            GITHUB_TOKEN: ''
+            TARGET_PATH: ''
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v6
+
+            - name: Set up Bun
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.3.14
+
+            - name: Install locked dependencies
+              run: bun install --frozen-lockfile
+
+            - name: Run quality and representative archive gates
+              run: bun run smoke:qc
+
+            - name: Build bundled CLI
+              run: bun run build
+
+            - name: Compile platform executable
+              run: bun run compile

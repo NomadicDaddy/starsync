@@ -192,6 +192,36 @@ preview. The deprecated low-level exports remain during the 1.x transition for c
 consumers should migrate from `runStarsync`, argument parsing, checkout discovery, and direct
 clone/pull helpers to these command-level operations before 2.0.
 
+## Release validation
+
+The 2.0 release is blocked on three gates:
+
+1. The `Release Validation` GitHub Actions matrix must pass on `windows-latest`,
+   `macos-latest`, and `ubuntu-latest` with Bun 1.3.14. Each runner installs from `bun.lock`,
+   runs `smoke:qc`, bundles the CLI, and compiles that platform's executable with
+   `GITHUB_TOKEN` and `TARGET_PATH` unset.
+2. The final 1.x build must produce a complete `migrate --json` preview of the live
+   289-checkout archive, with every exception classified and reviewed. The 1.2 baseline recorded
+   273 pending renames, 8 adopted-but-blocked checkouts, and 8 failed checkouts; preserve the
+   report outside the archive as release evidence and rerun it if the archive changes before 2.0.
+3. The representative copied-archive journey must pass migration, verification, synchronization,
+   and Archive Date normalization. `smoke:qc` runs an offline real-Git copy fixture for this gate.
+   A release candidate must also pass the explicitly enabled live smoke against a caller-created
+   managed-archive copy under the operating system's temporary directory.
+
+The live smoke is never part of routine tests. It performs only verification, a synchronization
+dry run, and an Archive Date dry run. It refuses to start unless `STARSYNC_LIVE_SMOKE=1`,
+`GITHUB_TOKEN`, and one positional temporary target are supplied, and it rejects the configured
+`TARGET_PATH`:
+
+```sh
+# Set STARSYNC_LIVE_SMOKE=1 and GITHUB_TOKEN in the current shell first.
+bun run smoke:live -- <temporary-managed-archive>
+```
+
+Do not release 2.0 from a matrix-only result: the reviewed live migration preview and the
+representative-copy gate are separate required evidence.
+
 ## Scripts
 
 | Script                 | What it runs                                                      |
@@ -202,6 +232,7 @@ clone/pull helpers to these command-level operations before 2.0.
 | `bun run compile`      | standalone binary in `dist/`                                      |
 | `bun run typecheck`    | `tsc --noEmit`                                                    |
 | `bun run lint`         | `eslint "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
+| `bun run smoke:live`   | opt-in read-only smoke against an explicit temporary archive copy |
 | `bun run smoke:qc`     | typecheck, lint, format check, test                               |
 | `bun run format`       | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
 | `bun run format:check` | `prettier --check "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |

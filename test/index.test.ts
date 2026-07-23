@@ -22,6 +22,7 @@ import {
 	listFolders,
 	migrateArchive,
 	normalizeArchiveDates,
+	normalizeRepoUrl,
 	parseArgs,
 	parseGitHubRepositorySlug,
 	previewArchiveMigration,
@@ -292,6 +293,30 @@ afterEach(() => {
 	);
 	mockGetRepository.mockReset();
 	mockPaginate.mockReset();
+});
+
+describe('repository URL normalization', () => {
+	test('normalizes casing, suffixes, and trailing slashes', () => {
+		expect(normalizeRepoUrl(' HTTPS://GitHub.com/Owner/Repository.GIT/// ')).toBe(
+			'github.com/owner/repository'
+		);
+	});
+
+	test('treats GitHub HTTPS and SSH forms as the same repository', () => {
+		const expected = 'github.com/owner/repository';
+
+		expect(normalizeRepoUrl('https://github.com/Owner/Repository.git')).toBe(expected);
+		expect(normalizeRepoUrl('git@github.com:Owner/Repository.git')).toBe(expected);
+		expect(normalizeRepoUrl('ssh://git@github.com/Owner/Repository.git')).toBe(expected);
+	});
+
+	test('normalizes canonically equivalent Unicode without discarding it', () => {
+		const composed = normalizeRepoUrl('https://github.com/Example/Caf\u00e9.git');
+		const decomposed = normalizeRepoUrl('https://github.com/Example/Cafe\u0301.git');
+
+		expect(decomposed).toBe(composed);
+		expect(composed).toBe('github.com/example/caf\u00e9');
+	});
 });
 
 describe('cloneOrPull', () => {

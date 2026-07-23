@@ -31,6 +31,7 @@
 		"format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\" \"test/**/*.ts\"",
 		"lint": "eslint \"src/**/*.ts\" \"scripts/**/*.ts\" \"test/**/*.ts\" --max-warnings 0",
 		"lint:fix": "eslint --fix \"src/**/*.ts\" \"scripts/**/*.ts\" \"test/**/*.ts\" --max-warnings 0",
+		"smoke:live": "bun scripts/live-smoke.ts",
 		"smoke:qc": "bun run typecheck && bun run lint && bun run format:check && bun test",
 		"start": "bun src/cli.ts",
 		"sync": "bun ./src/cli.ts",

@@ -177,12 +177,30 @@ export interface SyncFailure {
 export type SyncResult = { failure: null; ok: true } | { failure: SyncFailure; ok: false };
 
 /** @deprecated Repository URL normalization is internal to archive operations. */
-export const normalizeRepoUrl = (url: string): string =>
-	url
+export const normalizeRepoUrl = (url: string): string => {
+	const normalized = url
 		.trim()
-		.toLowerCase()
-		.replace(/\.git$/, '')
-		.replace(/\/+$/, '');
+		.normalize('NFC')
+		.replace(/\/+$/, '')
+		.replace(/\.git$/i, '');
+	const scpStyleSsh = /^git@([^:]+):(.+)$/i.exec(normalized);
+	if (scpStyleSsh !== null) {
+		return `${scpStyleSsh[1]}/${scpStyleSsh[2]}`.toLowerCase();
+	}
+	try {
+		const parsed = new URL(normalized);
+		if (
+			parsed.hostname.toLowerCase() === 'github.com' &&
+			['http:', 'https:', 'ssh:'].includes(parsed.protocol)
+		) {
+			const pathname = decodeURI(parsed.pathname).normalize('NFC');
+			return `${parsed.hostname}${pathname}`.replace(/^\/+|\/+$/g, '').toLowerCase();
+		}
+	} catch {
+		// Preserve compatibility for non-URL values accepted by this deprecated helper.
+	}
+	return normalized.toLowerCase();
+};
 
 /** @deprecated Use syncArchive, which returns a structured CommandReport. */
 export const cloneOrPull = (
