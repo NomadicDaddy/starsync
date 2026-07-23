@@ -225,18 +225,19 @@ representative-copy gate are separate required evidence.
 
 ## Scripts
 
-| Script                 | What it runs                                                      |
-| ---------------------- | ----------------------------------------------------------------- |
-| `bun run sync`         | `bun ./src/cli.ts`                                                |
-| `bun start`            | `bun src/cli.ts`                                                  |
-| `bun run build`        | `bun build ./src/cli.ts --target=bun`                             |
-| `bun run compile`      | standalone binary in `dist/`                                      |
-| `bun run typecheck`    | `tsc --noEmit`                                                    |
-| `bun run lint`         | `eslint "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
-| `bun run smoke:live`   | opt-in read-only smoke against an explicit temporary archive copy |
-| `bun run smoke:qc`     | typecheck, lint, format check, test                               |
-| `bun run format`       | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
-| `bun run format:check` | `prettier --check "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
+| Script                    | What it runs                                                      |
+| ------------------------- | ----------------------------------------------------------------- |
+| `bun run sync`            | `bun ./src/cli.ts`                                                |
+| `bun start`               | `bun src/cli.ts`                                                  |
+| `bun run build`           | `bun build ./src/cli.ts --target=bun`                             |
+| `bun run check:max-lines` | production file and extracted-function source-shape limits        |
+| `bun run compile`         | standalone binary in `dist/`                                      |
+| `bun run typecheck`       | `tsc --noEmit`                                                    |
+| `bun run lint`            | `eslint "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
+| `bun run smoke:live`      | opt-in read-only smoke against an explicit temporary archive copy |
+| `bun run smoke:qc`        | source shape, typecheck, lint, format check, test                  |
+| `bun run format`          | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
+| `bun run format:check`    | `prettier --check "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
 
 ## Scheduling
 
