@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-28
+
+### Fixed
+
+- Sync now reports each repository as soon as it finishes and prints a status heartbeat every 30
+  seconds while slow Git operations are still running. The final human report keeps failures,
+  skips, warnings, and totals without repeating every successful checkout.
+
 ## [1.4.0] - 2026-07-28
 
 ### Added
