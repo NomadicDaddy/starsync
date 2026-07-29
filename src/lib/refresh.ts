@@ -27,6 +27,7 @@ export interface ProcessRepositoryOptions {
 
 export interface SyncPoolOptions {
 	concurrency: number;
+	heartbeatIntervalMs?: number;
 	onProgress?: (message: string) => void;
 	signal?: AbortSignal;
 	totalCount: number;

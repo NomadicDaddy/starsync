@@ -2773,6 +2773,45 @@ describe('refresh pipeline', () => {
 		}
 		expect(logs.some((l) => l.includes('Syncing 1/2'))).toBe(true);
 		expect(logs.some((l) => l.includes('Syncing 2/2'))).toBe(true);
+		expect(logs.some((l) => l.includes('Completed 1/2'))).toBe(true);
+		expect(logs.some((l) => l.includes('Completed 2/2'))).toBe(true);
+	});
+
+	test('runSyncPool reports a heartbeat while repository work is still active', async () => {
+		const { runSyncPool } = await import('../src/lib/refresh.ts');
+		const logs: string[] = [];
+		let finish: (() => void) | undefined;
+		const work = new Promise<void>((resolve) => {
+			finish = resolve;
+		});
+		const operation = runSyncPool(
+			[
+				{
+					clone_url: 'https://github.com/a/slow.git',
+					defaultBranch: 'main',
+					name: 'slow',
+				},
+			],
+			async (repo: { clone_url: string; defaultBranch: string; name: string }) => {
+				await work;
+				return { name: repo.name, outcome: 'current' as const };
+			},
+			{
+				concurrency: 1,
+				heartbeatIntervalMs: 10,
+				onProgress: (message) => logs.push(message),
+				totalCount: 1,
+			}
+		);
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 35));
+			expect(logs.some((line) => line.includes('Still working — 0/1 complete'))).toBe(true);
+			expect(logs.some((line) => line.includes('slow ('))).toBe(true);
+		} finally {
+			finish?.();
+		}
+		await operation;
+		expect(logs.some((line) => line.includes('Completed 1/1 — slow: current'))).toBe(true);
 	});
 
 	test('processRepository returns skipped when interruption is requested', async () => {
@@ -3040,6 +3079,10 @@ describe('structured command reporting', () => {
 			expect(captured.result).toBe(0);
 			expect(captured.stdout).toContain(
 				'Checkout lifecycle. Active: 1. Retained: 0. Blocked: 0. Pending rename: 0.'
+			);
+			expect(captured.stdout).toContain('Completed 1/1 — repo-a--example: added');
+			expect(captured.stdout.some((line) => line.startsWith('- repo-a--example:'))).toBe(
+				false
 			);
 			expect(captured.stdout).toContain('Succeeded: 1. Failed: 0.');
 		} finally {
