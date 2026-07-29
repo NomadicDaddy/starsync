@@ -1561,6 +1561,37 @@ describe('subcommand dispatch', () => {
 		expect(exitCode).toBe(1);
 	});
 
+	test('dispatchDates rejects an empty or quoted-empty target path', async () => {
+		const { dispatchDates } = await import('../src/lib/subcommands.ts');
+		const savedTarget = process.env.TARGET_PATH;
+		try {
+			delete process.env.TARGET_PATH;
+			expect(await dispatchDates([''])).toBe(2);
+			// An explicit empty target is invalid input and never falls back to TARGET_PATH.
+			process.env.TARGET_PATH = tmpdir();
+			expect(await dispatchDates(['""'])).toBe(2);
+		} finally {
+			if (savedTarget === undefined) {
+				delete process.env.TARGET_PATH;
+			} else {
+				process.env.TARGET_PATH = savedTarget;
+			}
+		}
+	});
+
+	test('usage error reports keep the requested dry run mode', async () => {
+		const { dispatchDates } = await import('../src/lib/subcommands.ts');
+		const savedTarget = process.env.TARGET_PATH;
+		delete process.env.TARGET_PATH;
+		try {
+			const captured = await captureConsole(() => dispatchDates(['--json', '--dry-run', '']));
+			expect(captured.result).toBe(2);
+			expect(parseReport(captured.stdout).dryRun).toBe(true);
+		} finally {
+			if (savedTarget !== undefined) process.env.TARGET_PATH = savedTarget;
+		}
+	});
+
 	test('dispatchDates --help exits 0', async () => {
 		const { dispatchDates } = await import('../src/lib/subcommands.ts');
 		const exitCode = await dispatchDates(['--help']);

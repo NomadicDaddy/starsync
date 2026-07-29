@@ -28,7 +28,7 @@ A **Managed Archive** whose owner and archive format have been recorded before o
 _Avoid_: Target directory, repository folder
 
 **Legacy Archive**:
-A configless collection of GitHub.com checkouts recognized during the 1.2 transition for verification and migration preview only.
+A configless collection of GitHub.com checkouts recognized for verification and migration only.
 _Avoid_: Initialized Archive, arbitrary directory
 
 **Managed Checkout**:
@@ -76,7 +76,7 @@ _Avoid_: Mirror
 - A **Managed Archive** contains zero or more **Managed Checkouts**
 - A **Managed Archive** belongs to exactly one **Archive Owner**
 - A **Managed Archive** becomes an **Initialized Archive** before synchronization, verification, or date normalization
-- A **Legacy Archive** may be inspected by StarSync 1.2 but does not become an **Initialized Archive** until 2.0 migration is explicitly applied
+- A **Legacy Archive** may be inspected by StarSync but does not become an **Initialized Archive** until migration is explicitly applied
 - An **Archive Owner** may have one or more separate **Managed Archives**
 - Each **Starred Repository** has exactly one **Repository Identity** and one current **Repository Slug**
 - A **Starred Repository** has at most one **Managed Checkout** in a **Managed Archive**
@@ -114,7 +114,7 @@ _Avoid_: Mirror
 - A repository's slug, short name, and local folder name are not its identity. **Repository Identity** means the stable identifier assigned by GitHub; **Repository Slug** means the current `owner/name` pair.
 - The **Archive Owner** is identified by the GitHub account itself, not by whichever token or login name happens to be used later.
 - An existing repository directory is not an **Initialized Archive** until StarSync records its owner and archive format.
-- A configless directory is a **Legacy Archive** only when StarSync 1.2 recognizes GitHub.com checkouts in it; empty or unrelated directories remain uninitialized.
+- A configless directory is a **Legacy Archive** only when StarSync recognizes GitHub.com checkouts in it; empty or unrelated directories remain uninitialized.
 - A blocked refresh does not mean the repository is unavailable or corrupt. It means StarSync found local state that it will not rewrite automatically.
 - A **Pending Rename** is a label mismatch, not a new repository or a refresh failure.
 - "status" previously mixed persistent checkout state with the result of one run. Canonical reports separate lifecycle state, **Pending Rename**, and **Sync Outcome**.
@@ -123,6 +123,6 @@ _Avoid_: Mirror
 - **Archive Date** uses committer time rather than author time so it represents when that exact commit entered repository history.
 - **Verify** is read-only; any resulting migration or repair is a separate, explicitly approved action.
 - "archive" means the primary Git repository and a usable checkout, not a complete backup of LFS objects, submodules, issues, discussions, release assets, wikis, or workflow artifacts.
-- StarSync 2.0 manages GitHub.com repositories only; repositories hosted on GitHub Enterprise Server or other Git services are outside its context.
+- StarSync manages GitHub.com repositories only; repositories hosted on GitHub Enterprise Server or other Git services are outside its context.
 - Repository visibility does not change archive membership; private repositories require Git credentials outside StarSync.
 - "pull" described the previous update mechanism but not the preservation contract. The canonical verb is **Refresh**.
