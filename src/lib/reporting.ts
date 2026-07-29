@@ -149,6 +149,11 @@ const writeFinding = (finding: Finding): void => {
 	}
 };
 
+const shouldRenderCheckout = (report: CommandReport, checkout: CheckoutReport): boolean =>
+	report.command !== 'sync' ||
+	['failed', 'skipped'].includes(checkout.outcome) ||
+	checkout.findings.some((finding) => finding.severity !== 'info');
+
 const renderHumanReport = (report: CommandReport): void => {
 	if (report.helpText !== undefined) {
 		console.log(report.helpText);
@@ -156,6 +161,7 @@ const renderHumanReport = (report: CommandReport): void => {
 
 	for (const finding of report.findings) writeFinding(finding);
 	for (const checkout of report.checkouts) {
+		if (!shouldRenderCheckout(report, checkout)) continue;
 		const lifecycle = checkout.lifecycle === null ? 'not-created' : checkout.lifecycle;
 		const planned = checkout.plannedOutcome ? `, planned ${checkout.plannedOutcome}` : '';
 		const rename = checkout.pendingRename ? ', pending rename' : '';

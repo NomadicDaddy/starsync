@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-28
+
+### Fixed
+
+- Sync now reports each repository as soon as it finishes and prints a status heartbeat every 30
+  seconds while slow Git operations are still running. The final human report keeps failures,
+  skips, warnings, and totals without repeating every successful checkout.
+
+## [1.4.0] - 2026-07-28
+
+### Added
+
+- Added `verify --force` for owner-authorized recovery of managed archives. StarSync replaces
+  checkouts that fail Git integrity checks or contain any local changes, but only after a fresh
+  staged clone passes origin, identity, owner, cleanliness, and full object validation. Failed
+  replacements leave the original checkout in place.
+- Added recovery for repositories whose tracked paths cannot be materialized on Windows. StarSync
+  retains the complete Git object database and `HEAD`, checks out every portable path, and marks
+  NTFS-incompatible paths as `skip-worktree` so the managed checkout remains clean.
+
+### Changed
+
+- Synchronization now follows the repository's current GitHub default branch and continues
+  processing valid repositories when another managed checkout cannot be inspected.
+- Release validation now runs bounded Windows, macOS, and Linux jobs with superseded runs
+  cancelled and third-party actions pinned to immutable commits.
+- The pre-push hook now rejects tracked or staged screenshot artifacts before they can enter the
+  repository.
+
+### Security
+
+- Git subprocesses now receive an allowlisted environment instead of inheriting unrelated parent
+  secrets.
+
 ## [1.3.0] - 2026-07-23
 
 ### Added
