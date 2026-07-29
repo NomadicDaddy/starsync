@@ -88,8 +88,8 @@ or uncertain ownership requires `starsync unlock --force [target-path]`; even fo
 refuses to remove a lock owned by a confirmed live same-host process.
 
 A configless, non-empty directory containing GitHub.com checkouts is recognized as a legacy
-archive. `sync` and `dates` refuse to modify legacy archives until migration completes. The
-read-only `migrate` preview resolves each
+archive. `sync` and `dates` refuse to run on a legacy archive at all — including their
+`--dry-run` previews — until migration completes. The read-only `migrate` preview resolves each
 checkout's stable GitHub repository ID and current slug, proposes the canonical
 `repository--owner` folder, and reports dirty or unverifiable state, name collisions, invalid or
 credential-bearing origins, duplicate identities, and pending renames without writing to the
@@ -208,16 +208,17 @@ consumers should use the command-level archive operations.
 
 ## Release validation
 
-The 2.0 release requires three independent evidence sets:
+Each release requires three independent evidence sets:
 
 1. The active `Release Validation` GitHub Actions matrix runs on `windows-latest`,
    `macos-latest`, and `ubuntu-latest` with Bun 1.3.14. Each runner installs from `bun.lock`, runs
    `smoke:qc`, bundles the CLI, and compiles that platform's executable with `GITHUB_TOKEN` and
    `TARGET_PATH` unset.
-2. The final 1.x build must produce a complete `migrate --json` preview of the live
+2. The release build must produce a complete `migrate --json` preview of the live
    289-checkout archive, with every exception classified and reviewed. The 1.2 baseline recorded
    273 pending renames, 8 adopted-but-blocked checkouts, and 8 failed checkouts; preserve the
-   report outside the archive as release evidence and rerun it if the archive changes before 2.0.
+   report outside the archive as release evidence and rerun it if the archive changes before the
+   release.
 3. The representative copied-archive journey must pass migration, verification, synchronization,
    and Archive Date normalization. `smoke:qc` runs an offline real-Git copy fixture for this gate.
    A release candidate must also pass the explicitly enabled live smoke against a caller-created
@@ -233,7 +234,7 @@ dry run, and an Archive Date dry run. It refuses to start unless `STARSYNC_LIVE_
 bun run smoke:live -- <temporary-managed-archive>
 ```
 
-Do not release 2.0 from a matrix-only result: the reviewed live migration preview and the
+Do not release from a matrix-only result: the reviewed live migration preview and the
 representative-copy gate are separate required evidence.
 
 ## Scripts
@@ -242,11 +243,12 @@ representative-copy gate are separate required evidence.
 | ------------------------- | ----------------------------------------------------------------- |
 | `bun run sync`            | `bun ./src/cli.ts`                                                |
 | `bun start`               | `bun src/cli.ts`                                                  |
-| `bun run build`           | `bun build ./src/cli.ts --target=bun`                             |
+| `bun run build`           | `bun build ./src/cli.ts --target=bun --outdir=dist`               |
 | `bun run check:max-lines` | production file and extracted-function source-shape limits        |
 | `bun run compile`         | standalone binary in `dist/`                                      |
 | `bun run typecheck`       | `tsc --noEmit`                                                    |
-| `bun run lint`            | `eslint "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
+| `bun run lint`            | `eslint src scripts test eslint.config.js --max-warnings 0`       |
+| `bun run test`            | `bun scripts/test.ts`                                             |
 | `bun run smoke:live`      | opt-in read-only smoke against an explicit temporary archive copy |
 | `bun run smoke:qc`        | source shape, typecheck, lint, format check, test                  |
 | `bun run format`          | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |

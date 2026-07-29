@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+### Fixed
+
+- An explicitly supplied empty or quoted-empty target path is now the documented usage error with
+  exit code 2. It previously fell through to an implicit `starred_repos` directory beside the
+  package, so a command could inspect or modify an archive the caller never named.
+
+### Removed
+
+- Removed the pre-push screenshot artifact guard. It did not apply to this repository, so the hook
+  no longer scans tracked or staged files for screenshots.
+
 ## [1.4.1] - 2026-07-28
 
 ### Fixed

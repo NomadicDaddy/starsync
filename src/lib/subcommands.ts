@@ -84,6 +84,7 @@ const emitUsageError = (
 	createCommandReporter(argv.includes('--json')).emit(
 		createCommandReport({
 			command,
+			dryRun: argv.includes('--dry-run'),
 			exitCode: 2,
 			findings: [createFinding('error', 'invalid-usage', message)],
 			helpText,
@@ -99,8 +100,11 @@ const resolveRequiredTarget = (
 	helpText: string,
 	positional: null | string
 ): null | string => {
+	// An explicitly supplied but empty or quoted-empty positional is invalid input, not an
+	// omitted one: it must never fall back to TARGET_PATH or an implicit archive path.
+	const positionalValue = positional === null ? null : stripQuotes(positional);
 	const envValue = process.env.TARGET_PATH ? stripQuotes(process.env.TARGET_PATH) : '';
-	if (positional === null && !envValue) {
+	if (positionalValue === '' || (positionalValue === null && !envValue)) {
 		emitUsageError(
 			command,
 			argv,
@@ -109,7 +113,7 @@ const resolveRequiredTarget = (
 		);
 		return null;
 	}
-	return resolveTargetPath(positional, process.env.TARGET_PATH, repoDir);
+	return resolveTargetPath(positionalValue, process.env.TARGET_PATH, repoDir);
 };
 
 export const dispatchSync = async (argv: string[]): Promise<number> => {
