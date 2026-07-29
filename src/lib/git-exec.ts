@@ -11,9 +11,60 @@ export interface GitExecOptions {
 	maxBuffer?: number;
 }
 
-const GIT_ENV: NodeJS.ProcessEnv = {
-	...process.env,
-	GIT_TERMINAL_PROMPT: '0',
+const ALLOWED_GIT_ENVIRONMENT_KEYS = new Set([
+	'COMSPEC',
+	'GIT_OPTIONAL_LOCKS',
+	'GIT_SSH',
+	'GIT_SSH_COMMAND',
+	'HOME',
+	'HOMEDRIVE',
+	'HOMEPATH',
+	'HTTP_PROXY',
+	'HTTPS_PROXY',
+	'LANG',
+	'LC_ALL',
+	'LC_CTYPE',
+	'NO_PROXY',
+	'PATH',
+	'PATHEXT',
+	'SSH_AUTH_SOCK',
+	'SystemRoot',
+	'TEMP',
+	'TMP',
+	'TMPDIR',
+	'USERPROFILE',
+	'WINDIR',
+	'http_proxy',
+	'https_proxy',
+	'no_proxy',
+]);
+
+const REJECTED_GIT_ENVIRONMENT_KEY = /token|password|passwd|secret|api[-_]?key|credential/i;
+
+const copyAllowedEnvironment = (
+	target: NodeJS.ProcessEnv,
+	source: Readonly<NodeJS.ProcessEnv>
+): void => {
+	for (const [key, value] of Object.entries(source)) {
+		if (
+			value !== undefined &&
+			ALLOWED_GIT_ENVIRONMENT_KEYS.has(key) &&
+			!REJECTED_GIT_ENVIRONMENT_KEY.test(key)
+		) {
+			target[key] = value;
+		}
+	}
+};
+
+export const buildGitEnvironment = (
+	source: Readonly<NodeJS.ProcessEnv> = process.env,
+	overrides: Readonly<NodeJS.ProcessEnv> = {}
+): NodeJS.ProcessEnv => {
+	const environment: NodeJS.ProcessEnv = {};
+	copyAllowedEnvironment(environment, source);
+	copyAllowedEnvironment(environment, overrides);
+	environment.GIT_TERMINAL_PROMPT = '0';
+	return environment;
 };
 
 /**
@@ -30,7 +81,7 @@ export const runGit = (args: string[], options: GitExecOptions): Promise<string>
 			{
 				cwd: options.cwd,
 				encoding: 'utf-8',
-				env: { ...GIT_ENV, ...options.env },
+				env: buildGitEnvironment(process.env, options.env),
 				maxBuffer: options.maxBuffer ?? 10 * 1024 * 1024,
 			},
 			(err: ExecFileException | null, stdout: string) => {

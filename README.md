@@ -6,7 +6,7 @@ Preserve every starred GitHub repository in a managed local archive. StarSync ma
 stable GitHub repository identity, refreshes existing history, and adds new stars under canonical
 `repository--owner` folders.
 
-Bun + TypeScript CLI plus a companion script for normalizing folder timestamps.
+Bun + TypeScript CLI and importable library for managed-archive operations.
 
 ## Install
 
@@ -17,14 +17,17 @@ supports Windows, macOS, and Linux where Bun and Git are available.
 bun install
 ```
 
-The `preinstall` hook enforces Bun as the package manager — `npm install`, `yarn install`, and `pnpm install` will be rejected.
+The `preinstall` hook runs the dependency-free `scripts/require-bun.ts` guard. It rejects npm,
+yarn, and pnpm before they install dependencies.
 
 ## Authentication
 
 StarSync separates API authentication from Git transport authentication:
 
-- **GitHub API** (listing starred repos): uses `GITHUB_TOKEN` via Octokit. Required for `sync`, `init`, and `migrate`.
-- **Git clone/pull** (transport): uses your system Git credentials — Git Credential Manager or SSH keys. StarSync never embeds the API token in Git operations.
+- **GitHub API** (listing or resolving starred repositories): uses `GITHUB_TOKEN` via Octokit. Required
+  for `sync`, `init`, `migrate`, and `verify --force`.
+- **Git clone/fetch** (transport): uses your system Git credentials — Git Credential Manager or SSH
+  keys. StarSync never embeds the API token in Git operations.
 
 When Git credentials are missing or invalid, StarSync reports a clear failure with guidance to configure Git Credential Manager or SSH keys. StarSync also prevents Git from prompting interactively (`GIT_TERMINAL_PROMPT=0`, `core.askPass=`).
 
@@ -43,8 +46,8 @@ Create a `.env` file in the project root (Bun auto-loads it) or set the variable
 # Option A: .env file (Bun loads it automatically)
 GITHUB_TOKEN=ghp_your_token_here
 
-# Option B: inline environment variable
-GITHUB_TOKEN=ghp_your_token_here bun run sync
+# Option B: inline environment variable with an explicit archive
+GITHUB_TOKEN=ghp_your_token_here bun src/cli.ts sync D:/archives/stars
 ```
 
 | Variable       | Required | Description                                               |
@@ -59,18 +62,18 @@ A positional argument on the command line overrides `TARGET_PATH`.
 StarSync provides six explicit subcommands:
 
 ```sh
+bun src/cli.ts init [options] [target-path]
 bun src/cli.ts sync [options] [target-path]
 bun src/cli.ts verify [options] [target-path]
 bun src/cli.ts migrate [options] [target-path]
 bun src/cli.ts dates [options] [target-path]
-bun src/cli.ts init [options] [target-path]
 bun src/cli.ts unlock [options] [target-path]
 ```
 
-All six commands are available, including read-only `migrate` preview and explicit
-`migrate --apply`. Every command requires either
-`[target-path]` or `TARGET_PATH`; missing both is a usage error with exit code 2. Bare
-`starsync [target-path]` remains a deprecated alias for `sync` during the transition.
+Every command requires either `[target-path]` or `TARGET_PATH`; missing both is a usage error with
+exit code 2. All six commands are available, including read-only `migrate` preview and explicit
+`migrate --apply`. Bare `starsync [target-path]` remains a deprecated 1.x compatibility alias;
+new invocations should use `starsync sync [target-path]`.
 
 `init` requires an existing empty directory and `GITHUB_TOKEN`. It authenticates the GitHub
 account, then writes `.starsync/config.json` with only archive format 2 and
@@ -78,11 +81,11 @@ account, then writes `.starsync/config.json` with only archive format 2 and
 archives. `sync` also rejects credentials for an account whose stable ID does not match the
 archive owner; a renamed login with the same ID remains the same owner.
 
-Every archive operation holds `.starsync/operation-lock.json` while it inspects or changes the
-archive. The lock identifies the command, hostname, process ID, and start time. StarSync
-automatically reclaims it only when the same-host process is confirmed dead. Remote or uncertain
-ownership requires `starsync unlock --force [target-path]`; even forced unlock refuses to remove a
-lock owned by a confirmed live same-host process.
+Every archive operation except lock recovery holds `.starsync/operation-lock.json` while it
+inspects or changes the archive. The lock identifies the command, hostname, process ID, and start
+time. StarSync automatically reclaims it only when the same-host process is confirmed dead. Remote
+or uncertain ownership requires `starsync unlock --force [target-path]`; even forced unlock
+refuses to remove a lock owned by a confirmed live same-host process.
 
 A configless, non-empty directory containing GitHub.com checkouts is recognized as a legacy
 archive. `sync` and `dates` refuse to modify legacy archives until migration completes. The
@@ -107,20 +110,31 @@ their owned staging directory, while occupied destinations remain untouched. A r
 transfer keeps using the existing checkout and reports a pending rename until migration is
 explicitly applied. Duplicate identities and occupied canonical folders are errors and are never
 published or renamed over. After each successful add or refresh, StarSync aligns the checkout
-folder timestamp with its Archive Date.
+folder timestamp with its Archive Date. On Windows, staged clones retain the complete Git object
+database while marking NTFS-incompatible paths as `skip-worktree`; every portable path is
+materialized and the resulting checkout remains clean.
 
 `dates` is fully local and does not require `GITHUB_TOKEN` or network access. It recognizes managed
 checkouts by their stable local identity, calculates each Archive Date from the newest committer
 time reachable across all local Git references, and repairs folder timestamps. Use `--dry-run` to
 preview the same repairs without changing the archive.
 
-`verify` is fully local and does not require `GITHUB_TOKEN` or network access. It runs Git object
-integrity checks, validates origins and checkout state, detects duplicate identities and pending
-renames, and verifies managed archive owner binding. Managed archive config records
-`owner: { id, login }`; checkout-local Git config records `starsync.repository-id` and
-`starsync.repository-slug`. Missing identity metadata is an expected warning for legacy archives
-and an error for managed archives. Verification never repairs Git data, writes metadata, renames
-folders, or updates timestamps.
+Without `--force`, `verify` is fully local and does not require `GITHUB_TOKEN` or network access.
+It runs Git object integrity checks, validates origins and checkout state, detects duplicate
+identities and pending renames, and verifies managed archive owner binding. Managed archive config
+records `owner: { id, login }`; checkout-local Git config records `starsync.repository-id` and
+`starsync.repository-slug`. Missing identity metadata is an expected warning for legacy archives and
+an error for managed archives.
+
+`verify --force` is an explicit destructive recovery mode for current managed archives. A checkout
+that fails Git integrity or contains any staged, unstaged, untracked, or conflicted local changes is
+resolved to its canonical GitHub repository and freshly cloned into a StarSync-owned staging
+directory. StarSync validates the clone's origin, objects, archive owner, and identity before
+moving the anomalous checkout aside and publishing the replacement. Failed resolution, cloning, or
+validation leaves the original checkout in place. After successful publication, the replaced
+directory is permanently removed. `GITHUB_TOKEN` is required and must authenticate as the archive
+owner. Pre-existing `.starsync-checkout-*` directories are owned staging artifacts left by
+interrupted operations; forced verification removes them while holding the archive operation lock.
 
 Common options:
 
@@ -131,6 +145,7 @@ Common options:
 | `--dry-run`       | Preview `sync` or `dates` without changing the archive           |
 | `--concurrency=N` | Process 1-8 repositories concurrently during `sync` (default: 4) |
 | `--apply`         | Apply `migrate` identity backfill and safe canonical renames     |
+| `--force`         | Re-clone damaged or locally modified checkouts; force uncertain unlocks |
 
 ### Structured reporting
 
@@ -188,18 +203,17 @@ The public entry point exports:
 | `unlockArchive`         | Inspect or conservatively remove its lock  |
 
 Pass `apply: true` to `migrateArchive` to apply the resumable migration; omit it for a read-only
-preview. The deprecated low-level exports remain during the 1.x transition for compatibility;
-consumers should migrate from `runStarsync`, argument parsing, checkout discovery, and direct
-clone/pull helpers to these command-level operations before 2.0.
+preview. Deprecated low-level exports remain during the 1.x transition for compatibility. New
+consumers should use the command-level archive operations.
 
 ## Release validation
 
-The 2.0 release is blocked on three gates:
+The 2.0 release requires three independent evidence sets:
 
-1. The `Release Validation` GitHub Actions matrix must pass on `windows-latest`,
-   `macos-latest`, and `ubuntu-latest` with Bun 1.3.14. Each runner installs from `bun.lock`,
-   runs `smoke:qc`, bundles the CLI, and compiles that platform's executable with
-   `GITHUB_TOKEN` and `TARGET_PATH` unset.
+1. The active `Release Validation` GitHub Actions matrix runs on `windows-latest`,
+   `macos-latest`, and `ubuntu-latest` with Bun 1.3.14. Each runner installs from `bun.lock`, runs
+   `smoke:qc`, bundles the CLI, and compiles that platform's executable with `GITHUB_TOKEN` and
+   `TARGET_PATH` unset.
 2. The final 1.x build must produce a complete `migrate --json` preview of the live
    289-checkout archive, with every exception classified and reviewed. The 1.2 baseline recorded
    273 pending renames, 8 adopted-but-blocked checkouts, and 8 failed checkouts; preserve the
@@ -224,18 +238,19 @@ representative-copy gate are separate required evidence.
 
 ## Scripts
 
-| Script                 | What it runs                                                      |
-| ---------------------- | ----------------------------------------------------------------- |
-| `bun run sync`         | `bun ./src/cli.ts`                                                |
-| `bun start`            | `bun src/cli.ts`                                                  |
-| `bun run build`        | `bun build ./src/cli.ts --target=bun`                             |
-| `bun run compile`      | standalone binary in `dist/`                                      |
-| `bun run typecheck`    | `tsc --noEmit`                                                    |
-| `bun run lint`         | `eslint "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
-| `bun run smoke:live`   | opt-in read-only smoke against an explicit temporary archive copy |
-| `bun run smoke:qc`     | typecheck, lint, format check, test                               |
-| `bun run format`       | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
-| `bun run format:check` | `prettier --check "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
+| Script                    | What it runs                                                      |
+| ------------------------- | ----------------------------------------------------------------- |
+| `bun run sync`            | `bun ./src/cli.ts`                                                |
+| `bun start`               | `bun src/cli.ts`                                                  |
+| `bun run build`           | `bun build ./src/cli.ts --target=bun`                             |
+| `bun run check:max-lines` | production file and extracted-function source-shape limits        |
+| `bun run compile`         | standalone binary in `dist/`                                      |
+| `bun run typecheck`       | `tsc --noEmit`                                                    |
+| `bun run lint`            | `eslint "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
+| `bun run smoke:live`      | opt-in read-only smoke against an explicit temporary archive copy |
+| `bun run smoke:qc`        | source shape, typecheck, lint, format check, test                  |
+| `bun run format`          | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
+| `bun run format:check`    | `prettier --check "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
 
 ## Scheduling
 

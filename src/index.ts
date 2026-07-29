@@ -14,6 +14,7 @@ import {
 	resolveTargetPath as resolveTargetPathImpl,
 	stripQuotes as stripQuotesImpl,
 } from './lib/cli-utils.ts';
+import { buildGitEnvironment } from './lib/git-exec.ts';
 import {
 	isGitAuthError,
 	isGitHubDotComUrl,
@@ -24,95 +25,6 @@ import {
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..');
-
-export const HELP_TEXT = `starsync sync - add or refresh managed checkouts by stable repository identity.
-
-Usage:
-  starsync sync [options] [target-path]
-  bun src/cli.ts sync [options] [target-path]
-
-Options:
-  --help, -h          Show this help
-  --json              Emit one schema-versioned JSON result document on stdout
-  --dry-run           Query stars and inspect the archive without cloning, pulling,
-                      renaming, or modifying any Git data, folder names, or timestamps
-  --concurrency=N     Number of repositories to process concurrently (default: 4,
-                      range: 1-8; --concurrency=1 is sequential and deterministic)
-
-Environment:
-  GITHUB_TOKEN        Required. Personal access token with repo + read:user scopes.
-  TARGET_PATH         Required if no positional target-path is given.
-
-A positional target-path argument overrides TARGET_PATH.`;
-
-export interface ParsedArgs {
-	concurrency: number;
-	dryRun: boolean;
-	help: boolean;
-	json: boolean;
-	targetPath: null | string;
-}
-
-export const DEFAULT_CONCURRENCY = 4;
-const MAX_CONCURRENCY = 8;
-const MIN_CONCURRENCY = 1;
-
-const parseConcurrency = (value: string): number => {
-	const num = Number(value);
-	if (!Number.isInteger(num) || num < MIN_CONCURRENCY || num > MAX_CONCURRENCY) {
-		throw new Error(
-			`--concurrency must be an integer from ${MIN_CONCURRENCY} to ${MAX_CONCURRENCY}, got: ${value}`
-		);
-	}
-	return num;
-};
-
-/** @deprecated Use the explicit options accepted by syncArchive instead. */
-export const parseArgs = (argv: string[] = process.argv.slice(2)): ParsedArgs => {
-	const parsed: ParsedArgs = {
-		concurrency: DEFAULT_CONCURRENCY,
-		dryRun: false,
-		help: false,
-		json: false,
-		targetPath: null,
-	};
-	for (const arg of argv) {
-		if (arg === '--help' || arg === '-h') {
-			parsed.help = true;
-		} else if (arg === '--dry-run') {
-			parsed.dryRun = true;
-		} else if (arg === '--json') {
-			parsed.json = true;
-		} else if (arg.startsWith('--concurrency=')) {
-			parsed.concurrency = parseConcurrency(arg.slice('--concurrency='.length));
-		} else if (arg === '--concurrency') {
-			throw new Error('--concurrency requires a value: use --concurrency=N');
-		} else if (!arg.startsWith('-')) {
-			if (parsed.targetPath !== null) {
-				throw new Error(`Unexpected positional argument: ${arg}`);
-			}
-			parsed.targetPath = arg;
-		} else {
-			throw new Error(`Unknown argument: ${arg}`);
-		}
-	}
-	return parsed;
-};
-
-/** @deprecated Explicit archive operation options do not require quote stripping. */
-export const stripQuotes = stripQuotesImpl;
-
-/** @deprecated Use migrateArchive, which returns a structured CommandReport. */
-export const createGitHubRepositoryResolver = createGitHubRepositoryResolverImpl;
-
-/** @deprecated Use verifyArchive or migrateArchive instead of inspecting archive internals. */
-export const inspectArchive = inspectArchiveImpl;
-
-/** @deprecated Repository slug parsing is internal to archive operations. */
-export const parseGitHubRepositorySlug = parseGitHubRepositorySlugImpl;
-
-/** @deprecated Use migrateArchive, which returns a structured CommandReport. */
-export const previewArchiveMigration = previewArchiveMigrationImpl;
 
 export {
 	DEFAULT_ARCHIVE_CONCURRENCY,
@@ -132,6 +44,24 @@ export {
 	type VerifyArchiveOptions,
 } from './lib/archive-api.ts';
 export { REPOSITORY_ID_KEY, REPOSITORY_SLUG_KEY } from './lib/checkout-identity.ts';
+
+/** @deprecated Explicit archive operation options do not require quote stripping. */
+export const stripQuotes = stripQuotesImpl;
+
+/** @deprecated Use migrateArchive, which returns a structured CommandReport. */
+export const createGitHubRepositoryResolver = createGitHubRepositoryResolverImpl;
+
+/** @deprecated Use verifyArchive or migrateArchive instead of inspecting archive internals. */
+export const inspectArchive = inspectArchiveImpl;
+
+/** @deprecated Repository slug parsing is internal to archive operations. */
+export const parseGitHubRepositorySlug = parseGitHubRepositorySlugImpl;
+
+/** @deprecated Use migrateArchive, which returns a structured CommandReport. */
+export const previewArchiveMigration = previewArchiveMigrationImpl;
+
+export { DEFAULT_CONCURRENCY, parseArgs, type ParsedArgs } from './lib/cli-utils.ts';
+export { SYNC_HELP_TEXT as HELP_TEXT } from './lib/help-text.ts';
 
 /** @deprecated Use verifyArchive, which returns a structured CommandReport. */
 export const verifyArchiveContents = verifyArchiveContentsImpl;
@@ -230,6 +160,7 @@ export const cloneOrPull = (
 		(existing.has(repo.name) || fs.existsSync(repoPath)) &&
 		fs.existsSync(path.join(repoPath, '.git'));
 	const verb = isCloned ? 'pull' : 'clone';
+	const gitEnvironment = buildGitEnvironment();
 	try {
 		if (isCloned) {
 			const remoteUrl = execFileSync(
@@ -237,6 +168,7 @@ export const cloneOrPull = (
 				['-C', repoPath, 'config', '--get', 'remote.origin.url'],
 				{
 					encoding: 'utf-8',
+					env: gitEnvironment,
 				}
 			).trim();
 			if (normalizeRepoUrl(remoteUrl) !== normalizeRepoUrl(repo.clone_url)) {
@@ -256,14 +188,14 @@ export const cloneOrPull = (
 			console.log('Repository is already available -> pulling');
 			execFileSync('git', ['-c', 'core.askPass=', 'pull'], {
 				cwd: repoPath,
-				env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+				env: gitEnvironment,
 				stdio: 'inherit',
 			});
 		} else {
 			console.log('Repository not available -> cloning');
 			execFileSync('git', ['-c', 'core.askPass=', 'clone', repo.clone_url], {
 				cwd: targetBase,
-				env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+				env: gitEnvironment,
 				stdio: 'inherit',
 			});
 		}

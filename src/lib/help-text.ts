@@ -19,10 +19,12 @@ Options:
   --dry-run         Sync/dates: preview without changing the archive
   --concurrency=N   Sync only: concurrent repository processing (default: 4, range: 1-8)
   --apply           Migrate only: apply the previewed identity and folder migration
-  --force           Unlock only: remove a remote or uncertain lock after assessing the risk
+  --force           Verify: re-clone damaged or locally modified checkouts. Unlock:
+                    remove a remote or
+                    uncertain lock after assessing the risk
 
 Environment:
-  GITHUB_TOKEN      Required for init and sync. Personal access token with repo + read:user scopes.
+  GITHUB_TOKEN      Required for init, sync, migrate, and verify --force.
   TARGET_PATH       Required if no positional target-path is given.
 
 Run 'starsync <command> --help' for command-specific options.`;
@@ -56,12 +58,16 @@ Usage:
 Options:
   --help, -h        Show this help
   --json            Emit one schema-versioned JSON result document on stdout
+  --force           Replace checkouts that fail Git integrity or contain local changes
+                    with validated fresh clones; remove abandoned clone staging directories
 
 Environment:
+  GITHUB_TOKEN      Required with --force to resolve repository identities.
   TARGET_PATH       Required if no positional target-path is given.
 
 A positional target-path argument overrides TARGET_PATH.
-Verification is local and read-only; it does not use GITHUB_TOKEN or network access.`;
+Without --force, verification is local and read-only. Forced recovery preserves a damaged
+checkout until its replacement clone passes origin, object, owner, and identity validation.`;
 
 export const MIGRATE_HELP_TEXT = `starsync migrate - preview or apply managed checkout identity migration.
 

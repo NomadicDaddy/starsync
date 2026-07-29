@@ -67,7 +67,7 @@ const createRepositoryFixture = (
 	};
 
 	mkdirSync(seed);
-	runGit(['init'], seed);
+	runGit(['init', '--initial-branch=main'], seed);
 	runGit(['config', 'user.email', 'starsync@example.test'], seed);
 	runGit(['config', 'user.name', 'StarSync Test'], seed);
 	writeFileSync(path.join(seed, 'README.md'), `# ${repository}\n`);
@@ -185,6 +185,7 @@ describe('cross-platform release validation', () => {
 			fixtures.forEach(addRemoteCommit);
 			const repositories: RepoRecord[] = fixtures.map((fixture) => ({
 				clone_url: fixture.cloneUrl,
+				defaultBranch: 'main',
 				folderName: fixture.canonicalName,
 				id: fixture.id,
 				name: fixture.repository,

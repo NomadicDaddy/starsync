@@ -54,9 +54,19 @@ const writeArchiveConfig = (root: string, owner: unknown): void => {
 	);
 };
 
-const verify = (target: string): { report: CommandReport; status: number; stderr: string } => {
+const verify = (
+	target: string,
+	options: { force?: boolean } = {}
+): { report: CommandReport; status: number; stderr: string } => {
 	const result = Bun.spawnSync({
-		cmd: [process.execPath, 'src/cli.ts', 'verify', '--json', target],
+		cmd: [
+			process.execPath,
+			'src/cli.ts',
+			'verify',
+			'--json',
+			...(options.force ? ['--force'] : []),
+			target,
+		],
 		cwd: projectRoot,
 		env: { ...process.env, GITHUB_TOKEN: '' },
 		stderr: 'pipe',
@@ -96,6 +106,28 @@ describe('archive verification process boundary', () => {
 			expect(readFileSync(path.join(checkout, '.git', 'config'), 'utf-8')).toBe(configBefore);
 			expect(statSync(checkout).mtimeMs).toBe(mtimeBefore);
 			expect(run(['git', 'status', '--porcelain'], checkout)).toBe('');
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('requires a token before forced verification can modify an archive', () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-verify-force-token-'));
+		try {
+			const checkout = createRepository(
+				target,
+				'repo--owner',
+				'https://github.com/owner/repo.git',
+				{ id: 123, slug: 'owner/repo' }
+			);
+			writeArchiveConfig(target, { id: 7, login: 'archive-owner' });
+			const configBefore = readFileSync(path.join(checkout, '.git', 'config'));
+
+			const result = verify(target, { force: true });
+
+			expect(result.status).toBe(1);
+			expect(result.report.findings[0]?.code).toBe('missing-token');
+			expect(readFileSync(path.join(checkout, '.git', 'config'))).toEqual(configBefore);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
 		}

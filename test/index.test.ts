@@ -11,12 +11,15 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-import type { Repository, SyncResult } from '../src/index.ts';
+import type { ParsedArgs, Repository, SyncResult } from '../src/index.ts';
 import type { CommandReport } from '../src/lib/reporting.ts';
 
 import {
 	cloneOrPull,
+	DEFAULT_CONCURRENCY,
+	HELP_TEXT,
 	initArchive,
 	inspectArchive,
 	listFolders,
@@ -65,14 +68,21 @@ mock.module('node:child_process', () => ({
 
 interface MockRepoResponse {
 	clone_url: string;
+	default_branch: string;
 	full_name: string;
 	id: number;
 	name: string;
 	owner: { login: string };
 }
 
-const mockStarredRepository = (name: string, id: number, owner = 'example'): MockRepoResponse => ({
+const mockStarredRepository = (
+	name: string,
+	id: number,
+	owner = 'example',
+	defaultBranch = 'main'
+): MockRepoResponse => ({
 	clone_url: `https://github.com/${owner}/${name}.git`,
+	default_branch: defaultBranch,
 	full_name: `${owner}/${name}`,
 	id,
 	name,
@@ -149,6 +159,116 @@ const createCheckout = (root: string, name: string): string => {
 	const checkoutPath = path.join(root, name);
 	mkdirSync(path.join(checkoutPath, '.git'), { recursive: true });
 	return checkoutPath;
+};
+
+const runRealCommand = (
+	command: string,
+	args: string[],
+	cwd: string,
+	env: NodeJS.ProcessEnv = {}
+): string => {
+	const result = Bun.spawnSync({
+		cmd: [command, ...args],
+		cwd,
+		env: { ...process.env, ...env, GIT_TERMINAL_PROMPT: '0' },
+		stderr: 'pipe',
+		stdin: 'ignore',
+		stdout: 'pipe',
+	});
+	if (result.exitCode !== 0) {
+		throw new Error(
+			`${command} ${args.join(' ')} failed: ${result.stderr.toString() || result.stdout.toString()}`
+		);
+	}
+	return result.stdout.toString().trim();
+};
+
+const runRealGit = (args: string[], cwd: string, env: NodeJS.ProcessEnv = {}): string =>
+	runRealCommand('git', args, cwd, env);
+
+interface RealRefreshFixture {
+	archive: string;
+	checkout: string;
+	cloneUrl: string;
+	origin: string;
+	seed: string;
+}
+
+const createRealRefreshFixture = (root: string): RealRefreshFixture => {
+	const archive = path.join(root, 'archive');
+	const checkout = path.join(archive, 'repository--example');
+	const cloneUrl = 'https://github.com/example/repository.git';
+	const origin = path.join(root, 'repository.git');
+	const seed = path.join(root, 'seed');
+
+	mkdirSync(archive);
+	mkdirSync(seed);
+	runRealGit(['init', '--initial-branch=main'], seed);
+	runRealGit(['config', 'user.email', 'starsync@example.test'], seed);
+	runRealGit(['config', 'user.name', 'StarSync Test'], seed);
+	writeFileSync(path.join(seed, 'README.md'), '# repository\n');
+	runRealGit(['add', 'README.md'], seed);
+	runRealGit(['commit', '-m', 'initial'], seed);
+	runRealGit(['clone', '--bare', seed, origin], root);
+	runRealGit(['remote', 'add', 'origin', origin], seed);
+	runRealGit(['clone', origin, checkout], archive);
+	runRealGit(['config', 'user.email', 'starsync@example.test'], checkout);
+	runRealGit(['config', 'user.name', 'StarSync Test'], checkout);
+	runRealGit(['remote', 'set-url', 'origin', cloneUrl], checkout);
+	runRealGit(
+		['config', '--local', `url.${pathToFileURL(origin).href}.insteadOf`, cloneUrl],
+		checkout
+	);
+
+	return { archive, checkout, cloneUrl, origin, seed };
+};
+
+const addRealCommit = (
+	repositoryPath: string,
+	fileName: string,
+	content: string,
+	message: string
+): void => {
+	writeFileSync(path.join(repositoryPath, fileName), content);
+	runRealGit(['add', fileName], repositoryPath);
+	runRealGit(['commit', '-m', message], repositoryPath);
+};
+
+const pushRealBranch = (fixture: RealRefreshFixture, branch: string): void => {
+	runRealGit(['push', 'origin', branch], fixture.seed);
+};
+
+const runRealRefresh = (
+	fixture: RealRefreshFixture,
+	defaultBranch: string
+): { message?: string; outcome: string } => {
+	const repository = {
+		clone_url: fixture.cloneUrl,
+		defaultBranch,
+		folderName: path.basename(fixture.checkout),
+		id: 321,
+		name: 'repository',
+		slug: 'example/repository',
+	};
+	const result = Bun.spawnSync({
+		cmd: [
+			process.execPath,
+			path.resolve('test/helpers/run-staged-checkout.ts'),
+			fixture.archive,
+		],
+		env: {
+			...process.env,
+			TEST_ARCHIVE_OWNER_ID: '7',
+			TEST_REPOSITORY: JSON.stringify(repository),
+		},
+		stderr: 'pipe',
+		stdin: 'ignore',
+		stdout: 'pipe',
+	});
+	if (result.exitCode !== 0) {
+		throw new Error(result.stderr.toString() || result.stdout.toString());
+	}
+	return JSON.parse(result.stdout.toString()) as { message?: string; outcome: string };
 };
 
 const writeManagedArchiveConfig = (
@@ -379,7 +499,10 @@ describe('cloneOrPull', () => {
 				1,
 				'git',
 				['-C', path.join(root, 'test-repo'), 'config', '--get', 'remote.origin.url'],
-				{ encoding: 'utf-8' }
+				expect.objectContaining({
+					encoding: 'utf-8',
+					env: expect.objectContaining({ GIT_TERMINAL_PROMPT: '0' }),
+				})
 			);
 			expect(mockExecFileSync).toHaveBeenNthCalledWith(
 				2,
@@ -541,6 +664,46 @@ describe('cloneOrPull', () => {
 			rmSync(root, { force: true, recursive: true });
 		}
 	});
+
+	test('removes parent secrets from the synchronous Git environment', () => {
+		const savedEnvironment = {
+			AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+			DB_PASSWORD: process.env.DB_PASSWORD,
+			GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+			NPM_TOKEN: process.env.NPM_TOKEN,
+			SERVICE_API_KEY: process.env.SERVICE_API_KEY,
+		};
+		Object.assign(process.env, {
+			AWS_SECRET_ACCESS_KEY: 'aws-secret',
+			DB_PASSWORD: 'database-secret',
+			GITHUB_TOKEN: 'github-secret',
+			NPM_TOKEN: 'npm-secret',
+			SERVICE_API_KEY: 'service-secret',
+		});
+
+		try {
+			mockExecFileSync.mockReturnValue(undefined);
+			expect(cloneOrPull(repo, '/tmp/target', new Set()).ok).toBe(true);
+
+			const options = mockExecFileSync.mock.calls.at(-1)?.[2] as
+				{ env?: NodeJS.ProcessEnv } | undefined;
+			expect(options?.env).toEqual(expect.objectContaining({ GIT_TERMINAL_PROMPT: '0' }));
+			for (const key of [
+				'AWS_SECRET_ACCESS_KEY',
+				'DB_PASSWORD',
+				'GITHUB_TOKEN',
+				'NPM_TOKEN',
+				'SERVICE_API_KEY',
+			]) {
+				expect(options?.env).not.toHaveProperty(key);
+			}
+		} finally {
+			for (const [key, value] of Object.entries(savedEnvironment)) {
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
+		}
+	});
 });
 
 describe('argument parsing', () => {
@@ -622,6 +785,38 @@ describe('folder discovery', () => {
 });
 
 describe('programmatic archive API', () => {
+	test('carries the GitHub default branch into existing checkout refresh', async () => {
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101, 'example', 'trunk')]);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-api-default-'));
+		try {
+			writeManagedArchiveConfig(target);
+			createCheckout(target, 'repo-a--example');
+			mockManagedCheckoutIdentity('repo-a--example', 101, 'example/repo-a');
+
+			const report = await syncArchive({
+				concurrency: 1,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(0);
+			expect(mockExecFile).toHaveBeenCalledWith(
+				'git',
+				['rev-parse', '--verify', 'refs/remotes/origin/trunk^{commit}'],
+				expect.objectContaining({ cwd: path.join(target, 'repo-a--example') }),
+				expect.any(Function)
+			);
+			expect(mockExecFile).toHaveBeenCalledWith(
+				'git',
+				['switch', '--create', 'trunk', '--track', 'refs/remotes/origin/trunk'],
+				expect.objectContaining({ cwd: path.join(target, 'repo-a--example') }),
+				expect.any(Function)
+			);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
 	test('syncArchive uses only explicit options and returns the JSON report model', async () => {
 		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
 		const savedArgv = process.argv;
@@ -746,6 +941,78 @@ describe('programmatic archive API', () => {
 			expect(report.exitCode).toBe(130);
 			expect(report.checkouts[0]?.findings[0]?.code).toBe('interrupted-before-inspection');
 			expect(report.checkouts[0]?.plannedOutcome).toBeUndefined();
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('continues valid synchronization when another checkout has invalid identity', async () => {
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
+
+		for (const dryRun of [false, true]) {
+			const target = mkdtempSync(path.join(tmpdir(), 'starsync-partial-invalid-'));
+			try {
+				writeManagedArchiveConfig(target);
+				createCheckout(target, 'invalid--example');
+				mockSuccessfulCloneAndDateOperations();
+
+				const report = await syncArchive({
+					concurrency: 1,
+					dryRun,
+					targetPath: target,
+					token: 'test-token',
+				});
+				const byName = new Map(
+					report.checkouts.map((checkout) => [checkout.name, checkout])
+				);
+
+				expect(report.exitCode).toBe(1);
+				expect(report.checkouts).toHaveLength(2);
+				expect(byName.get('invalid--example')).toEqual(
+					expect.objectContaining({ lifecycle: 'blocked', outcome: 'failed' })
+				);
+				expect(byName.get('invalid--example')?.findings[0]?.code).toBe(
+					'invalid-identity-metadata'
+				);
+				expect(byName.get('repo-a--example')).toEqual(
+					expect.objectContaining(
+						dryRun
+							? { outcome: 'skipped', plannedOutcome: 'added' }
+							: { lifecycle: 'active', outcome: 'added' }
+					)
+				);
+				expect(existsSync(path.join(target, 'invalid--example'))).toBe(true);
+				expect(existsSync(path.join(target, 'repo-a--example'))).toBe(!dryRun);
+			} finally {
+				rmSync(target, { force: true, recursive: true });
+			}
+		}
+	});
+
+	test('reports valid retained checkouts alongside invalid managed checkouts', async () => {
+		mockPaginate.mockResolvedValue([]);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-partial-retained-'));
+		try {
+			writeManagedArchiveConfig(target);
+			createCheckout(target, 'invalid--example');
+			createCheckout(target, 'retained--example');
+			mockManagedCheckoutIdentity('retained--example', 102, 'example/retained');
+
+			const report = await syncArchive({
+				concurrency: 1,
+				targetPath: target,
+				token: 'test-token',
+			});
+			const byName = new Map(report.checkouts.map((checkout) => [checkout.name, checkout]));
+
+			expect(report.exitCode).toBe(1);
+			expect(report.checkouts).toHaveLength(2);
+			expect(byName.get('invalid--example')).toEqual(
+				expect.objectContaining({ lifecycle: 'blocked', outcome: 'failed' })
+			);
+			expect(byName.get('retained--example')).toEqual(
+				expect.objectContaining({ lifecycle: 'retained', outcome: 'skipped' })
+			);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
 		}
@@ -1322,6 +1589,24 @@ describe('subcommand dispatch', () => {
 		const exitCode = await dispatchSync(['--help']);
 		expect(exitCode).toBe(0);
 	});
+
+	test('sync dispatch stays independent of the public index while preserving its API', async () => {
+		const subcommandsSource = readFileSync(
+			new URL('../src/lib/subcommands.ts', import.meta.url),
+			'utf8'
+		);
+		const { dispatchSync } = await import('../src/lib/subcommands.ts');
+		const defaultParsed: ParsedArgs = parseArgs([]);
+		const parsed: ParsedArgs = parseArgs(['--concurrency=2']);
+		const captured = await captureConsole(() => dispatchSync(['--help']));
+
+		expect(subcommandsSource).not.toMatch(/from\s+['"]\.\.\/index\.ts['"]/);
+		expect(DEFAULT_CONCURRENCY).toBe(4);
+		expect(defaultParsed.concurrency).toBe(DEFAULT_CONCURRENCY);
+		expect(parsed.concurrency).toBe(2);
+		expect(captured.result).toBe(0);
+		expect(captured.stdout).toEqual([HELP_TEXT]);
+	});
 });
 
 describe('legacy archive migration preview', () => {
@@ -1836,6 +2121,81 @@ describe('parseArgs --concurrency', () => {
 	});
 });
 
+describe('Git subprocess environment', () => {
+	test('buildGitEnvironment keeps only allowlisted platform and Git variables', async () => {
+		const { buildGitEnvironment } = await import('../src/lib/git-exec.ts');
+		const environment = buildGitEnvironment(
+			{
+				AWS_SECRET_ACCESS_KEY: 'aws-secret',
+				COMSPEC: 'C:\\Windows\\System32\\cmd.exe',
+				DB_PASSWORD: 'database-secret',
+				GITHUB_TOKEN: 'github-secret',
+				HOME: '/home/starsync',
+				HTTP_PROXY: 'http://proxy.example',
+				NPM_TOKEN: 'npm-secret',
+				PATH: '/usr/local/bin',
+				SERVICE_API_KEY: 'service-secret',
+				SystemRoot: 'C:\\Windows',
+				UNRELATED_SETTING: 'not-required-by-git',
+			},
+			{
+				credential_helper: 'override-secret',
+				GIT_OPTIONAL_LOCKS: '0',
+				GIT_TERMINAL_PROMPT: '1',
+				PaSsWd: 'override-secret',
+				PATH: '/opt/git/bin',
+			}
+		);
+
+		expect(environment).toEqual({
+			COMSPEC: 'C:\\Windows\\System32\\cmd.exe',
+			GIT_OPTIONAL_LOCKS: '0',
+			GIT_TERMINAL_PROMPT: '0',
+			HOME: '/home/starsync',
+			HTTP_PROXY: 'http://proxy.example',
+			PATH: '/opt/git/bin',
+			SystemRoot: 'C:\\Windows',
+		});
+	});
+
+	test('runGit filters source and override secrets at the async process boundary', async () => {
+		const { runGit } = await import('../src/lib/git-exec.ts');
+		await runGit(['status', '--porcelain'], {
+			cwd: '/tmp/repository',
+			env: {
+				AWS_SECRET_ACCESS_KEY: 'aws-secret',
+				DB_PASSWORD: 'database-secret',
+				GITHUB_TOKEN: 'github-secret',
+				HOME: '/home/starsync',
+				NPM_TOKEN: 'npm-secret',
+				PATH: '/opt/git/bin',
+				SERVICE_API_KEY: 'service-secret',
+				SystemRoot: 'C:\\Windows',
+			},
+		});
+
+		const options = mockExecFile.mock.calls.at(-1)?.[2] as
+			{ env?: NodeJS.ProcessEnv } | undefined;
+		expect(options?.env).toEqual(
+			expect.objectContaining({
+				GIT_TERMINAL_PROMPT: '0',
+				HOME: '/home/starsync',
+				PATH: '/opt/git/bin',
+				SystemRoot: 'C:\\Windows',
+			})
+		);
+		for (const key of [
+			'AWS_SECRET_ACCESS_KEY',
+			'DB_PASSWORD',
+			'GITHUB_TOKEN',
+			'NPM_TOKEN',
+			'SERVICE_API_KEY',
+		]) {
+			expect(options?.env).not.toHaveProperty(key);
+		}
+	});
+});
+
 describe('git-exec error classification', () => {
 	test('isTransientGitError detects network timeouts', async () => {
 		const { isTransientGitError } = await import('../src/lib/git-exec.ts');
@@ -1974,11 +2334,144 @@ describe('api-retry', () => {
 });
 
 describe('refresh pipeline', () => {
+	test('refreshes a clean secondary branch onto the GitHub default branch', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-default-refresh-'));
+		try {
+			const fixture = createRealRefreshFixture(root);
+			runRealGit(['switch', '--create', 'secondary'], fixture.checkout);
+			addRealCommit(fixture.seed, 'REMOTE.md', 'remote update\n', 'remote update');
+			pushRealBranch(fixture, 'main');
+
+			const result = runRealRefresh(fixture, 'main');
+
+			expect(result.outcome).toBe('updated');
+			expect(runRealGit(['branch', '--show-current'], fixture.checkout)).toBe('main');
+			expect(readFileSync(path.join(fixture.checkout, 'REMOTE.md'), 'utf8')).toContain(
+				'remote update'
+			);
+			expect(runRealGit(['rev-parse', 'HEAD'], fixture.checkout)).toBe(
+				runRealGit(['rev-parse', 'refs/remotes/origin/main'], fixture.checkout)
+			);
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('follows a renamed GitHub default branch even when the old branch still exists', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-renamed-default-'));
+		try {
+			const fixture = createRealRefreshFixture(root);
+			runRealGit(['switch', '--create', 'trunk'], fixture.seed);
+			addRealCommit(fixture.seed, 'TRUNK.md', 'renamed default\n', 'rename default');
+			pushRealBranch(fixture, 'trunk');
+
+			const result = runRealRefresh(fixture, 'trunk');
+
+			expect(result.outcome).toBe('updated');
+			expect(runRealGit(['branch', '--show-current'], fixture.checkout)).toBe('trunk');
+			expect(readFileSync(path.join(fixture.checkout, 'TRUNK.md'), 'utf8')).toContain(
+				'renamed default'
+			);
+			expect(runRealGit(['rev-parse', 'HEAD'], fixture.checkout)).toBe(
+				runRealGit(['rev-parse', 'refs/remotes/origin/trunk'], fixture.checkout)
+			);
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('creates a missing local default branch from its remote-tracking ref', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-missing-default-'));
+		try {
+			const fixture = createRealRefreshFixture(root);
+			runRealGit(['branch', '--move', 'main', 'secondary'], fixture.checkout);
+
+			const result = runRealRefresh(fixture, 'main');
+
+			expect(result.outcome).toBe('updated');
+			expect(runRealGit(['branch', '--show-current'], fixture.checkout)).toBe('main');
+			expect(runRealGit(['rev-parse', 'main'], fixture.checkout)).toBe(
+				runRealGit(['rev-parse', 'refs/remotes/origin/main'], fixture.checkout)
+			);
+			expect(runRealGit(['rev-parse', 'secondary'], fixture.checkout)).toBe(
+				runRealGit(['rev-parse', 'main'], fixture.checkout)
+			);
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('blocks dirty secondary branches without changing their files or branch', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-dirty-default-'));
+		try {
+			const fixture = createRealRefreshFixture(root);
+			runRealGit(['switch', '--create', 'secondary'], fixture.checkout);
+			const localFile = path.join(fixture.checkout, 'LOCAL.txt');
+			writeFileSync(localFile, 'preserve dirty work\n');
+
+			const result = runRealRefresh(fixture, 'main');
+
+			expect(result.outcome).toBe('blocked');
+			expect(result.message).toContain('Local changes detected');
+			expect(runRealGit(['branch', '--show-current'], fixture.checkout)).toBe('secondary');
+			expect(readFileSync(localFile, 'utf8')).toBe('preserve dirty work\n');
+			expect(runRealGit(['status', '--porcelain'], fixture.checkout)).toContain(
+				'?? LOCAL.txt'
+			);
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('blocks a divergent local default branch while preserving its commit and current branch', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-divergent-default-'));
+		try {
+			const fixture = createRealRefreshFixture(root);
+			addRealCommit(fixture.checkout, 'LOCAL.txt', 'preserve commit\n', 'local commit');
+			const localHash = runRealGit(['rev-parse', 'main'], fixture.checkout);
+			runRealGit(['switch', '--create', 'secondary'], fixture.checkout);
+			addRealCommit(fixture.seed, 'REMOTE.txt', 'remote commit\n', 'remote commit');
+			pushRealBranch(fixture, 'main');
+
+			const result = runRealRefresh(fixture, 'main');
+
+			expect(result.outcome).toBe('blocked');
+			expect(result.message).toContain('diverged');
+			expect(runRealGit(['branch', '--show-current'], fixture.checkout)).toBe('secondary');
+			expect(runRealGit(['rev-parse', 'main'], fixture.checkout)).toBe(localHash);
+			expect(runRealGit(['show', 'main:LOCAL.txt'], fixture.checkout)).toBe(
+				'preserve commit'
+			);
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('blocks missing and invalid remote default refs without changing branches', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-invalid-default-'));
+		try {
+			const fixture = createRealRefreshFixture(root);
+			runRealGit(['switch', '--create', 'secondary'], fixture.checkout);
+
+			const missingResult = runRealRefresh(fixture, 'missing');
+			const invalidResult = runRealRefresh(fixture, 'bad..branch');
+
+			expect(missingResult.outcome).toBe('blocked');
+			expect(missingResult.message).toContain('unavailable');
+			expect(invalidResult.outcome).toBe('blocked');
+			expect(invalidResult.message).toContain('invalid');
+			expect(runRealGit(['branch', '--show-current'], fixture.checkout)).toBe('secondary');
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
 	test('processRepository clones new repo and returns added', async () => {
 		const { processRepository } = (await import('../src/lib/refresh.ts')) as {
 			processRepository: (
 				repo: {
 					clone_url: string;
+					defaultBranch: string;
 					folderName: string;
 					id: number;
 					name: string;
@@ -1991,6 +2484,7 @@ describe('refresh pipeline', () => {
 		};
 		const repo = {
 			clone_url: 'https://github.com/example/new-repo.git',
+			defaultBranch: 'main',
 			folderName: 'new-repo--example',
 			id: 321,
 			name: 'new-repo',
@@ -2020,6 +2514,7 @@ describe('refresh pipeline', () => {
 			const result = await processRepository(
 				{
 					clone_url: 'https://github.com/example/new-repo.git',
+					defaultBranch: 'main',
 					folderName: 'new-repo--example',
 					id: 321,
 					name: 'new-repo',
@@ -2089,6 +2584,7 @@ describe('refresh pipeline', () => {
 			const result = await processRepository(
 				{
 					clone_url: 'https://github.com/example/new-repo.git',
+					defaultBranch: 'main',
 					folderName: 'new-repo--example',
 					id: 321,
 					name: 'new-repo',
@@ -2130,6 +2626,7 @@ describe('refresh pipeline', () => {
 			const result = await processRepository(
 				{
 					clone_url: 'https://github.com/example/new-repo.git',
+					defaultBranch: 'main',
 					folderName: 'new-repo--example',
 					id: 321,
 					name: 'new-repo',
@@ -2165,6 +2662,7 @@ describe('refresh pipeline', () => {
 			const result = await processRepository(
 				{
 					clone_url: 'https://github.com/new-owner/renamed-repo.git',
+					defaultBranch: 'main',
 					folderName: 'original--old-owner',
 					id: 101,
 					name: 'renamed-repo',
@@ -2202,15 +2700,15 @@ describe('refresh pipeline', () => {
 	test('runSyncPool processes repos with concurrency 1 sequentially', async () => {
 		const mod = await import('../src/lib/refresh.ts');
 		const runSyncPool = mod.runSyncPool;
-		const repos: { clone_url: string; name: string }[] = [
-			{ clone_url: 'https://github.com/a/r1.git', name: 'r1' },
-			{ clone_url: 'https://github.com/a/r2.git', name: 'r2' },
-			{ clone_url: 'https://github.com/a/r3.git', name: 'r3' },
+		const repos: { clone_url: string; defaultBranch: string; name: string }[] = [
+			{ clone_url: 'https://github.com/a/r1.git', defaultBranch: 'main', name: 'r1' },
+			{ clone_url: 'https://github.com/a/r2.git', defaultBranch: 'main', name: 'r2' },
+			{ clone_url: 'https://github.com/a/r3.git', defaultBranch: 'main', name: 'r3' },
 		];
 		const order: string[] = [];
 		const results = await runSyncPool(
 			repos,
-			async (repo: { clone_url: string; name: string }) => {
+			async (repo: { clone_url: string; defaultBranch: string; name: string }) => {
 				order.push(repo.name);
 				return { name: repo.name, outcome: 'added' as const };
 			},
@@ -2226,7 +2724,7 @@ describe('refresh pipeline', () => {
 		const runSyncPool = mod.runSyncPool;
 		const results = await runSyncPool(
 			[],
-			async (repo: { clone_url: string; name: string }) => ({
+			async (repo: { clone_url: string; defaultBranch: string; name: string }) => ({
 				name: repo.name,
 				outcome: 'added' as const,
 			}),
@@ -2239,9 +2737,9 @@ describe('refresh pipeline', () => {
 	test('runSyncPool prints Syncing N/Total progress', async () => {
 		const mod = await import('../src/lib/refresh.ts');
 		const runSyncPool = mod.runSyncPool;
-		const repos: { clone_url: string; name: string }[] = [
-			{ clone_url: 'https://github.com/a/r1.git', name: 'r1' },
-			{ clone_url: 'https://github.com/a/r2.git', name: 'r2' },
+		const repos: { clone_url: string; defaultBranch: string; name: string }[] = [
+			{ clone_url: 'https://github.com/a/r1.git', defaultBranch: 'main', name: 'r1' },
+			{ clone_url: 'https://github.com/a/r2.git', defaultBranch: 'main', name: 'r2' },
 		];
 		const logs: string[] = [];
 		const originalLog = console.log;
@@ -2251,7 +2749,7 @@ describe('refresh pipeline', () => {
 		try {
 			await runSyncPool(
 				repos,
-				async (repo: { clone_url: string; name: string }) => ({
+				async (repo: { clone_url: string; defaultBranch: string; name: string }) => ({
 					name: repo.name,
 					outcome: 'added' as const,
 				}),
@@ -2262,6 +2760,45 @@ describe('refresh pipeline', () => {
 		}
 		expect(logs.some((l) => l.includes('Syncing 1/2'))).toBe(true);
 		expect(logs.some((l) => l.includes('Syncing 2/2'))).toBe(true);
+		expect(logs.some((l) => l.includes('Completed 1/2'))).toBe(true);
+		expect(logs.some((l) => l.includes('Completed 2/2'))).toBe(true);
+	});
+
+	test('runSyncPool reports a heartbeat while repository work is still active', async () => {
+		const { runSyncPool } = await import('../src/lib/refresh.ts');
+		const logs: string[] = [];
+		let finish: (() => void) | undefined;
+		const work = new Promise<void>((resolve) => {
+			finish = resolve;
+		});
+		const operation = runSyncPool(
+			[
+				{
+					clone_url: 'https://github.com/a/slow.git',
+					defaultBranch: 'main',
+					name: 'slow',
+				},
+			],
+			async (repo: { clone_url: string; defaultBranch: string; name: string }) => {
+				await work;
+				return { name: repo.name, outcome: 'current' as const };
+			},
+			{
+				concurrency: 1,
+				heartbeatIntervalMs: 10,
+				onProgress: (message) => logs.push(message),
+				totalCount: 1,
+			}
+		);
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 35));
+			expect(logs.some((line) => line.includes('Still working — 0/1 complete'))).toBe(true);
+			expect(logs.some((line) => line.includes('slow ('))).toBe(true);
+		} finally {
+			finish?.();
+		}
+		await operation;
+		expect(logs.some((line) => line.includes('Completed 1/1 — slow: current'))).toBe(true);
 	});
 
 	test('processRepository returns skipped when interruption is requested', async () => {
@@ -2274,6 +2811,7 @@ describe('refresh pipeline', () => {
 			const result = await processRepository(
 				{
 					clone_url: 'https://github.com/example/existing-repo.git',
+					defaultBranch: 'main',
 					name: 'existing-repo',
 				},
 				root,
@@ -2290,14 +2828,14 @@ describe('refresh pipeline', () => {
 	test('runSyncPool passes isInterruptionRequested callback to processFn', async () => {
 		const mod = await import('../src/lib/refresh.ts');
 		const runSyncPool = mod.runSyncPool;
-		const repos: { clone_url: string; name: string }[] = [
-			{ clone_url: 'https://github.com/a/r1.git', name: 'r1' },
+		const repos: { clone_url: string; defaultBranch: string; name: string }[] = [
+			{ clone_url: 'https://github.com/a/r1.git', defaultBranch: 'main', name: 'r1' },
 		];
 		let callbackReceived: (() => boolean) | null = null;
 		await runSyncPool(
 			repos,
 			async (
-				_repo: { clone_url: string; name: string },
+				_repo: { clone_url: string; defaultBranch: string; name: string },
 				isInterruptionRequested: () => boolean
 			) => {
 				callbackReceived = isInterruptionRequested;
@@ -2528,6 +3066,10 @@ describe('structured command reporting', () => {
 			expect(captured.result).toBe(0);
 			expect(captured.stdout).toContain(
 				'Checkout lifecycle. Active: 1. Retained: 0. Blocked: 0. Pending rename: 0.'
+			);
+			expect(captured.stdout).toContain('Completed 1/1 — repo-a--example: added');
+			expect(captured.stdout.some((line) => line.startsWith('- repo-a--example:'))).toBe(
+				false
 			);
 			expect(captured.stdout).toContain('Succeeded: 1. Failed: 0.');
 		} finally {
