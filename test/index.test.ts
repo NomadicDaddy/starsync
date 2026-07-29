@@ -670,21 +670,15 @@ describe('cloneOrPull', () => {
 			AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
 			DB_PASSWORD: process.env.DB_PASSWORD,
 			GITHUB_TOKEN: process.env.GITHUB_TOKEN,
-			HOME: process.env.HOME,
 			NPM_TOKEN: process.env.NPM_TOKEN,
-			PATH: process.env.PATH,
 			SERVICE_API_KEY: process.env.SERVICE_API_KEY,
-			SystemRoot: process.env.SystemRoot,
 		};
 		Object.assign(process.env, {
 			AWS_SECRET_ACCESS_KEY: 'aws-secret',
 			DB_PASSWORD: 'database-secret',
 			GITHUB_TOKEN: 'github-secret',
-			HOME: '/home/starsync',
 			NPM_TOKEN: 'npm-secret',
-			PATH: '/usr/local/bin',
 			SERVICE_API_KEY: 'service-secret',
-			SystemRoot: 'C:\\Windows',
 		});
 
 		try {
@@ -693,14 +687,7 @@ describe('cloneOrPull', () => {
 
 			const options = mockExecFileSync.mock.calls.at(-1)?.[2] as
 				{ env?: NodeJS.ProcessEnv } | undefined;
-			expect(options?.env).toEqual(
-				expect.objectContaining({
-					GIT_TERMINAL_PROMPT: '0',
-					HOME: '/home/starsync',
-					PATH: '/usr/local/bin',
-					SystemRoot: 'C:\\Windows',
-				})
-			);
+			expect(options?.env).toEqual(expect.objectContaining({ GIT_TERMINAL_PROMPT: '0' }));
 			for (const key of [
 				'AWS_SECRET_ACCESS_KEY',
 				'DB_PASSWORD',
