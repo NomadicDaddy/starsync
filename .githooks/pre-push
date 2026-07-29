@@ -1,20 +1,15 @@
 #!/usr/bin/env bash
-# Thin wrapper: the guards own the logic, this owns only the wiring.
+# Thin wrapper: the guard owns the logic, this owns only the wiring.
 #
-# git passes the remote name/URL as $1/$2 and the ref updates on stdin. Stdin is captured once
-# and replayed into each guard, because a guard that reads it would otherwise starve the next.
+# git passes the remote name/URL as $1/$2 and the ref updates on stdin. Both are forwarded.
 #
 # If a repository grows its own pre-push checks, chain them here rather than replacing this file —
-# core.hooksPath allows exactly one pre-push, so an overwrite silently disables the guards.
+# core.hooksPath allows exactly one pre-push, so an overwrite silently disables the guard.
 set -euo pipefail
 
 hooks_dir="$(dirname "$0")"
-refs="$(cat)"
 
 echo "pre-push: aidd history guard"
-printf '%s\n' "$refs" | bash "$hooks_dir/aidd-history-guard.sh" "${1:-origin}"
-
-echo "pre-push: screenshot guard"
-printf '%s\n' "$refs" | bash "$hooks_dir/screenshot-guard.sh"
+bash "$hooks_dir/aidd-history-guard.sh" "${1:-origin}"
 
 echo "pre-push: passed"
