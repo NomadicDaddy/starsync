@@ -6,16 +6,23 @@ import { inspectArchive } from './archive-migration.ts';
 import { verifyCheckout } from './archive-verification-checkout.ts';
 import { applyDuplicateIdentityFindings } from './archive-verification-duplicates.ts';
 import {
+	repairAnomalousCheckout,
+	type ArchiveVerificationRepairOptions,
+} from './archive-verification-repair.ts';
+import {
 	createInspectionFailureResult,
 	finalizeVerificationResult,
 	validateArchiveOwner,
 } from './archive-verification-reporting.ts';
+import { createFinding } from './reporting.ts';
+import { removeAbandonedStagingCheckout, STAGED_CHECKOUT_PREFIX } from './staged-checkout.ts';
 
 const VERIFICATION_CONCURRENCY = 4;
 
 export interface ArchiveVerificationOptions {
 	isInterruptionRequested?: () => boolean;
 	onProgress?: (message: string) => void;
+	repair?: ArchiveVerificationRepairOptions;
 }
 
 export interface ArchiveVerificationResult {
@@ -35,6 +42,101 @@ const inspectForVerification = (
 	}
 };
 
+const removeAbandonedStagingEntry = (
+	entry: ArchiveInspection['entries'][number],
+	targetPath: string
+): VerifiedCheckout => {
+	try {
+		removeAbandonedStagingCheckout(targetPath, entry.path);
+		return {
+			report: {
+				findings: [
+					createFinding(
+						'info',
+						'abandoned-staging-checkout-removed',
+						'Abandoned StarSync staging checkout was permanently removed.'
+					),
+				],
+				lifecycle: null,
+				name: entry.name,
+				outcome: 'updated',
+				pendingRename: false,
+			},
+			repositoryId: null,
+			repositorySlug: null,
+		};
+	} catch (err) {
+		return {
+			report: {
+				findings: [
+					createFinding(
+						'error',
+						'abandoned-staging-checkout-remove-failed',
+						`Cannot remove abandoned StarSync staging checkout: ${
+							err instanceof Error ? err.message : String(err)
+						}`
+					),
+				],
+				lifecycle: 'blocked',
+				name: entry.name,
+				outcome: 'failed',
+				pendingRename: false,
+			},
+			repositoryId: null,
+			repositorySlug: null,
+		};
+	}
+};
+
+const verifyEntry = async (
+	entry: ArchiveInspection['entries'][number],
+	inspection: ArchiveInspection,
+	index: number,
+	options: ArchiveVerificationOptions
+): Promise<VerifiedCheckout> => {
+	if (options.repair !== undefined && entry.name.startsWith(STAGED_CHECKOUT_PREFIX)) {
+		options.onProgress?.(`Removing abandoned staging checkout — ${entry.name}`);
+		return removeAbandonedStagingEntry(entry, options.repair.targetPath);
+	}
+	const verified = await verifyCheckout(entry, inspection.kind);
+	const replaceable = verified.report.findings.some(
+		(finding) => finding.code === 'git-integrity-failed' || finding.code === 'checkout-blocked'
+	);
+	if (options.repair === undefined || !replaceable) return verified;
+	options.onProgress?.(
+		`Recloning anomalous checkout ${index + 1}/${inspection.entries.length} — ${entry.name}`
+	);
+	const repaired = await repairAnomalousCheckout(entry, verified, options.repair);
+	if (!repaired.ok) {
+		verified.report.findings.push(
+			createFinding('error', 'checkout-reclone-failed', repaired.reason)
+		);
+		return verified;
+	}
+	const replacement = await verifyCheckout(
+		{
+			...entry,
+			gitError: null,
+			origin: `https://github.com/${repaired.repository.slug}.git`,
+		},
+		inspection.kind
+	);
+	replacement.report.findings.unshift(
+		createFinding(
+			'info',
+			'checkout-recloned',
+			`Anomalous checkout was replaced from ${repaired.repository.slug}.`
+		)
+	);
+	if (repaired.cleanupWarning !== null) {
+		replacement.report.findings.push(
+			createFinding('warning', 'damaged-checkout-cleanup-failed', repaired.cleanupWarning)
+		);
+	}
+	if (replacement.report.lifecycle === 'active') replacement.report.outcome = 'updated';
+	return replacement;
+};
+
 const verifyEntries = async (
 	inspection: ArchiveInspection,
 	options: ArchiveVerificationOptions
@@ -49,7 +151,7 @@ const verifyEntries = async (
 			options.onProgress?.(
 				`Verifying ${index + 1}/${inspection.entries.length} — ${entry.name}`
 			);
-			results[index] = await verifyCheckout(entry, inspection.kind);
+			results[index] = await verifyEntry(entry, inspection, index, options);
 		}
 	};
 	const count = Math.min(VERIFICATION_CONCURRENCY, inspection.entries.length);

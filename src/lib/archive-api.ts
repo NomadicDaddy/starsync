@@ -33,7 +33,10 @@ export interface SyncArchiveOptions extends ArchiveOperationOptions {
 	token: string;
 }
 
-export type VerifyArchiveOptions = ArchiveOperationOptions;
+export interface VerifyArchiveOptions extends ArchiveOperationOptions {
+	force?: boolean;
+	token?: string;
+}
 
 export const initArchive = (options: InitArchiveOptions): Promise<CommandReport> =>
 	withArchiveOperationLock('init', options, (held) => initArchiveUnlocked(options, held));

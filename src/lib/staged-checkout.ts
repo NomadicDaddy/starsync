@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -14,7 +15,9 @@ import {
 	sanitizeMessage,
 	sanitizeUrl,
 } from './secret-safety.ts';
+import { cloneRepositoryForCurrentPlatform } from './windows-checkout.ts';
 
+export const DAMAGED_CHECKOUT_PREFIX = '.starsync-damaged-';
 export const STAGED_CHECKOUT_PREFIX = '.starsync-checkout-';
 
 export interface StagedCheckoutRepository {
@@ -26,6 +29,10 @@ export interface StagedCheckoutRepository {
 
 export interface StagedCheckoutOptions {
 	archiveOwnerId: number;
+}
+
+export interface ReplacedCheckout {
+	cleanupWarning: null | string;
 }
 
 const sleep = (ms: number): Promise<void> =>
@@ -91,7 +98,7 @@ const assertDestinationAvailable = (destinationPath: string, folderName: string)
 	}
 };
 
-const removeOwnedStagingDirectory = (targetBase: string, stagingPath: string): void => {
+export const removeAbandonedStagingCheckout = (targetBase: string, stagingPath: string): void => {
 	const resolvedTarget = path.resolve(targetBase);
 	const resolvedStaging = path.resolve(stagingPath);
 	if (
@@ -105,7 +112,7 @@ const removeOwnedStagingDirectory = (targetBase: string, stagingPath: string): v
 
 const tryRemoveOwnedStagingDirectory = (targetBase: string, stagingPath: string): Error | null => {
 	try {
-		removeOwnedStagingDirectory(targetBase, stagingPath);
+		removeAbandonedStagingCheckout(targetBase, stagingPath);
 		return null;
 	} catch (err) {
 		return err instanceof Error ? err : new Error(String(err));
@@ -136,6 +143,8 @@ const validateStagedCheckout = async (
 	}
 
 	await runGit(['fsck', '--full'], { cwd: stagingPath });
+	const status = await runGit(['status', '--porcelain'], { cwd: stagingPath });
+	if (status) throw new Error('Staged checkout contains local changes after cloning.');
 	await writeCheckoutIdentity(stagingPath, {
 		repositoryId: repository.repositoryId,
 		repositorySlug: repository.repositorySlug,
@@ -147,6 +156,44 @@ const validateStagedCheckout = async (
 	) {
 		throw new Error('Staged checkout identity validation failed.');
 	}
+};
+
+const cloneValidatedCheckout = async (
+	repository: StagedCheckoutRepository,
+	targetBase: string,
+	options: StagedCheckoutOptions
+): Promise<string> => {
+	for (let attempt = 0; attempt < 2; attempt++) {
+		assertArchiveOwner(targetBase, options.archiveOwnerId);
+		const stagingPath = fs.mkdtempSync(path.join(targetBase, STAGED_CHECKOUT_PREFIX));
+		try {
+			await cloneRepositoryForCurrentPlatform(
+				repository.cloneUrl,
+				path.basename(stagingPath),
+				targetBase
+			);
+			await validateStagedCheckout(stagingPath, repository);
+			assertArchiveOwner(targetBase, options.archiveOwnerId);
+			return stagingPath;
+		} catch (err) {
+			const cleanupError = tryRemoveOwnedStagingDirectory(targetBase, stagingPath);
+			const sanitizedFailure = sanitizeMessage(errorMessage(err));
+			if (cleanupError !== null) {
+				throw new Error(
+					`${sanitizedFailure} StarSync could not remove its staging directory: ${sanitizeMessage(
+						errorMessage(cleanupError)
+					)}`,
+					{ cause: err }
+				);
+			}
+			if (attempt === 0 && isTransientGitError(sanitizedFailure)) {
+				await sleep(1000);
+				continue;
+			}
+			throw new Error(sanitizedFailure, { cause: err });
+		}
+	}
+	throw new Error('Checkout clone attempts were exhausted.');
 };
 
 /**
@@ -163,38 +210,74 @@ export const createStagedCheckout = async (
 ): Promise<void> => {
 	assertRepositoryRequest(repository);
 	const destinationPath = path.join(targetBase, repository.folderName);
-
-	for (let attempt = 0; attempt < 2; attempt++) {
+	assertArchiveOwner(targetBase, options.archiveOwnerId);
+	assertDestinationAvailable(destinationPath, repository.folderName);
+	const stagingPath = await cloneValidatedCheckout(repository, targetBase, options);
+	try {
 		assertArchiveOwner(targetBase, options.archiveOwnerId);
 		assertDestinationAvailable(destinationPath, repository.folderName);
+		fs.renameSync(stagingPath, destinationPath);
+	} catch (err) {
+		const cleanupError = tryRemoveOwnedStagingDirectory(targetBase, stagingPath);
+		if (cleanupError !== null) {
+			throw new Error(
+				`${sanitizeMessage(errorMessage(err))} StarSync could not remove its staging directory: ${sanitizeMessage(
+					errorMessage(cleanupError)
+				)}`,
+				{ cause: err }
+			);
+		}
+		throw err;
+	}
+};
 
-		const stagingPath = fs.mkdtempSync(path.join(targetBase, STAGED_CHECKOUT_PREFIX));
+/**
+ * Replaces an anomalous managed checkout only after its fresh clone is fully validated.
+ *
+ * The original directory is moved aside on the same filesystem immediately before publication.
+ * A failed publication rolls it back; a successful publication then removes the old directory.
+ */
+export const replaceAnomalousCheckout = async (
+	repository: StagedCheckoutRepository,
+	targetBase: string,
+	options: StagedCheckoutOptions
+): Promise<ReplacedCheckout> => {
+	assertRepositoryRequest(repository);
+	const destinationPath = path.join(targetBase, repository.folderName);
+	if (!fs.existsSync(path.join(destinationPath, '.git'))) {
+		throw new Error(`Anomalous checkout ${repository.folderName} is no longer present.`);
+	}
+	const stagingPath = await cloneValidatedCheckout(repository, targetBase, options);
+	const backupPath = path.join(targetBase, `${DAMAGED_CHECKOUT_PREFIX}${randomUUID()}`);
+	try {
+		assertArchiveOwner(targetBase, options.archiveOwnerId);
+		fs.renameSync(destinationPath, backupPath);
 		try {
-			await runGit(['clone', repository.cloneUrl, path.basename(stagingPath)], {
-				cwd: targetBase,
-			});
-			await validateStagedCheckout(stagingPath, repository);
-			assertArchiveOwner(targetBase, options.archiveOwnerId);
 			assertDestinationAvailable(destinationPath, repository.folderName);
 			fs.renameSync(stagingPath, destinationPath);
-			return;
 		} catch (err) {
-			const cleanupError = tryRemoveOwnedStagingDirectory(targetBase, stagingPath);
-
-			const sanitizedFailure = sanitizeMessage(errorMessage(err));
-			if (cleanupError !== null) {
-				throw new Error(
-					`${sanitizedFailure} StarSync could not remove its staging directory: ${sanitizeMessage(
-						errorMessage(cleanupError)
-					)}`,
-					{ cause: err }
-				);
-			}
-			if (attempt === 0 && isTransientGitError(sanitizedFailure)) {
-				await sleep(1000);
-				continue;
-			}
-			throw new Error(sanitizedFailure, { cause: err });
+			fs.renameSync(backupPath, destinationPath);
+			throw err;
 		}
+	} catch (err) {
+		const cleanupError = tryRemoveOwnedStagingDirectory(targetBase, stagingPath);
+		const cleanupMessage =
+			cleanupError === null
+				? ''
+				: ` StarSync could not remove its staging directory: ${sanitizeMessage(
+						errorMessage(cleanupError)
+					)}`;
+		throw new Error(`${sanitizeMessage(errorMessage(err))}${cleanupMessage}`, { cause: err });
+	}
+
+	try {
+		fs.rmSync(backupPath, { force: true, recursive: true });
+		return { cleanupWarning: null };
+	} catch (err) {
+		return {
+			cleanupWarning: `Fresh checkout was published, but the replaced directory remains at ${path.basename(
+				backupPath
+			)}: ${sanitizeMessage(errorMessage(err))}`,
+		};
 	}
 };

@@ -98,7 +98,10 @@ const createInterruptedReports = (
 
 const addSuccessFindings = (verified: VerifiedCheckout[]): void => {
 	for (const checkout of verified) {
-		if (checkout.report.findings.every((finding) => finding.severity !== 'error')) {
+		if (
+			checkout.report.lifecycle !== null &&
+			checkout.report.findings.every((finding) => finding.severity !== 'error')
+		) {
 			checkout.report.findings.push(
 				createFinding('info', 'checkout-verified', 'Checkout verification passed.')
 			);

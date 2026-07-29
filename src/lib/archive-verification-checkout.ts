@@ -20,6 +20,7 @@ import {
 export interface VerifiedCheckout {
 	report: CheckoutReport;
 	repositoryId: null | number;
+	repositorySlug: null | string;
 }
 
 interface GitCommandError {
@@ -78,6 +79,7 @@ const failEntry = (entry: ArchiveEntry, code: string, message: string): Verified
 		pendingRename: false,
 	},
 	repositoryId: null,
+	repositorySlug: null,
 });
 
 const addBlockedFinding = (state: VerificationState, code: string, message: string): void => {
@@ -278,5 +280,6 @@ export const verifyCheckout = async (
 			pendingRename,
 		},
 		repositoryId: state.repositoryId,
+		repositorySlug: state.repositorySlug,
 	};
 };

@@ -24,7 +24,8 @@ yarn, and pnpm before they install dependencies.
 
 StarSync separates API authentication from Git transport authentication:
 
-- **GitHub API** (listing starred repos): uses `GITHUB_TOKEN` via Octokit. Required for `sync`, `init`, and `migrate`.
+- **GitHub API** (listing or resolving starred repositories): uses `GITHUB_TOKEN` via Octokit. Required
+  for `sync`, `init`, `migrate`, and `verify --force`.
 - **Git clone/fetch** (transport): uses your system Git credentials — Git Credential Manager or SSH
   keys. StarSync never embeds the API token in Git operations.
 
@@ -109,20 +110,31 @@ their owned staging directory, while occupied destinations remain untouched. A r
 transfer keeps using the existing checkout and reports a pending rename until migration is
 explicitly applied. Duplicate identities and occupied canonical folders are errors and are never
 published or renamed over. After each successful add or refresh, StarSync aligns the checkout
-folder timestamp with its Archive Date.
+folder timestamp with its Archive Date. On Windows, staged clones retain the complete Git object
+database while marking NTFS-incompatible paths as `skip-worktree`; every portable path is
+materialized and the resulting checkout remains clean.
 
 `dates` is fully local and does not require `GITHUB_TOKEN` or network access. It recognizes managed
 checkouts by their stable local identity, calculates each Archive Date from the newest committer
 time reachable across all local Git references, and repairs folder timestamps. Use `--dry-run` to
 preview the same repairs without changing the archive.
 
-`verify` is fully local and does not require `GITHUB_TOKEN` or network access. It runs Git object
-integrity checks, validates origins and checkout state, detects duplicate identities and pending
-renames, and verifies managed archive owner binding. Managed archive config records
-`owner: { id, login }`; checkout-local Git config records `starsync.repository-id` and
-`starsync.repository-slug`. Missing identity metadata is an expected warning for legacy archives
-and an error for managed archives. Verification never repairs Git data, writes metadata, renames
-folders, or updates timestamps.
+Without `--force`, `verify` is fully local and does not require `GITHUB_TOKEN` or network access.
+It runs Git object integrity checks, validates origins and checkout state, detects duplicate
+identities and pending renames, and verifies managed archive owner binding. Managed archive config
+records `owner: { id, login }`; checkout-local Git config records `starsync.repository-id` and
+`starsync.repository-slug`. Missing identity metadata is an expected warning for legacy archives and
+an error for managed archives.
+
+`verify --force` is an explicit destructive recovery mode for current managed archives. A checkout
+that fails Git integrity or contains any staged, unstaged, untracked, or conflicted local changes is
+resolved to its canonical GitHub repository and freshly cloned into a StarSync-owned staging
+directory. StarSync validates the clone's origin, objects, archive owner, and identity before
+moving the anomalous checkout aside and publishing the replacement. Failed resolution, cloning, or
+validation leaves the original checkout in place. After successful publication, the replaced
+directory is permanently removed. `GITHUB_TOKEN` is required and must authenticate as the archive
+owner. Pre-existing `.starsync-checkout-*` directories are owned staging artifacts left by
+interrupted operations; forced verification removes them while holding the archive operation lock.
 
 Common options:
 
@@ -133,6 +145,7 @@ Common options:
 | `--dry-run`       | Preview `sync` or `dates` without changing the archive           |
 | `--concurrency=N` | Process 1-8 repositories concurrently during `sync` (default: 4) |
 | `--apply`         | Apply `migrate` identity backfill and safe canonical renames     |
+| `--force`         | Re-clone damaged or locally modified checkouts; force uncertain unlocks |
 
 ### Structured reporting
 

@@ -148,7 +148,7 @@ export const dispatchSync = async (argv: string[]): Promise<number> => {
 export const dispatchVerify = async (argv: string[]): Promise<number> => {
 	let args: ParsedSubcommandArgs;
 	try {
-		args = parseSubcommandArgs(argv);
+		args = parseSubcommandArgs(argv, true);
 	} catch (err) {
 		return emitUsageError('verify', argv, VERIFY_HELP_TEXT, err);
 	}
@@ -164,9 +164,11 @@ export const dispatchVerify = async (argv: string[]): Promise<number> => {
 	let report: CommandReport;
 	try {
 		report = await verifyArchive({
+			force: args.force,
 			onProgress: reporter.progress,
 			signal: interrupt.signal,
 			targetPath,
+			token: process.env.GITHUB_TOKEN ?? '',
 		});
 	} finally {
 		interrupt.dispose();
