@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import type { ProcessRepositoryOptions, RefreshResult, RepoRecord } from './refresh.ts';
 
-import { finalizeCheckoutIdentity } from './checkout-identity.ts';
+import { finalizeCheckoutIdentity } from './checkout-state-transition.ts';
 import { refreshCheckoutOnDefaultBranch } from './default-branch-refresh.ts';
 import { buildRefreshFailure, cloneRepository } from './refresh-clone.ts';
 

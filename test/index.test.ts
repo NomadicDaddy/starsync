@@ -228,6 +228,8 @@ const createRealRefreshFixture = (root: string): RealRefreshFixture => {
 		['config', '--local', `url.${pathToFileURL(origin).href}.insteadOf`, cloneUrl],
 		checkout
 	);
+	runRealGit(['config', '--local', 'starsync.repository-id', '321'], checkout);
+	runRealGit(['config', '--local', 'starsync.repository-slug', 'example/repository'], checkout);
 
 	return { archive, checkout, cloneUrl, origin, seed };
 };
@@ -298,18 +300,36 @@ const mockManagedCheckoutIdentity = (
 	status = '',
 	archiveDate = '2026-07-16T10:00:00Z'
 ): void => {
+	let currentOrigin = `https://github.com/${repositorySlug}.git`;
+	let currentRepositoryId = String(repositoryId);
+	let currentRepositorySlug = repositorySlug;
 	mockExecFile.mockImplementation((_cmd, args, options, callback) => {
 		const cwd = (options as { cwd?: string } | undefined)?.cwd ?? '';
+		if (path.basename(cwd) === folderName && args[0] === 'remote' && args[1] === 'set-url') {
+			currentOrigin = args.at(-1) ?? currentOrigin;
+			callback(null, '', '');
+			return;
+		}
+		if (path.basename(cwd) === folderName && args[0] === 'config' && !args.includes('--get')) {
+			if (args.includes('starsync.repository-id')) {
+				currentRepositoryId = args.at(-1) ?? currentRepositoryId;
+			}
+			if (args.includes('starsync.repository-slug')) {
+				currentRepositorySlug = args.at(-1) ?? currentRepositorySlug;
+			}
+			callback(null, '', '');
+			return;
+		}
 		if (path.basename(cwd) === folderName && args.includes('--get')) {
 			if (args.includes('remote.origin.url')) {
-				callback(null, `https://github.com/${repositorySlug}.git\n`, '');
+				callback(null, `${currentOrigin}\n`, '');
 				return;
 			}
 			callback(
 				null,
 				args.includes('starsync.repository-id')
-					? `${repositoryId}\n`
-					: `${repositorySlug}\n`,
+					? `${currentRepositoryId}\n`
+					: `${currentRepositorySlug}\n`,
 				''
 			);
 			return;
@@ -1899,9 +1919,7 @@ describe('refresh pipeline', () => {
 		const { processRepository } = await import('../src/lib/refresh.ts');
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-refresh-rename-'));
 		const checkout = createCheckout(target, 'original--old-owner');
-		mockExecFile.mockImplementation((_cmd, args, _options, callback) => {
-			callback(null, args.includes('status') ? '' : '', '');
-		});
+		mockManagedCheckoutIdentity('original--old-owner', 101, 'old-owner/original');
 
 		try {
 			const result = await processRepository(

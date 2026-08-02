@@ -25,6 +25,7 @@ const EXTRACTED_MODULES = new Set([
 	'src/lib/checkout-rename-apply.ts',
 	'src/lib/checkout-rename-classification.ts',
 	'src/lib/checkout-rename-resolution.ts',
+	'src/lib/checkout-state-transition.ts',
 	'src/lib/dates-command.ts',
 	'src/lib/dates-discovery.ts',
 	'src/lib/dates-reporting.ts',
