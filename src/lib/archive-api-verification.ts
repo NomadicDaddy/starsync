@@ -1,4 +1,5 @@
 import type { VerifyArchiveOptions } from './archive-api-contract.ts';
+import type { HeldArchiveLock } from './archive-lock.ts';
 import type { ArchiveVerificationRepairOptions } from './archive-verification-repair.ts';
 import type { ArchiveVerificationOptions } from './archive-verification.ts';
 import type { CommandReport } from './reporting.ts';
@@ -14,6 +15,7 @@ import {
 import { getAuthenticatedArchiveOwner, readArchiveConfig } from './archive-config.ts';
 import { getArchiveModificationFinding } from './archive-inspection.ts';
 import { verifyArchive as verifyArchiveContents } from './archive-verification.ts';
+import { cleanupOwnedCheckoutArtifacts } from './owned-checkout-artifacts.ts';
 import { createCommandReport } from './reporting.ts';
 import { createGitHubRepositoryResolver } from './repository-resolution.ts';
 import { sanitizeMessage } from './secret-safety.ts';
@@ -72,7 +74,8 @@ const prepareForcedRepair = async (
 
 const runVerification = async (
 	options: VerifyArchiveOptions,
-	context: VerifyContext
+	context: VerifyContext,
+	held: HeldArchiveLock | null
 ): Promise<CommandReport> => {
 	const repair = context.force
 		? await prepareForcedRepair(context.targetPath, context.token)
@@ -83,19 +86,24 @@ const runVerification = async (
 	};
 	if (options.onProgress !== undefined) verificationOptions.onProgress = options.onProgress;
 	if (repair !== undefined) verificationOptions.repair = repair;
+	const cleanupFindings =
+		repair === undefined
+			? []
+			: cleanupOwnedCheckoutArtifacts(context.targetPath, held, options.onProgress);
 	const result = await verifyArchiveContents(context.targetPath, verificationOptions);
 	return createCommandReport({
 		checkouts: result.checkouts,
 		command: 'verify',
 		exitCode: result.exitCode,
-		findings: result.findings,
+		findings: [...result.findings, ...cleanupFindings],
 		interrupted: result.interrupted,
 		targetPath: context.targetPath,
 	});
 };
 
 export const verifyArchiveUnlocked = async (
-	options: VerifyArchiveOptions
+	options: VerifyArchiveOptions,
+	held: HeldArchiveLock | null
 ): Promise<CommandReport> => {
 	const context = prepareVerifyContext(options);
 	if ('command' in context) return context;
@@ -106,7 +114,7 @@ export const verifyArchiveUnlocked = async (
 			: 'Verification is read-only; no archive data will be changed.'
 	);
 	try {
-		return await runVerification(options, context);
+		return await runVerification(options, context, held);
 	} catch (err) {
 		return operationFailureReport(
 			'verify',

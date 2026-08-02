@@ -15,7 +15,6 @@ import {
 	validateArchiveOwner,
 } from './archive-verification-reporting.ts';
 import { createFinding } from './reporting.ts';
-import { removeAbandonedStagingCheckout, STAGED_CHECKOUT_PREFIX } from './staged-checkout.ts';
 
 const VERIFICATION_CONCURRENCY = 4;
 
@@ -42,62 +41,12 @@ const inspectForVerification = (
 	}
 };
 
-const removeAbandonedStagingEntry = (
-	entry: ArchiveInspection['entries'][number],
-	targetPath: string
-): VerifiedCheckout => {
-	try {
-		removeAbandonedStagingCheckout(targetPath, entry.path);
-		return {
-			report: {
-				findings: [
-					createFinding(
-						'info',
-						'abandoned-staging-checkout-removed',
-						'Abandoned StarSync staging checkout was permanently removed.'
-					),
-				],
-				lifecycle: null,
-				name: entry.name,
-				outcome: 'updated',
-				pendingRename: false,
-			},
-			repositoryId: null,
-			repositorySlug: null,
-		};
-	} catch (err) {
-		return {
-			report: {
-				findings: [
-					createFinding(
-						'error',
-						'abandoned-staging-checkout-remove-failed',
-						`Cannot remove abandoned StarSync staging checkout: ${
-							err instanceof Error ? err.message : String(err)
-						}`
-					),
-				],
-				lifecycle: 'blocked',
-				name: entry.name,
-				outcome: 'failed',
-				pendingRename: false,
-			},
-			repositoryId: null,
-			repositorySlug: null,
-		};
-	}
-};
-
 const verifyEntry = async (
 	entry: ArchiveInspection['entries'][number],
 	inspection: ArchiveInspection,
 	index: number,
 	options: ArchiveVerificationOptions
 ): Promise<VerifiedCheckout> => {
-	if (options.repair !== undefined && entry.name.startsWith(STAGED_CHECKOUT_PREFIX)) {
-		options.onProgress?.(`Removing abandoned staging checkout — ${entry.name}`);
-		return removeAbandonedStagingEntry(entry, options.repair.targetPath);
-	}
 	const verified = await verifyCheckout(entry);
 	const replaceable = verified.report.findings.some(
 		(finding) =>
