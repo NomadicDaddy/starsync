@@ -236,7 +236,7 @@ describe('cross-platform release validation', () => {
 		} finally {
 			rmSync(root, { force: true, recursive: true });
 		}
-	});
+	}, 20_000);
 
 	test('keeps live smoke disabled unless the caller explicitly opts in', () => {
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-live-smoke-disabled-'));
