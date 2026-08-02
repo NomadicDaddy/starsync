@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { readArchiveConfig } from './archive-config.ts';
+import { cloneManagedCheckout } from './checkout-clone.ts';
 import {
 	canonicalCheckoutName,
 	readCheckoutIdentity,
@@ -15,7 +16,6 @@ import {
 	sanitizeMessage,
 	sanitizeUrl,
 } from './secret-safety.ts';
-import { cloneRepositoryForCurrentPlatform } from './windows-checkout.ts';
 
 export const DAMAGED_CHECKOUT_PREFIX = '.starsync-damaged-';
 export const STAGED_CHECKOUT_PREFIX = '.starsync-checkout-';
@@ -167,11 +167,7 @@ const cloneValidatedCheckout = async (
 		assertArchiveOwner(targetBase, options.archiveOwnerId);
 		const stagingPath = fs.mkdtempSync(path.join(targetBase, STAGED_CHECKOUT_PREFIX));
 		try {
-			await cloneRepositoryForCurrentPlatform(
-				repository.cloneUrl,
-				path.basename(stagingPath),
-				targetBase
-			);
+			await cloneManagedCheckout(repository.cloneUrl, path.basename(stagingPath), targetBase);
 			await validateStagedCheckout(stagingPath, repository);
 			assertArchiveOwner(targetBase, options.archiveOwnerId);
 			return stagingPath;
