@@ -1,6 +1,6 @@
 {
 	"name": "starsync",
-	"version": "1.4.1",
+	"version": "1.5.0",
 	"private": true,
 	"packageManager": "bun@1.3.14",
 	"author": "NomadicDaddy",
@@ -26,20 +26,20 @@
 	},
 	"scripts": {
 		"build": "bun build ./src/cli.ts --target=bun --outdir=dist",
-		"check:max-lines": "bun scripts/check-max-lines.ts",
+		"check:max-lines": "bun ./scripts/check-max-lines.ts",
 		"compile": "bun build ./src/cli.ts --compile --outfile=dist/starsync",
 		"deploy": "bun run compile",
 		"format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\" \"test/**/*.ts\"",
 		"format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\" \"test/**/*.ts\"",
 		"lint": "eslint src scripts test eslint.config.js --max-warnings 0",
 		"lint:fix": "eslint src scripts test eslint.config.js --fix --max-warnings 0",
-		"smoke:live": "bun scripts/live-smoke.ts",
+		"smoke:live": "bun ./scripts/live-smoke.ts",
 		"smoke:qc": "bun run check:max-lines && bun run typecheck && bun run lint && bun run format:check && bun run test",
-		"start": "bun src/cli.ts",
-		"sync": "bun ./src/cli.ts",
-		"test": "bun scripts/test.ts",
+		"start": "bun ./src/cli.ts",
+		"sync": "bun ./src/cli.ts sync",
+		"test": "bun ./scripts/test.ts",
 		"typecheck": "tsc --noEmit",
-		"preinstall": "bun scripts/require-bun.ts"
+		"preinstall": "bun ./scripts/require-bun.ts"
 	},
 	"type": "module",
 	"bin": {
