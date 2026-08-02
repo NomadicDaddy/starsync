@@ -10,9 +10,9 @@ import {
 	skipsLfsContent,
 	withoutLfsContent,
 } from './git-recovery.ts';
+import { isOwnedStagingCheckoutName } from './owned-checkout-artifacts.ts';
 import { isUnrepresentablePathFailure, materializeExcludedCheckout } from './windows-checkout.ts';
 
-const STAGED_CHECKOUT_PREFIX = '.starsync-checkout-';
 const MAX_CLONE_ATTEMPTS = 3;
 
 const resetOwnedStagingDirectory = (targetBase: string, stagingName: string): void => {
@@ -20,7 +20,7 @@ const resetOwnedStagingDirectory = (targetBase: string, stagingName: string): vo
 	const stagingPath = path.resolve(targetBase, stagingName);
 	if (
 		path.dirname(stagingPath) !== resolvedTarget ||
-		!path.basename(stagingPath).startsWith(STAGED_CHECKOUT_PREFIX)
+		!isOwnedStagingCheckoutName(path.basename(stagingPath))
 	) {
 		throw new Error('Refusing to reset a directory that StarSync does not own.');
 	}

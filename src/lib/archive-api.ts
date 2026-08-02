@@ -39,12 +39,12 @@ export const syncArchive = (options: SyncArchiveOptions): Promise<CommandReport>
 	withArchiveOperationLock(
 		'sync',
 		options,
-		() => syncArchiveUnlocked(options),
+		(held) => syncArchiveUnlocked(options, held),
 		options.dryRun ?? false
 	);
 
 export const verifyArchive = (options: VerifyArchiveOptions): Promise<CommandReport> =>
-	withArchiveOperationLock('verify', options, () => verifyArchiveUnlocked(options));
+	withArchiveOperationLock('verify', options, (held) => verifyArchiveUnlocked(options, held));
 
 export { unlockArchive };
 export { DEFAULT_ARCHIVE_CONCURRENCY } from './archive-api-contract.ts';

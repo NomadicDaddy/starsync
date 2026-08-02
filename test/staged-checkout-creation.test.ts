@@ -15,7 +15,14 @@ import { pathToFileURL } from 'node:url';
 import type { ArchiveVerificationResult } from '../src/lib/archive-verification.ts';
 import type { RepoRecord, RefreshResult } from '../src/lib/refresh.ts';
 
-import { DAMAGED_CHECKOUT_PREFIX, STAGED_CHECKOUT_PREFIX } from '../src/lib/staged-checkout.ts';
+import { inspectArchive } from '../src/lib/archive-inspection.ts';
+import { acquireArchiveLock, releaseArchiveLock } from '../src/lib/archive-lock.ts';
+import { planManagedSync } from '../src/lib/managed-checkout-planning.ts';
+import {
+	cleanupOwnedCheckoutArtifacts,
+	DAMAGED_CHECKOUT_PREFIX,
+	STAGED_CHECKOUT_PREFIX,
+} from '../src/lib/owned-checkout-artifacts.ts';
 
 const runCommand = (
 	command: string,
@@ -120,11 +127,13 @@ const runForcedVerification = (
 		owner: string;
 		slug: string;
 	},
-	gitEnv: NodeJS.ProcessEnv
+	gitEnv: NodeJS.ProcessEnv,
+	failDamagedCleanup = false
 ): ArchiveVerificationResult => {
 	const helperPath = path.resolve('test/helpers/run-forced-verification.ts');
 	const output = runCommand(process.execPath, [helperPath, target], target, {
 		...gitEnv,
+		TEST_FAIL_DAMAGED_CLEANUP: failDamagedCleanup ? '1' : '0',
 		TEST_RESOLVED_REPOSITORY: JSON.stringify(repository),
 	});
 	return JSON.parse(output) as ArchiveVerificationResult;
@@ -302,6 +311,87 @@ describe('staged checkout creation process boundary', () => {
 		}
 	});
 
+	test('keeps failed damaged cleanup out of later archive inspection and planning', async () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-damaged-cleanup-'));
+		const target = path.join(root, 'archive');
+		const destination = path.join(target, 'repository--example');
+		const cloneUrl = 'https://github.com/example/repository.git';
+		mkdirSync(target);
+		writeManagedArchiveConfig(target);
+		const origin = createLocalOrigin(root);
+		const gitEnv = createLocalCloneEnvironment(root, cloneUrl, origin);
+
+		try {
+			expect(
+				runStagedCheckout(
+					{
+						clone_url: cloneUrl,
+						defaultBranch: 'main',
+						folderName: 'repository--example',
+						id: 321,
+						name: 'repository',
+						slug: 'example/repository',
+					},
+					target,
+					7,
+					gitEnv
+				).outcome
+			).toBe('added');
+			writeFileSync(path.join(destination, '.git', 'config'), '\0'.repeat(256));
+
+			const failedCleanup = runForcedVerification(
+				target,
+				{
+					id: 321,
+					name: 'repository',
+					owner: 'example',
+					slug: 'example/repository',
+				},
+				gitEnv,
+				true
+			);
+			const backups = readdirSync(target).filter((name) =>
+				name.startsWith(DAMAGED_CHECKOUT_PREFIX)
+			);
+
+			expect(failedCleanup.exitCode).toBe(0);
+			expect(
+				failedCleanup.checkouts[0]?.findings.some(
+					(finding) => finding.code === 'damaged-checkout-cleanup-failed'
+				)
+			).toBe(true);
+			expect(backups).toHaveLength(1);
+			expect(inspectArchive(target).entries.map((entry) => entry.name)).toEqual([
+				'repository--example',
+			]);
+
+			const plan = await planManagedSync(target, []);
+			expect(plan.blockedReports).toEqual([]);
+			expect(plan.retainedReports.map((checkout) => checkout.name)).toEqual([
+				'repository--example',
+			]);
+
+			const recoveredCleanup = runForcedVerification(
+				target,
+				{
+					id: 321,
+					name: 'repository',
+					owner: 'example',
+					slug: 'example/repository',
+				},
+				gitEnv
+			);
+			expect(
+				recoveredCleanup.findings.some(
+					(finding) => finding.code === 'owned-checkout-artifact-removed'
+				)
+			).toBe(true);
+			expect(backups.some((name) => existsSync(path.join(target, name)))).toBe(false);
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
 	test('replaces a canonical checkout whose identity metadata is missing', () => {
 		const root = mkdtempSync(path.join(tmpdir(), 'starsync-staged-missing-identity-'));
 		const target = path.join(root, 'archive');
@@ -408,7 +498,7 @@ describe('staged checkout creation process boundary', () => {
 	test('removes pre-existing StarSync staging directories during forced verification', () => {
 		const root = mkdtempSync(path.join(tmpdir(), 'starsync-staged-abandoned-'));
 		const target = path.join(root, 'archive');
-		const abandoned = path.join(target, `${STAGED_CHECKOUT_PREFIX}abandoned`);
+		const abandoned = path.join(target, `${STAGED_CHECKOUT_PREFIX}ABC123`);
 		mkdirSync(path.join(abandoned, '.git'), { recursive: true });
 		writeFileSync(path.join(abandoned, '.git', 'config'), '\0'.repeat(256));
 		writeManagedArchiveConfig(target);
@@ -426,13 +516,42 @@ describe('staged checkout creation process boundary', () => {
 			);
 
 			expect(result.exitCode).toBe(0);
-			expect(result.checkouts[0]?.outcome).toBe('updated');
-			expect(result.checkouts[0]?.findings[0]?.code).toBe(
-				'abandoned-staging-checkout-removed'
-			);
+			expect(result.checkouts).toEqual([]);
+			expect(
+				result.findings.some(
+					(finding) => finding.code === 'owned-checkout-artifact-removed'
+				)
+			).toBe(true);
 			expect(existsSync(abandoned)).toBe(false);
 		} finally {
 			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('does not remove similarly prefixed directories without owned suffixes', () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-owned-boundary-'));
+		const uncertain = [
+			path.join(target, `${STAGED_CHECKOUT_PREFIX}user-directory`),
+			path.join(target, `${DAMAGED_CHECKOUT_PREFIX}not-a-uuid`),
+		];
+		writeManagedArchiveConfig(target);
+		for (const directory of uncertain) mkdirSync(directory);
+		const acquisition = acquireArchiveLock(target, 'verify');
+		if (!acquisition.ok) throw new Error(acquisition.message);
+		let releaseError: null | string = null;
+
+		try {
+			expect(cleanupOwnedCheckoutArtifacts(target, acquisition.held)).toEqual([]);
+		} finally {
+			const released = releaseArchiveLock(acquisition.held);
+			if (!released.ok) releaseError = released.message;
+		}
+		expect(releaseError).toBeNull();
+		try {
+			expect(uncertain.every((directory) => existsSync(directory))).toBe(true);
+			expect(inspectArchive(target).entries.map((entry) => entry.path)).toEqual(uncertain);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
 		}
 	});
 

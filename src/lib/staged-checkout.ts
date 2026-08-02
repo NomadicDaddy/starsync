@@ -11,14 +11,16 @@ import {
 } from './checkout-identity.ts';
 import { isTransientGitError, runGit } from './git-exec.ts';
 import {
+	DAMAGED_CHECKOUT_PREFIX,
+	isOwnedStagingCheckoutName,
+	STAGED_CHECKOUT_PREFIX,
+} from './owned-checkout-artifacts.ts';
+import {
 	hasEmbeddedCredentials,
 	isGitHubDotComUrl,
 	sanitizeMessage,
 	sanitizeUrl,
 } from './secret-safety.ts';
-
-export const DAMAGED_CHECKOUT_PREFIX = '.starsync-damaged-';
-export const STAGED_CHECKOUT_PREFIX = '.starsync-checkout-';
 
 export interface StagedCheckoutRepository {
 	cloneUrl: string;
@@ -98,12 +100,12 @@ const assertDestinationAvailable = (destinationPath: string, folderName: string)
 	}
 };
 
-export const removeAbandonedStagingCheckout = (targetBase: string, stagingPath: string): void => {
+const removeOwnedStagingDirectory = (targetBase: string, stagingPath: string): void => {
 	const resolvedTarget = path.resolve(targetBase);
 	const resolvedStaging = path.resolve(stagingPath);
 	if (
 		path.dirname(resolvedStaging) !== resolvedTarget ||
-		!path.basename(resolvedStaging).startsWith(STAGED_CHECKOUT_PREFIX)
+		!isOwnedStagingCheckoutName(path.basename(resolvedStaging))
 	) {
 		throw new Error('Refusing to remove a directory that StarSync does not own.');
 	}
@@ -112,7 +114,7 @@ export const removeAbandonedStagingCheckout = (targetBase: string, stagingPath: 
 
 const tryRemoveOwnedStagingDirectory = (targetBase: string, stagingPath: string): Error | null => {
 	try {
-		removeAbandonedStagingCheckout(targetBase, stagingPath);
+		removeOwnedStagingDirectory(targetBase, stagingPath);
 		return null;
 	} catch (err) {
 		return err instanceof Error ? err : new Error(String(err));

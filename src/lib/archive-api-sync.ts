@@ -3,6 +3,7 @@ import fs from 'node:fs';
 
 import type { SyncArchiveOptions, SyncContext } from './archive-api-contract.ts';
 import type { ArchiveOwner } from './archive-config.ts';
+import type { HeldArchiveLock } from './archive-lock.ts';
 import type { ManagedSyncPlan, StarredRepositoryRecord } from './managed-checkout-planning.ts';
 import type { CommandReport } from './reporting.ts';
 
@@ -24,6 +25,7 @@ import { partitionValidRepositories, previewSync } from './archive-api-sync-plan
 import { getAuthenticatedArchiveOwner, readArchiveConfig } from './archive-config.ts';
 import { getArchiveModificationFinding } from './archive-inspection.ts';
 import { planManagedSync } from './managed-checkout-planning.ts';
+import { cleanupOwnedCheckoutArtifacts } from './owned-checkout-artifacts.ts';
 import { processRepository, runSyncPool } from './refresh.ts';
 import { createCommandReport, createFinding } from './reporting.ts';
 import { sanitizeMessage } from './secret-safety.ts';
@@ -32,6 +34,12 @@ const MAX_ARCHIVE_CONCURRENCY = 8;
 const MIN_ARCHIVE_CONCURRENCY = 1;
 
 type OwnerResult = { owner: ArchiveOwner } | { report: CommandReport };
+
+const appendFindings = (
+	report: CommandReport,
+	findings: CommandReport['findings']
+): CommandReport =>
+	findings.length === 0 ? report : { ...report, findings: [...report.findings, ...findings] };
 
 const validateSyncOptions = (options: SyncArchiveOptions): CommandReport | SyncContext => {
 	const targetPath = resolveExplicitTarget(options.targetPath);
@@ -246,7 +254,10 @@ const executeSync = async (
 	});
 };
 
-export const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<CommandReport> => {
+export const syncArchiveUnlocked = async (
+	options: SyncArchiveOptions,
+	held: HeldArchiveLock | null
+): Promise<CommandReport> => {
 	const context = validateSyncOptions(options);
 	if ('schemaVersion' in context) return context;
 	const restriction = getArchiveModificationFinding(context.targetPath);
@@ -275,9 +286,13 @@ export const syncArchiveUnlocked = async (options: SyncArchiveOptions): Promise<
 			context.dryRun
 		);
 	}
+	const cleanupFindings = context.dryRun
+		? []
+		: cleanupOwnedCheckoutArtifacts(context.targetPath, held, options.onProgress);
 	const plan = await fetchSyncPlan(options, context);
-	if ('schemaVersion' in plan) return plan;
-	return context.dryRun
-		? previewSync(plan, context, options)
-		: executeSync(plan, context, owner.owner, options);
+	if ('schemaVersion' in plan) return appendFindings(plan, cleanupFindings);
+	const report = context.dryRun
+		? await previewSync(plan, context, options)
+		: await executeSync(plan, context, owner.owner, options);
+	return appendFindings(report, cleanupFindings);
 };
