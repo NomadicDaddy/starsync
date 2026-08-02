@@ -1,4 +1,4 @@
-import type { RenameArchiveOptions } from './archive-api.ts';
+import type { RenameArchiveOptions } from './archive-api-contract.ts';
 import type { RenameOptions } from './archive-rename.ts';
 import type { CommandReport } from './reporting.ts';
 

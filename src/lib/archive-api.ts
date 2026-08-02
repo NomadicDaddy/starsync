@@ -1,3 +1,9 @@
+import type {
+	NormalizeArchiveDatesOptions,
+	RenameArchiveOptions,
+	SyncArchiveOptions,
+	VerifyArchiveOptions,
+} from './archive-api-contract.ts';
 import type { CommandReport } from './reporting.ts';
 
 import { normalizeArchiveDatesUnlocked } from './archive-api-dates.ts';
@@ -7,36 +13,6 @@ import { verifyArchiveUnlocked } from './archive-api-verification.ts';
 import { initArchiveUnlocked, type InitArchiveOptions } from './archive-initialization.ts';
 import { withArchiveOperationLock } from './archive-operation-lock.ts';
 import { unlockArchive, type UnlockArchiveOptions } from './archive-unlock.ts';
-
-export const DEFAULT_ARCHIVE_CONCURRENCY = 4;
-
-export type ArchiveProgressCallback = (message: string) => void;
-
-export interface ArchiveOperationOptions {
-	onProgress?: ArchiveProgressCallback;
-	signal?: AbortSignal;
-	targetPath: string;
-}
-
-export interface RenameArchiveOptions extends ArchiveOperationOptions {
-	apply?: boolean;
-	token: string;
-}
-
-export interface NormalizeArchiveDatesOptions extends ArchiveOperationOptions {
-	dryRun?: boolean;
-}
-
-export interface SyncArchiveOptions extends ArchiveOperationOptions {
-	concurrency?: number;
-	dryRun?: boolean;
-	token: string;
-}
-
-export interface VerifyArchiveOptions extends ArchiveOperationOptions {
-	force?: boolean;
-	token?: string;
-}
 
 export const initArchive = (options: InitArchiveOptions): Promise<CommandReport> =>
 	withArchiveOperationLock('init', options, (held) => initArchiveUnlocked(options, held));
@@ -71,4 +47,13 @@ export const verifyArchive = (options: VerifyArchiveOptions): Promise<CommandRep
 	withArchiveOperationLock('verify', options, () => verifyArchiveUnlocked(options));
 
 export { unlockArchive };
+export { DEFAULT_ARCHIVE_CONCURRENCY } from './archive-api-contract.ts';
+export type {
+	ArchiveOperationOptions,
+	ArchiveProgressCallback,
+	NormalizeArchiveDatesOptions,
+	RenameArchiveOptions,
+	SyncArchiveOptions,
+	VerifyArchiveOptions,
+} from './archive-api-contract.ts';
 export type { InitArchiveOptions, UnlockArchiveOptions };

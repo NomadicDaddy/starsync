@@ -1,12 +1,13 @@
 import { Octokit } from '@octokit/rest';
 import fs from 'node:fs';
 
-import type { SyncArchiveOptions } from './archive-api.ts';
+import type { SyncArchiveOptions, SyncContext } from './archive-api-contract.ts';
 import type { ArchiveOwner } from './archive-config.ts';
 import type { ManagedSyncPlan, StarredRepositoryRecord } from './managed-checkout-planning.ts';
 import type { CommandReport } from './reporting.ts';
 
 import { withApiRetry } from './api-retry.ts';
+import { DEFAULT_ARCHIVE_CONCURRENCY } from './archive-api-contract.ts';
 import {
 	checkoutExists,
 	createInterruptedCheckout,
@@ -20,7 +21,6 @@ import {
 	resolveExplicitTarget,
 } from './archive-api-reporting.ts';
 import { partitionValidRepositories, previewSync } from './archive-api-sync-planning.ts';
-import { DEFAULT_ARCHIVE_CONCURRENCY } from './archive-api.ts';
 import { getAuthenticatedArchiveOwner, readArchiveConfig } from './archive-config.ts';
 import { getArchiveModificationFinding } from './archive-inspection.ts';
 import { planManagedSync } from './managed-checkout-planning.ts';
@@ -30,12 +30,6 @@ import { sanitizeMessage } from './secret-safety.ts';
 
 const MAX_ARCHIVE_CONCURRENCY = 8;
 const MIN_ARCHIVE_CONCURRENCY = 1;
-
-export interface SyncContext {
-	concurrency: number;
-	dryRun: boolean;
-	targetPath: string;
-}
 
 type OwnerResult = { owner: ArchiveOwner } | { report: CommandReport };
 

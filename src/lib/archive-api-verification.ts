@@ -1,4 +1,4 @@
-import type { VerifyArchiveOptions } from './archive-api.ts';
+import type { VerifyArchiveOptions } from './archive-api-contract.ts';
 import type { ArchiveVerificationRepairOptions } from './archive-verification-repair.ts';
 import type { ArchiveVerificationOptions } from './archive-verification.ts';
 import type { CommandReport } from './reporting.ts';

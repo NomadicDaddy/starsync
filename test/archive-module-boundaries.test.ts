@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 import * as archiveApi from '../src/lib/archive-api.ts';
 import * as archiveRename from '../src/lib/archive-rename.ts';
@@ -8,6 +8,14 @@ import * as datesCommand from '../src/lib/dates-command.ts';
 import * as refresh from '../src/lib/refresh.ts';
 
 const exportNames = (module: object): string[] => Object.keys(module).sort();
+const archiveApiImplementationFiles = readdirSync(new URL('../src/lib/', import.meta.url), 'utf8')
+	.filter(
+		(fileName) =>
+			fileName.startsWith('archive-api-') &&
+			fileName.endsWith('.ts') &&
+			fileName !== 'archive-api-contract.ts'
+	)
+	.map((fileName) => `src/lib/${fileName}`);
 const internalDeclarations = {
 	'src/lib/archive-config.ts': ['ARCHIVE_CONFIG_FILE'],
 	'src/lib/archive-dates.ts': ['readArchiveDate'],
@@ -46,6 +54,12 @@ describe('archive module facades', () => {
 		expect(exportNames(archiveVerification)).toEqual(['verifyArchive']);
 		expect(exportNames(datesCommand)).toEqual(['formatDatesTables', 'runDatesCommand']);
 		expect(exportNames(refresh)).toEqual(['processRepository', 'runSyncPool']);
+	});
+
+	test('keeps archive API implementations independent from the public facade', () => {
+		for (const relativePath of archiveApiImplementationFiles) {
+			expect(readSource(relativePath)).not.toMatch(/from\s+['"]\.\/archive-api\.ts['"]/);
+		}
 	});
 
 	test('keeps implementation-only declarations behind their module boundaries', () => {
