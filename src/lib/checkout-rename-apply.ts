@@ -2,15 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { ArchiveEntry } from './archive-inspection.ts';
+import type { CheckoutStateRunner } from './checkout-state-transition.ts';
 import type { CheckoutReport, RenamePreview } from './reporting.ts';
 
-import {
-	readCheckoutIdentity,
-	updateCheckoutOrigin,
-	writeCheckoutIdentity,
-} from './checkout-identity.ts';
+import { readCheckoutIdentity } from './checkout-identity.ts';
+import { transitionCheckoutState } from './checkout-state-transition.ts';
 import { createFinding } from './reporting.ts';
-import { parseGitHubRepositorySlug } from './repository-resolution.ts';
 import { sanitizeMessage } from './secret-safety.ts';
 
 interface ApplicableRename {
@@ -28,14 +25,16 @@ export interface CheckoutRenameApplication {
 	report: CheckoutReport;
 }
 
-const originMatchesSlug = (origin: null | string, slug: string): boolean => {
-	if (origin === null) return false;
-	const parsed = parseGitHubRepositorySlug(origin);
-	return (
-		parsed !== null &&
-		`${parsed.owner}/${parsed.repository}`.toLowerCase() === slug.toLowerCase()
-	);
-};
+export interface CheckoutRenameApplicationOptions {
+	runGit?: CheckoutStateRunner;
+}
+
+interface MovedCheckout {
+	checkoutPath: string;
+	moved: boolean;
+	originalPath: string;
+	reportName: string;
+}
 
 const failedReport = (checkout: CheckoutReport, err: unknown): CheckoutReport => ({
 	...checkout,
@@ -81,31 +80,66 @@ const selectApplicableRename = (
 	};
 };
 
-const moveCheckout = (
-	targetPath: string,
-	application: ApplicableRename
-): { checkoutPath: string; reportName: string } => {
+const moveCheckout = (targetPath: string, application: ApplicableRename): MovedCheckout => {
 	if (!application.checkout.pendingRename) {
-		return { checkoutPath: application.entry.path, reportName: application.checkout.name };
+		return {
+			checkoutPath: application.entry.path,
+			moved: false,
+			originalPath: application.entry.path,
+			reportName: application.checkout.name,
+		};
 	}
 	const destination = path.join(targetPath, application.rename.proposedName);
 	fs.renameSync(application.entry.path, destination);
-	return { checkoutPath: destination, reportName: application.rename.proposedName };
+	return {
+		checkoutPath: destination,
+		moved: true,
+		originalPath: application.entry.path,
+		reportName: application.rename.proposedName,
+	};
 };
 
-const updateMetadata = async (
-	application: ApplicableRename,
-	checkoutPath: string,
-	existingSlug: string
-): Promise<void> => {
-	if (existingSlug !== application.rename.repositorySlug) {
-		await writeCheckoutIdentity(checkoutPath, {
-			repositoryId: application.rename.repositoryId,
-			repositorySlug: application.rename.repositorySlug,
-		});
+const rollbackCheckoutMove = (moved: MovedCheckout): void => {
+	if (!moved.moved) return;
+	if (fs.existsSync(moved.originalPath)) {
+		throw new Error(
+			'Cannot roll back checkout folder move because its original path is occupied.'
+		);
 	}
-	if (!originMatchesSlug(application.entry.origin, application.rename.repositorySlug)) {
-		await updateCheckoutOrigin(checkoutPath, application.rename.repositorySlug);
+	fs.renameSync(moved.checkoutPath, moved.originalPath);
+};
+
+const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+const rollbackAfterMetadataFailure = (moved: MovedCheckout, original: unknown): never => {
+	try {
+		rollbackCheckoutMove(moved);
+	} catch (err) {
+		throw new AggregateError(
+			[original, err],
+			`${errorMessage(original)} Folder rollback also failed: ${errorMessage(err)}`,
+			{ cause: err }
+		);
+	}
+	throw original;
+};
+
+const applyMetadataTransition = async (
+	application: ApplicableRename,
+	moved: MovedCheckout,
+	options: CheckoutRenameApplicationOptions
+): Promise<void> => {
+	try {
+		await transitionCheckoutState(
+			moved.checkoutPath,
+			{
+				repositoryId: application.rename.repositoryId,
+				repositorySlug: application.rename.repositorySlug,
+			},
+			options.runGit
+		);
+	} catch (err) {
+		rollbackAfterMetadataFailure(moved, err);
 	}
 };
 
@@ -131,7 +165,8 @@ const appliedReport = (application: ApplicableRename, reportName: string): Check
 export const applyCheckoutRename = async (
 	targetPath: string,
 	checkout: CheckoutReport,
-	entries: ArchiveEntry[]
+	entries: ArchiveEntry[],
+	options: CheckoutRenameApplicationOptions = {}
 ): Promise<CheckoutRenameApplication> => {
 	const selected = selectApplicableRename(checkout, entries);
 	if ('applied' in selected) return selected;
@@ -141,7 +176,7 @@ export const applyCheckoutRename = async (
 			throw new Error('Stored repository identity changed after the rename preview.');
 		}
 		const moved = moveCheckout(targetPath, selected);
-		await updateMetadata(selected, moved.checkoutPath, identity.repositorySlug);
+		await applyMetadataTransition(selected, moved, options);
 		return { applied: true, report: appliedReport(selected, moved.reportName) };
 	} catch (err) {
 		return { applied: false, report: failedReport(checkout, err) };
