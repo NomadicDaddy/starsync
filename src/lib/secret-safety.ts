@@ -36,18 +36,36 @@ export const hasEmbeddedCredentials = (url: string): boolean => {
 export const sanitizeUrl = (url: string): string =>
 	url.replace(EMBEDDED_USERPASS_RE, '$1').replace(EMBEDDED_TOKEN_RE, '$1');
 
-// ── Token redaction ─────────────────────────────────────────────────────────
+// ── Secret redaction ────────────────────────────────────────────────────────
 
 /** GitHub classic PAT prefixes: ghp_ (personal), gho_ (OAuth), ghs_ (server), ghu_ (user). */
-const TOKEN_PATTERNS = [/\bgh[opsu]_[A-Za-z0-9]{36,}\b/g, /\bgithub_pat_[A-Za-z0-9_]{22,}\b/g];
+const SECRET_PATTERNS = [
+	/\bgh[opsu]_[A-Za-z0-9]{36,}\b/g,
+	/\bgithub_pat_[A-Za-z0-9_]{22,}\b/g,
+	/\bsk-(?:[A-Za-z0-9]+-)*[A-Za-z0-9_-]{20,}\b/g,
+	/\b(?:A3T[A-Z0-9]|ABIA|ACCA|AGPA|AIDA|AIPA|AKIA|ANPA|ANVA|APKA|AROA|ASCA|ASIA)[A-Z0-9]{16}\b/g,
+	/\bAIza[A-Za-z0-9_-]{35}\b/g,
+];
+
+const AUTHORIZATION_HEADER_RE = /(\bauthorization\s*:\s*)[^\r\n]+/gi;
+const AUTHORIZATION_VALUE_RE = /(\bauthorization\s*=\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&#,;]+)/gi;
+const BEARER_TOKEN_RE = /(\bbearer\s+)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi;
+const GENERIC_SECRET_VALUE_RE =
+	/((?:["']?)(?:(?:[A-Za-z0-9]+[-_])*(?:api[-_]?key|secret|token|password|passwd|pwd))["']?\s*(?:=|:)\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&#,;]+)/gi;
 
 /**
- * Sanitizes an error or log message by stripping credentials from any URLs
- * and redacting GitHub token patterns.
+ * Sanitizes an error or log message by stripping credentials from URLs and
+ * redacting authorization headers, bearer tokens, secret key-value pairs,
+ * and recognizable provider credentials.
  */
 export const sanitizeMessage = (message: string): string => {
 	let result = message.replace(EMBEDDED_USERPASS_RE, '$1').replace(EMBEDDED_TOKEN_RE, '$1');
-	for (const pattern of TOKEN_PATTERNS) {
+	result = result
+		.replace(AUTHORIZATION_HEADER_RE, '$1[REDACTED]')
+		.replace(AUTHORIZATION_VALUE_RE, '$1[REDACTED]')
+		.replace(BEARER_TOKEN_RE, '$1[REDACTED]')
+		.replace(GENERIC_SECRET_VALUE_RE, '$1[REDACTED]');
+	for (const pattern of SECRET_PATTERNS) {
 		result = result.replace(pattern, '[REDACTED]');
 	}
 	return result;
