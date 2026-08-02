@@ -116,6 +116,7 @@ _Avoid_: Mirror
 - An existing repository directory is not an **Initialized Archive** until StarSync records its owner and archive format.
 - A configless directory is a **Legacy Archive** only when StarSync recognizes GitHub.com checkouts in it; empty or unrelated directories remain uninitialized.
 - A blocked refresh does not mean the repository is unavailable or corrupt. It means StarSync found local state that it will not rewrite automatically.
+- A path the host filesystem cannot represent is not local state. It stays in Git history and the index while its working-tree copy is excluded, so it never makes a checkout a **Blocked Checkout**.
 - A **Pending Rename** is a label mismatch, not a new repository or a refresh failure.
 - "status" previously mixed persistent checkout state with the result of one run. Canonical reports separate lifecycle state, **Pending Rename**, and **Sync Outcome**.
 - A **Retained Checkout** is dormant, not deleted or damaged; starring its repository again resumes refreshes.
