@@ -15,7 +15,7 @@ const finalizeExistingIdentity = async (
 	if (
 		repo.id === undefined ||
 		repo.slug === undefined ||
-		['added', 'failed', 'skipped'].includes(result.outcome)
+		(result.outcome !== 'current' && result.outcome !== 'updated')
 	) {
 		return result;
 	}
