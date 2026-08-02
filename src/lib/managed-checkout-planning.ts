@@ -1,19 +1,17 @@
 import fs from 'node:fs';
-import path from 'node:path';
 
 import type { RepoRecord } from './refresh.ts';
 import type { CheckoutReport } from './reporting.ts';
 
-import { canonicalCheckoutName, readCheckoutIdentity } from './checkout-identity.ts';
-import { runGit } from './git-exec.ts';
-import { createFinding } from './reporting.ts';
-import { parseGitHubRepositorySlug } from './repository-resolution.ts';
 import {
-	hasEmbeddedCredentials,
-	isGitHubDotComUrl,
-	sanitizeMessage,
-	sanitizeUrl,
-} from './secret-safety.ts';
+	buildStarredRepositoryCollisionIndexes,
+	classifyStarredRepository,
+	retainedCheckoutReport,
+} from './managed-checkout-classification.ts';
+import {
+	filterDuplicateCheckoutIdentities,
+	inspectManagedCheckoutEntry,
+} from './managed-checkout-inspection.ts';
 
 export interface StarredRepository extends RepoRecord {
 	folderName: string;
@@ -36,106 +34,36 @@ export interface ManagedSyncPlan {
 	retainedReports: CheckoutReport[];
 }
 
-const blockedReport = (name: string, code: string, message: string): CheckoutReport => ({
-	findings: [createFinding('error', code, message)],
-	lifecycle: 'blocked',
-	name,
-	outcome: 'failed',
-	pendingRename: false,
-});
+const archiveEntryNames = (targetPath: string): string[] =>
+	fs
+		.readdirSync(targetPath, { withFileTypes: true })
+		.filter((entry) => entry.name !== '.starsync' && entry.isDirectory())
+		.map((entry) => entry.name)
+		.sort((left, right) => left.localeCompare(right));
 
 export const scanManagedCheckouts = async (
 	targetPath: string
 ): Promise<{ checkouts: ManagedCheckout[]; reports: CheckoutReport[] }> => {
 	const checkouts: ManagedCheckout[] = [];
 	const reports: CheckoutReport[] = [];
-	const entries = fs
-		.readdirSync(targetPath, { withFileTypes: true })
-		.filter((entry) => entry.name !== '.starsync' && entry.isDirectory())
-		.sort((left, right) => left.name.localeCompare(right.name));
-
-	for (const entry of entries) {
-		const checkoutPath = path.join(targetPath, entry.name);
-		if (!fs.existsSync(path.join(checkoutPath, '.git'))) continue;
-		try {
-			const identity = await readCheckoutIdentity(checkoutPath);
-			if (identity === null) {
-				reports.push(
-					blockedReport(
-						entry.name,
-						'missing-identity-metadata',
-						'Format-2 managed checkout has no stable repository identity. A canonical checkout can be safely rebuilt with verify --force.'
-					)
-				);
-				continue;
-			}
-			const origin = await runGit(['config', '--local', '--get', 'remote.origin.url'], {
-				cwd: checkoutPath,
-			});
-			const originSlug = parseGitHubRepositorySlug(origin);
-			if (
-				hasEmbeddedCredentials(origin) ||
-				!isGitHubDotComUrl(origin) ||
-				originSlug === null ||
-				`${originSlug.owner}/${originSlug.repository}`.toLowerCase() !==
-					identity.repositorySlug.toLowerCase()
-			) {
-				reports.push(
-					blockedReport(
-						entry.name,
-						'identity-origin-mismatch',
-						`Managed checkout identity does not match origin ${sanitizeUrl(origin)}.`
-					)
-				);
-				continue;
-			}
-			checkouts.push({ name: entry.name, ...identity });
-		} catch (err) {
-			reports.push(
-				blockedReport(
-					entry.name,
-					'invalid-identity-metadata',
-					`Cannot read managed checkout identity: ${sanitizeMessage(
-						err instanceof Error ? err.message : String(err)
-					)}`
-				)
-			);
-		}
+	for (const name of archiveEntryNames(targetPath)) {
+		const inspection = await inspectManagedCheckoutEntry(targetPath, name);
+		if (inspection.checkout !== null) checkouts.push(inspection.checkout);
+		if (inspection.report !== null) reports.push(inspection.report);
 	}
-
-	const counts = new Map<number, number>();
-	for (const checkout of checkouts) {
-		counts.set(checkout.repositoryId, (counts.get(checkout.repositoryId) ?? 0) + 1);
-	}
-	const unique = checkouts.filter((checkout) => {
-		if ((counts.get(checkout.repositoryId) ?? 0) === 1) return true;
-		reports.push(
-			blockedReport(
-				checkout.name,
-				'duplicate-identity',
-				`Repository identity ${checkout.repositoryId} is used by more than one checkout.`
-			)
-		);
-		return false;
-	});
-	return { checkouts: unique, reports };
+	const unique = filterDuplicateCheckoutIdentities(checkouts);
+	return { checkouts: unique.checkouts, reports: [...reports, ...unique.reports] };
 };
 
-const retainedReport = (checkout: ManagedCheckout): CheckoutReport => {
-	const canonicalName = canonicalCheckoutName(checkout.repositorySlug);
-	return {
-		findings: [
-			createFinding(
-				'info',
-				'checkout-retained',
-				'Checkout is no longer starred and was retained.'
-			),
-		],
-		lifecycle: 'retained',
-		name: checkout.name,
-		outcome: 'skipped',
-		pendingRename: canonicalName !== null && canonicalName !== checkout.name,
-	};
+const collectRetainedReports = (
+	checkouts: ManagedCheckout[],
+	starredIds: Set<number>
+): CheckoutReport[] => {
+	const reports: CheckoutReport[] = [];
+	for (const checkout of checkouts) {
+		if (!starredIds.has(checkout.repositoryId)) reports.push(retainedCheckoutReport(checkout));
+	}
+	return reports;
 };
 
 export const planManagedSync = async (
@@ -143,77 +71,22 @@ export const planManagedSync = async (
 	repositories: StarredRepositoryRecord[]
 ): Promise<ManagedSyncPlan> => {
 	const scan = await scanManagedCheckouts(targetPath);
-	const existingById = new Map(
-		scan.checkouts.map((checkout) => [checkout.repositoryId, checkout])
-	);
-	const existingNames = new Set(
-		fs
-			.readdirSync(targetPath, { withFileTypes: true })
-			.filter((entry) => entry.isDirectory() && entry.name !== '.starsync')
-			.map((entry) => entry.name.toLowerCase())
-	);
-	const starredIds = new Set(repositories.map((repository) => repository.id));
-	const retainedReports = scan.checkouts
-		.filter((checkout) => !starredIds.has(checkout.repositoryId))
-		.map(retainedReport);
+	const context = {
+		collisions: buildStarredRepositoryCollisionIndexes(repositories),
+		existingById: new Map(scan.checkouts.map((checkout) => [checkout.repositoryId, checkout])),
+		existingNames: new Set(archiveEntryNames(targetPath).map((name) => name.toLowerCase())),
+	};
 	const blockedReports = [...scan.reports];
 	const planned: StarredRepository[] = [];
-
-	const idCounts = new Map<number, number>();
-	const nameCounts = new Map<string, number>();
 	for (const repository of repositories) {
-		if (!Number.isSafeInteger(repository.id) || repository.id <= 0) continue;
-		idCounts.set(repository.id, (idCounts.get(repository.id) ?? 0) + 1);
-		const canonicalName = canonicalCheckoutName(repository.slug);
-		if (canonicalName === null) continue;
-		const nameKey = canonicalName.toLowerCase();
-		nameCounts.set(nameKey, (nameCounts.get(nameKey) ?? 0) + 1);
+		const classification = classifyStarredRepository(repository, context);
+		if (classification.report !== null) blockedReports.push(classification.report);
+		if (classification.repository !== null) planned.push(classification.repository);
 	}
-
-	for (const repository of repositories) {
-		const existing = existingById.get(repository.id);
-		const canonicalName = canonicalCheckoutName(repository.slug);
-		if (!Number.isSafeInteger(repository.id) || repository.id <= 0 || canonicalName === null) {
-			blockedReports.push(
-				blockedReport(
-					repository.name,
-					'invalid-repository-identity',
-					'Repository response must contain a positive stable ID and valid owner/repository slug.'
-				)
-			);
-			continue;
-		}
-		const duplicateIdentity = (idCounts.get(repository.id) ?? 0) > 1;
-		const duplicateDestination = (nameCounts.get(canonicalName.toLowerCase()) ?? 0) > 1;
-		if (duplicateIdentity || duplicateDestination) {
-			blockedReports.push(
-				blockedReport(
-					existing?.name ?? canonicalName,
-					duplicateIdentity ? 'duplicate-identity' : 'rename-name-collision',
-					duplicateIdentity
-						? `Repository identity ${repository.id} appears more than once in the starred repository response.`
-						: `Canonical folder ${canonicalName} is requested by more than one repository.`
-				)
-			);
-			continue;
-		}
-		if (existing === undefined && existingNames.has(canonicalName.toLowerCase())) {
-			blockedReports.push(
-				blockedReport(
-					canonicalName,
-					'checkout-name-collision',
-					`Canonical folder ${canonicalName} is occupied by a different or unidentified archive entry.`
-				)
-			);
-			continue;
-		}
-		const folderName = existing?.name ?? canonicalName;
-		planned.push({
-			...repository,
-			folderName,
-			pendingRename: existing !== undefined && folderName !== canonicalName,
-		});
-	}
-
-	return { blockedReports, repositories: planned, retainedReports };
+	const starredIds = new Set(repositories.map((repository) => repository.id));
+	return {
+		blockedReports,
+		repositories: planned,
+		retainedReports: collectRetainedReports(scan.checkouts, starredIds),
+	};
 };
