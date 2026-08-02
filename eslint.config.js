@@ -42,6 +42,7 @@ export default tseslint.config([
 				...globals.bun,
 			},
 			parserOptions: {
+				projectService: true,
 				tsconfigRootDir: import.meta.dirname,
 			},
 			sourceType: 'module',
@@ -59,6 +60,7 @@ export default tseslint.config([
 			],
 			'@typescript-eslint/no-explicit-any': 'error',
 			'@typescript-eslint/no-unused-vars': 'off',
+			'@typescript-eslint/unbound-method': 'error',
 			eqeqeq: ['error', 'always'],
 			'import/no-default-export': 'error',
 			'no-console': 'off',
