@@ -8,7 +8,7 @@ export interface ParsedArgs {
 	targetPath: null | string;
 }
 
-export const DEFAULT_CONCURRENCY = 4;
+const DEFAULT_CONCURRENCY = 4;
 const MAX_CONCURRENCY = 8;
 const MIN_CONCURRENCY = 1;
 
@@ -65,7 +65,7 @@ export const resolveTargetPath = (
 	throw new Error('A target path or TARGET_PATH is required.');
 };
 
-export const SUBCOMMANDS = ['dates', 'init', 'rename', 'sync', 'unlock', 'verify'] as const;
+const SUBCOMMANDS = ['dates', 'init', 'rename', 'sync', 'unlock', 'verify'] as const;
 
 export type Subcommand = (typeof SUBCOMMANDS)[number];
 

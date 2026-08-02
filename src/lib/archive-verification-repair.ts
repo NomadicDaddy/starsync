@@ -7,7 +7,7 @@ import { canonicalCheckoutName } from './checkout-identity.ts';
 import { sanitizeMessage } from './secret-safety.ts';
 import { replaceAnomalousCheckout } from './staged-checkout.ts';
 
-export type CheckoutReplacer = (
+type CheckoutReplacer = (
 	repository: StagedCheckoutRepository,
 	targetBase: string,
 	options: { archiveOwnerId: number }

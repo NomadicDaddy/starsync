@@ -48,7 +48,7 @@ const getErrorCode = (err: unknown): null | string => {
 const getErrorMessage = (err: unknown): string =>
 	err instanceof Error ? err.message : String(err);
 
-export const getArchiveLockPath = (targetPath: string): string =>
+const getArchiveLockPath = (targetPath: string): string =>
 	path.join(path.resolve(targetPath), '.starsync', ARCHIVE_LOCK_FILENAME);
 
 export const readArchiveLock = (targetPath: string): ArchiveLockSnapshot | null => {
@@ -285,13 +285,5 @@ export const releaseArchiveLock = (held: HeldArchiveLock): ArchiveLockRemoval =>
 		held.cleanupMetadataDirectory
 	);
 
-export {
-	createArchiveLockRuntime,
-	describeArchiveLock,
-	getProcessState,
-} from './archive-lock-metadata.ts';
-export type {
-	ArchiveLockMetadata,
-	ArchiveLockRuntime,
-	ArchiveProcessState,
-} from './archive-lock-metadata.ts';
+export { createArchiveLockRuntime, describeArchiveLock } from './archive-lock-metadata.ts';
+export type { ArchiveLockMetadata, ArchiveLockRuntime } from './archive-lock-metadata.ts';

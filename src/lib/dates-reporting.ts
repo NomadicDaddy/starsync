@@ -11,7 +11,7 @@ export interface DatesOptions {
 	signal?: AbortSignal;
 }
 
-export type DatesStatus =
+type DatesStatus =
 	| 'current'
 	| 'skipped:no-commit'
 	| 'skipped:not-git'

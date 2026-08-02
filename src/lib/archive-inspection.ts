@@ -9,7 +9,7 @@ import { buildGitEnvironment } from './git-exec.ts';
 import { createFinding } from './reporting.ts';
 import { sanitizeMessage } from './secret-safety.ts';
 
-export type ArchiveKind = 'current' | 'invalid' | 'uninitialized' | 'unsupported';
+type ArchiveKind = 'current' | 'invalid' | 'uninitialized' | 'unsupported';
 
 export interface ArchiveEntry {
 	gitError: null | string;
