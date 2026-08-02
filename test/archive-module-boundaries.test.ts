@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import * as archiveApi from '../src/lib/archive-api.ts';
-import * as archiveMigration from '../src/lib/archive-migration.ts';
+import * as archiveRename from '../src/lib/archive-rename.ts';
 import * as archiveVerification from '../src/lib/archive-verification.ts';
 import * as datesCommand from '../src/lib/dates-command.ts';
 import * as refresh from '../src/lib/refresh.ts';
@@ -13,22 +13,16 @@ describe('archive module facades', () => {
 		expect(exportNames(archiveApi)).toEqual([
 			'DEFAULT_ARCHIVE_CONCURRENCY',
 			'initArchive',
-			'migrateArchive',
 			'normalizeArchiveDates',
+			'renameArchive',
 			'syncArchive',
 			'unlockArchive',
 			'verifyArchive',
 		]);
 	});
 
-	test('preserves migration, verification, dates, and refresh facade exports', () => {
-		expect(exportNames(archiveMigration)).toEqual([
-			'createGitHubRepositoryResolver',
-			'getArchiveModificationFinding',
-			'inspectArchive',
-			'parseGitHubRepositorySlug',
-			'previewArchiveMigration',
-		]);
+	test('preserves rename, verification, dates, and refresh facade exports', () => {
+		expect(exportNames(archiveRename)).toEqual(['previewArchiveRenames']);
 		expect(exportNames(archiveVerification)).toEqual(['verifyArchive']);
 		expect(exportNames(datesCommand)).toEqual(['formatDatesTables', 'runDatesCommand']);
 		expect(exportNames(refresh)).toEqual(['processRepository', 'runSyncPool']);

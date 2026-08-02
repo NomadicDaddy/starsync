@@ -4,10 +4,10 @@ import path from 'node:path';
 import type { RepoRecord } from './refresh.ts';
 import type { CheckoutReport } from './reporting.ts';
 
-import { parseGitHubRepositorySlug } from './archive-migration.ts';
 import { canonicalCheckoutName, readCheckoutIdentity } from './checkout-identity.ts';
 import { runGit } from './git-exec.ts';
 import { createFinding } from './reporting.ts';
+import { parseGitHubRepositorySlug } from './repository-resolution.ts';
 import {
 	hasEmbeddedCredentials,
 	isGitHubDotComUrl,
@@ -64,7 +64,7 @@ export const scanManagedCheckouts = async (
 					blockedReport(
 						entry.name,
 						'missing-identity-metadata',
-						'Managed checkout has no stable repository identity; run migrate --apply.'
+						'Format-2 managed checkout has no stable repository identity. A canonical checkout can be safely rebuilt with verify --force.'
 					)
 				);
 				continue;
@@ -189,7 +189,7 @@ export const planManagedSync = async (
 			blockedReports.push(
 				blockedReport(
 					existing?.name ?? canonicalName,
-					duplicateIdentity ? 'duplicate-identity' : 'migration-name-collision',
+					duplicateIdentity ? 'duplicate-identity' : 'rename-name-collision',
 					duplicateIdentity
 						? `Repository identity ${repository.id} appears more than once in the starred repository response.`
 						: `Canonical folder ${canonicalName} is requested by more than one repository.`

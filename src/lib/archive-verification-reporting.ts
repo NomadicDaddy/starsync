@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { ArchiveConfig } from './archive-config.ts';
-import type { ArchiveInspection } from './archive-migration.ts';
+import type { ArchiveInspection } from './archive-inspection.ts';
 import type { VerifiedCheckout } from './archive-verification-checkout.ts';
 import type { ArchiveVerificationResult } from './archive-verification.ts';
 import type { CheckoutReport, Finding } from './reporting.ts';
@@ -38,16 +38,7 @@ export const validateArchiveOwner = (
 	targetPath: string,
 	inspection: ArchiveInspection
 ): Finding[] => {
-	if (inspection.kind === 'legacy') {
-		return [
-			createFinding(
-				'warning',
-				'archive-owner-unbound',
-				'Legacy archives do not have an owner binding; migration is required before managed operations.'
-			),
-		];
-	}
-	if (!['current-managed', 'older-managed'].includes(inspection.kind)) return [];
+	if (inspection.kind !== 'current') return [];
 	const config = parseArchiveOwner(targetPath);
 	if ('severity' in config) return [config];
 	return [

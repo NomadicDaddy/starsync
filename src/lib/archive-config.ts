@@ -37,7 +37,7 @@ const parseOwner = (value: unknown): ArchiveOwner => {
 		!Number.isSafeInteger(value.id) ||
 		value.id <= 0 ||
 		typeof value.login !== 'string' ||
-		!/^[a-z\d](?:[a-z\d-]*[a-z\d])?$/i.test(value.login)
+		!/^(?!.*--)[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(value.login)
 	) {
 		throw new Error(
 			'Archive config owner must contain a positive integer id and valid GitHub login.'
@@ -50,12 +50,13 @@ export const parseArchiveConfig = (value: unknown): ArchiveConfig => {
 	if (!isRecord(value) || !hasExactKeys(value, ['archiveFormat', 'owner'])) {
 		throw new Error('Archive config must contain only archiveFormat and owner.');
 	}
-	if (
-		typeof value.archiveFormat !== 'number' ||
-		!Number.isInteger(value.archiveFormat) ||
-		value.archiveFormat < 1
-	) {
-		throw new Error('Archive config archiveFormat must be a positive integer.');
+	if (typeof value.archiveFormat !== 'number' || !Number.isInteger(value.archiveFormat)) {
+		throw new Error('Archive config archiveFormat must be an integer.');
+	}
+	if (value.archiveFormat !== CURRENT_ARCHIVE_FORMAT) {
+		throw new Error(
+			`Archive format ${value.archiveFormat} is unsupported; StarSync requires format ${CURRENT_ARCHIVE_FORMAT}.`
+		);
 	}
 	return {
 		archiveFormat: value.archiveFormat,
@@ -115,30 +116,6 @@ export const writeArchiveConfig = (
 		} else if (configCreated) {
 			fs.rmSync(configPath, { force: true });
 		}
-		throw err;
-	}
-};
-
-export const writeMigratedArchiveConfig = (targetPath: string, owner: ArchiveOwner): void => {
-	const metadataPath = path.join(targetPath, ARCHIVE_CONFIG_DIRECTORY);
-	const configPath = path.join(metadataPath, ARCHIVE_CONFIG_FILE);
-	const temporaryPath = path.join(
-		metadataPath,
-		`${ARCHIVE_CONFIG_FILE}.${crypto.randomUUID()}.tmp`
-	);
-	const content = `${JSON.stringify({ archiveFormat: CURRENT_ARCHIVE_FORMAT, owner }, null, '\t')}\n`;
-	fs.mkdirSync(metadataPath, { recursive: true });
-	const descriptor = fs.openSync(temporaryPath, 'wx', 0o600);
-	try {
-		fs.writeFileSync(descriptor, content, 'utf-8');
-		fs.fsyncSync(descriptor);
-	} finally {
-		fs.closeSync(descriptor);
-	}
-	try {
-		fs.renameSync(temporaryPath, configPath);
-	} catch (err) {
-		fs.rmSync(temporaryPath, { force: true });
 		throw err;
 	}
 };
