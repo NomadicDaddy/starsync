@@ -111,6 +111,36 @@ describe('archive verification process boundary', () => {
 		}
 	});
 
+	test('reports owner-only and repository-only canonical casing as pending renames', () => {
+		for (const identity of [
+			{ canonicalName: 'repo--Owner', slug: 'Owner/repo' },
+			{ canonicalName: 'Repo--owner', slug: 'owner/Repo' },
+		]) {
+			const target = mkdtempSync(path.join(tmpdir(), 'starsync-verify-casing-'));
+			try {
+				createRepository(target, 'repo--owner', 'https://github.com/owner/repo.git', {
+					id: 123,
+					slug: identity.slug,
+				});
+				writeArchiveConfig(target, { id: 7, login: 'archive-owner' });
+
+				const result = verify(target);
+				const checkout = result.report.checkouts[0];
+
+				expect(result.status).toBe(0);
+				expect(checkout?.pendingRename).toBe(true);
+				expect(checkout?.findings).toContainEqual(
+					expect.objectContaining({
+						code: 'pending-rename',
+						message: `Checkout folder should be named ${identity.canonicalName}.`,
+					})
+				);
+			} finally {
+				rmSync(target, { force: true, recursive: true });
+			}
+		}
+	});
+
 	test('requires a token before forced verification can modify an archive', () => {
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-verify-force-token-'));
 		try {

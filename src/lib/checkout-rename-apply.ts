@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -35,6 +36,38 @@ interface MovedCheckout {
 	originalPath: string;
 	reportName: string;
 }
+
+const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+const pathExistsExactly = (targetPath: string): boolean =>
+	fs.readdirSync(path.dirname(targetPath)).includes(path.basename(targetPath));
+
+const renameCheckoutPath = (sourcePath: string, destinationPath: string): void => {
+	if (pathExistsExactly(destinationPath)) {
+		throw new Error('Cannot move checkout folder because its destination is occupied.');
+	}
+	if (sourcePath.toLowerCase() !== destinationPath.toLowerCase()) {
+		fs.renameSync(sourcePath, destinationPath);
+		return;
+	}
+	const temporaryPath = path.join(path.dirname(sourcePath), `.starsync-rename-${randomUUID()}`);
+	fs.renameSync(sourcePath, temporaryPath);
+	try {
+		fs.renameSync(temporaryPath, destinationPath);
+	} catch (err) {
+		const originalError = err;
+		try {
+			fs.renameSync(temporaryPath, sourcePath);
+		} catch (err) {
+			throw new AggregateError(
+				[originalError, err],
+				`${errorMessage(originalError)} Case-only folder rollback also failed: ${errorMessage(err)}`,
+				{ cause: err }
+			);
+		}
+		throw originalError;
+	}
+};
 
 const failedReport = (checkout: CheckoutReport, err: unknown): CheckoutReport => ({
 	...checkout,
@@ -90,7 +123,7 @@ const moveCheckout = (targetPath: string, application: ApplicableRename): MovedC
 		};
 	}
 	const destination = path.join(targetPath, application.rename.proposedName);
-	fs.renameSync(application.entry.path, destination);
+	renameCheckoutPath(application.entry.path, destination);
 	return {
 		checkoutPath: destination,
 		moved: true,
@@ -101,15 +134,13 @@ const moveCheckout = (targetPath: string, application: ApplicableRename): MovedC
 
 const rollbackCheckoutMove = (moved: MovedCheckout): void => {
 	if (!moved.moved) return;
-	if (fs.existsSync(moved.originalPath)) {
+	if (pathExistsExactly(moved.originalPath)) {
 		throw new Error(
 			'Cannot roll back checkout folder move because its original path is occupied.'
 		);
 	}
-	fs.renameSync(moved.checkoutPath, moved.originalPath);
+	renameCheckoutPath(moved.checkoutPath, moved.originalPath);
 };
-
-const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 const rollbackAfterMetadataFailure = (moved: MovedCheckout, original: unknown): never => {
 	try {

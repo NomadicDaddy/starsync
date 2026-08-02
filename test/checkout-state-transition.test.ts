@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -66,7 +74,10 @@ const failAfterMutation = (boundary: number, afterFailure?: () => void): Checkou
 	};
 };
 
-const pendingRename = (): CheckoutReport => ({
+const pendingRename = (
+	repositorySlug = 'new-owner/repository',
+	proposedName = 'repository--new-owner'
+): CheckoutReport => ({
 	findings: [],
 	lifecycle: 'active',
 	name: 'repository--old-owner',
@@ -75,9 +86,9 @@ const pendingRename = (): CheckoutReport => ({
 	plannedOutcome: 'updated',
 	rename: {
 		classification: 'pending',
-		proposedName: 'repository--new-owner',
+		proposedName,
 		repositoryId: 42,
-		repositorySlug: 'new-owner/repository',
+		repositorySlug,
 	},
 });
 
@@ -208,6 +219,28 @@ describe('checkout folder compensation', () => {
 			);
 			expect(existsSync(checkout)).toBe(true);
 			expect(existsSync(path.join(target, 'repository--new-owner'))).toBe(false);
+			expect(readLabels(checkout).slug).toBe('old-owner/repository');
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('restores exact original casing after a case-only metadata failure', async () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-folder-case-rollback-'));
+		try {
+			const checkout = createCheckout(target);
+			const result = await applyCheckoutRename(
+				target,
+				pendingRename('Old-Owner/repository', 'repository--Old-Owner'),
+				[archiveEntry(checkout)],
+				{ runGit: failAfterMutation(1) }
+			);
+
+			expect(result.applied).toBe(false);
+			expect(result.report.findings[0]?.message).toContain(
+				'injected failure after mutation 1'
+			);
+			expect(readdirSync(target)).toEqual(['repository--old-owner']);
 			expect(readLabels(checkout).slug).toBe('old-owner/repository');
 		} finally {
 			rmSync(target, { force: true, recursive: true });
