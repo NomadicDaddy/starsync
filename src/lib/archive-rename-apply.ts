@@ -79,8 +79,8 @@ export const applyArchiveRenames = async (
 	options: RenameOptions = {}
 ): Promise<RenameResult> => {
 	const inspection = inspectArchive(targetPath);
-	if (inspection.kind !== 'current') return previewArchiveRenames(targetPath, resolver, options);
-	const preview = await previewArchiveRenames(targetPath, resolver, options);
+	const preview = await previewArchiveRenames(targetPath, resolver, options, inspection);
+	if (inspection.kind !== 'current') return preview;
 	if (preview.interrupted) return preview;
 	const applied = await applyPreview(targetPath, preview, inspection.entries, options);
 	return createResult(preview, applied);

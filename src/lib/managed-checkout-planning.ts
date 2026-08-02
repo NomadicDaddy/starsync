@@ -49,16 +49,17 @@ const archiveEntryNames = (targetPath: string): string[] =>
 
 export const scanManagedCheckouts = async (
 	targetPath: string
-): Promise<{ checkouts: ManagedCheckout[]; reports: CheckoutReport[] }> => {
+): Promise<{ checkouts: ManagedCheckout[]; names: string[]; reports: CheckoutReport[] }> => {
 	const checkouts: ManagedCheckout[] = [];
 	const reports: CheckoutReport[] = [];
-	for (const name of archiveEntryNames(targetPath)) {
+	const names = archiveEntryNames(targetPath);
+	for (const name of names) {
 		const inspection = await inspectManagedCheckoutEntry(targetPath, name);
 		if (inspection.checkout !== null) checkouts.push(inspection.checkout);
 		if (inspection.report !== null) reports.push(inspection.report);
 	}
 	const unique = filterDuplicateCheckoutIdentities(checkouts);
-	return { checkouts: unique.checkouts, reports: [...reports, ...unique.reports] };
+	return { checkouts: unique.checkouts, names, reports: [...reports, ...unique.reports] };
 };
 
 const collectRetainedReports = (
@@ -80,7 +81,7 @@ export const planManagedSync = async (
 	const context = {
 		collisions: buildStarredRepositoryCollisionIndexes(repositories),
 		existingById: new Map(scan.checkouts.map((checkout) => [checkout.repositoryId, checkout])),
-		existingNames: new Set(archiveEntryNames(targetPath).map((name) => name.toLowerCase())),
+		existingNames: new Set(scan.names.map((name) => name.toLowerCase())),
 	};
 	const blockedReports = [...scan.reports];
 	const planned: StarredRepository[] = [];
