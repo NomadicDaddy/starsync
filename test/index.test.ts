@@ -24,12 +24,7 @@ import {
 	verifyArchive,
 } from '../src/index.ts';
 import { inspectArchive } from '../src/lib/archive-inspection.ts';
-import {
-	DEFAULT_CONCURRENCY,
-	parseArgs,
-	resolveTargetPath,
-	stripQuotes,
-} from '../src/lib/cli-utils.ts';
+import { parseArgs, resolveTargetPath, stripQuotes } from '../src/lib/cli-utils.ts';
 import { SYNC_HELP_TEXT } from '../src/lib/help-text.ts';
 import { createCommandReport, createCommandReporter, createFinding } from '../src/lib/reporting.ts';
 import {
@@ -1237,8 +1232,7 @@ describe('subcommand dispatch', () => {
 		const captured = await captureConsole(() => dispatchSync(['--help']));
 
 		expect(subcommandsSource).not.toMatch(/from\s+['"]\.\.\/index\.ts['"]/);
-		expect(DEFAULT_CONCURRENCY).toBe(4);
-		expect(defaultParsed.concurrency).toBe(DEFAULT_CONCURRENCY);
+		expect(defaultParsed.concurrency).toBe(4);
 		expect(parsed.concurrency).toBe(2);
 		expect(captured.result).toBe(0);
 		expect(captured.stdout).toEqual([SYNC_HELP_TEXT]);

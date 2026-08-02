@@ -29,11 +29,11 @@ const isInvalidWindowsComponent = (component: string): boolean =>
 	WINDOWS_PROTECTED_GIT_NAME.test(component) ||
 	WINDOWS_RESERVED_NAME.test(component);
 
-export const isInvalidWindowsPath = (filePath: string): boolean =>
+const isInvalidWindowsPath = (filePath: string): boolean =>
 	filePath.split('/').some(isInvalidWindowsComponent);
 
 /** True when this platform cannot represent the path in a working tree. */
-export const isUnrepresentablePath = (filePath: string): boolean =>
+const isUnrepresentablePath = (filePath: string): boolean =>
 	process.platform === 'win32' && isInvalidWindowsPath(filePath);
 
 /**
@@ -60,7 +60,7 @@ const listUnrepresentablePaths = async (checkoutPath: string): Promise<string[]>
  * platform cannot represent, so leaving them unescaped would silently produce
  * a pattern that never matches the path it was written for.
  */
-export const escapeSparsePattern = (filePath: string): string =>
+const escapeSparsePattern = (filePath: string): string =>
 	filePath
 		.replaceAll('\\', '\\\\')
 		.replaceAll(SPARSE_PATTERN_METACHARACTER, (character) => `\\${character}`)

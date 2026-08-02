@@ -10,7 +10,7 @@ export interface ArchiveDateState {
 	needsUpdate: boolean;
 }
 
-export const readArchiveDate = async (checkoutPath: string): Promise<Date> => {
+const readArchiveDate = async (checkoutPath: string): Promise<Date> => {
 	const output = await runGit(['log', '--all', '--format=%cI'], { cwd: checkoutPath });
 	const timestamps = output.split(/\r?\n/).filter(Boolean);
 	if (timestamps.length === 0) {

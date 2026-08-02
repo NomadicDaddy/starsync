@@ -12,7 +12,7 @@ import { refreshCheckoutOnDefaultBranch } from '../src/lib/default-branch-refres
 import { parsePorcelainStatusPaths, readStatusPaths } from '../src/lib/git-exec.ts';
 import { isLfsSmudgeFailure } from '../src/lib/git-recovery.ts';
 import { classifyTagClobberFailure, describeRetainedTags } from '../src/lib/remote-fetch.ts';
-import { escapeSparsePattern, materializeExcludedCheckout } from '../src/lib/windows-checkout.ts';
+import { materializeExcludedCheckout } from '../src/lib/windows-checkout.ts';
 
 /** Reports as skipped, not passed, on platforms that can represent every path. */
 const windowsOnly = test.skipIf(process.platform !== 'win32');
@@ -94,12 +94,15 @@ const stageWithoutUnrepresentablePath = (
 
 /** One path per shape of Windows unrepresentability that ADR 0009 names. */
 const UNREPRESENTABLE_FIXTURES = [
-	'screens/localhost:5287.png',
-	'notes/history|find|cd.md',
-	'docs/trailing space ',
-	'docs/trailing period.',
-	'docs/star*name.md',
-	'nul.txt',
+	{ path: 'screens/localhost:5287.png', sparsePattern: 'screens/localhost:5287.png' },
+	{ path: 'notes/history|find|cd.md', sparsePattern: 'notes/history|find|cd.md' },
+	{ path: 'docs/trailing space ', sparsePattern: 'docs/trailing space\\ ' },
+	{ path: 'docs/two  ', sparsePattern: 'docs/two\\ \\ ' },
+	{ path: 'docs/trailing period.', sparsePattern: 'docs/trailing period.' },
+	{ path: 'docs/star*name.md', sparsePattern: 'docs/star\\*name.md' },
+	{ path: 'docs/[bracket]:file.md', sparsePattern: 'docs/\\[bracket\\]:file.md' },
+	{ path: 'docs/back\\slash.md', sparsePattern: 'docs/back\\\\slash.md' },
+	{ path: 'nul.txt', sparsePattern: 'nul.txt' },
 ];
 
 const withTemporaryRoot = async (
@@ -240,16 +243,7 @@ const resolveFixtureRepository = (): Promise<ResolvedRepository> =>
 	});
 
 describe('sparse-checkout pattern escaping', () => {
-	test('escapes the characters gitignore syntax would otherwise consume', () => {
-		expect(escapeSparsePattern('docs/trailing space ')).toBe('docs/trailing space\\ ');
-		expect(escapeSparsePattern('docs/two  ')).toBe('docs/two\\ \\ ');
-		expect(escapeSparsePattern('docs/mid space/file.md')).toBe('docs/mid space/file.md');
-		expect(escapeSparsePattern('docs/star*name.md')).toBe('docs/star\\*name.md');
-		expect(escapeSparsePattern('docs/[bracket].md')).toBe('docs/\\[bracket\\].md');
-		expect(escapeSparsePattern('docs/back\\slash.md')).toBe('docs/back\\\\slash.md');
-	});
-
-	for (const invalidPath of UNREPRESENTABLE_FIXTURES) {
+	for (const { path: invalidPath, sparsePattern } of UNREPRESENTABLE_FIXTURES) {
 		windowsOnly(`produces a clean checkout for ${JSON.stringify(invalidPath)}`, async () => {
 			await withTemporaryRoot('starsync-sparse-pattern-', async (root) => {
 				const origin = createOrigin(root, invalidPath);
@@ -259,6 +253,13 @@ describe('sparse-checkout pattern escaping', () => {
 				await materializeExcludedCheckout(checkout);
 
 				expect(runGit(['status', '--porcelain'], checkout)).toBe('');
+				const sparsePath = runGit(
+					['rev-parse', '--git-path', 'info/sparse-checkout'],
+					checkout
+				);
+				expect(readFileSync(path.resolve(checkout, sparsePath), 'utf8')).toContain(
+					`!/${sparsePattern}`
+				);
 				expect(runGit(['ls-tree', '-r', '-z', '--name-only', 'HEAD'], checkout)).toContain(
 					invalidPath
 				);
