@@ -1,4 +1,4 @@
-import type { NormalizeArchiveDatesOptions } from './archive-api.ts';
+import type { NormalizeArchiveDatesOptions } from './archive-api-contract.ts';
 import type { CommandReport } from './reporting.ts';
 
 import {

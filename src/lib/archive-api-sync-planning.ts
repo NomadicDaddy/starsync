@@ -1,7 +1,6 @@
 import path from 'node:path';
 
-import type { SyncContext } from './archive-api-sync.ts';
-import type { SyncArchiveOptions } from './archive-api.ts';
+import type { SyncArchiveOptions, SyncContext } from './archive-api-contract.ts';
 import type { ManagedSyncPlan, StarredRepository } from './managed-checkout-planning.ts';
 import type { CheckoutReport, CommandReport } from './reporting.ts';
 
