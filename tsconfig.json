@@ -22,7 +22,7 @@
 		"skipLibCheck": true,
 		"strict": true,
 		"target": "ES2022",
-		"types": ["bun-types"],
+		"types": ["bun"],
 		"verbatimModuleSyntax": true
 	},
 	"exclude": ["node_modules", "dist", "starred_repos"],
