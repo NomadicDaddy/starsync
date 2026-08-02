@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-01
+
+### Added
+
+- Added `rename` and `renameArchive` for read-only rename previews and explicitly applied updates
+  after repository renames or ownership transfers.
+- Added schema-version-2 JSON reporting with a current-format `rename` preview classified as
+  `blocked`, `current`, `failed`, or `pending`.
+
+### Changed
+
+- StarSync now accepts only exact format-2 archive configuration with a valid owner, and every
+  checkout must already carry a stable repository ID matching GitHub's resolved identity.
+- CLI use now requires one of `sync`, `verify`, `rename`, `dates`, `init`, or `unlock`; bare
+  invocation is a usage error with exit code 2.
+
+### Fixed
+
+- Uninitialized-archive errors now distinguish empty directories that can be initialized from
+  populated pre-2.0 archives that must be preserved or moved aside before rebuilding.
+- `verify --force` can recover a canonical checkout with missing identity only by publishing a
+  fully validated replacement; it never writes identity into the existing checkout.
+- Rename reports no longer retain a stale planned outcome after an update succeeds, and GitHub
+  origin parsing rejects credentials, non-GitHub hosts, malformed paths, queries, and fragments.
+
+### Removed
+
+- Removed configless and older-format archive support, identity backfill, resumable conversion
+  state, archive finalization, and every conversion-only implementation and interface.
+- Removed the retired command, bare sync alias, deprecated programmatic exports, and schema-1
+  checkout report shape.
+
 ## [1.5.0] - 2026-08-01
 
 ### Added
