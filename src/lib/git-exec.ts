@@ -13,6 +13,7 @@ export interface GitExecOptions {
 
 const ALLOWED_GIT_ENVIRONMENT_KEYS = new Set([
 	'COMSPEC',
+	'GIT_LFS_SKIP_SMUDGE',
 	'GIT_OPTIONAL_LOCKS',
 	'GIT_SSH',
 	'GIT_SSH_COMMAND',
@@ -68,12 +69,12 @@ export const buildGitEnvironment = (
 };
 
 /**
- * Runs a Git command asynchronously and returns trimmed stdout.
+ * Runs a Git command asynchronously and returns stdout exactly as Git wrote it.
  *
  * Uses execFile (no shell) to prevent injection. Sets GIT_TERMINAL_PROMPT=0
  * so credential prompts never block in non-interactive sessions.
  */
-export const runGit = (args: string[], options: GitExecOptions): Promise<string> =>
+const runGitRaw = (args: string[], options: GitExecOptions): Promise<string> =>
 	new Promise((resolve, reject) => {
 		execFile(
 			'git',
@@ -88,11 +89,52 @@ export const runGit = (args: string[], options: GitExecOptions): Promise<string>
 				if (err) {
 					reject(err);
 				} else {
-					resolve(stdout.trim());
+					resolve(stdout);
 				}
 			}
 		);
 	});
+
+/** Runs a Git command asynchronously and returns trimmed stdout. */
+export const runGit = async (args: string[], options: GitExecOptions): Promise<string> =>
+	(await runGitRaw(args, options)).trim();
+
+// ── Porcelain status parsing ───────────────────────────────────────────────
+
+const isRenameRecord = (record: string): boolean =>
+	['C', 'R'].includes(record[0] ?? '') || ['C', 'R'].includes(record[1] ?? '');
+
+/**
+ * Returns every path reported by `git status --porcelain -z`.
+ *
+ * The NUL-separated form is used rather than the default output because it
+ * never quotes or escapes a path, and repositories may legitimately contain
+ * spaces, quotes, and other characters that the quoted form rewrites. Rename
+ * and copy records carry their origin path in a second NUL-separated field.
+ */
+export const parsePorcelainStatusPaths = (output: string): string[] => {
+	const records = output.split('\0').filter((record) => record.length > 0);
+	const paths: string[] = [];
+	for (let index = 0; index < records.length; index++) {
+		const record = records[index] ?? '';
+		if (record.length < 4) continue;
+		paths.push(record.slice(3));
+		if (!isRenameRecord(record)) continue;
+		const origin = records[index + 1];
+		if (origin !== undefined) paths.push(origin);
+		index++;
+	}
+	return paths;
+};
+
+/**
+ * Reads the paths `git status` reports for a checkout.
+ *
+ * Output is read untrimmed, because a record whose index field is empty starts
+ * with a space that carries meaning and trimming would shift the first path.
+ */
+export const readStatusPaths = async (args: string[], options: GitExecOptions): Promise<string[]> =>
+	parsePorcelainStatusPaths(await runGitRaw([...args, 'status', '--porcelain', '-z'], options));
 
 // ── Error classification for retry decisions ───────────────────────────────
 

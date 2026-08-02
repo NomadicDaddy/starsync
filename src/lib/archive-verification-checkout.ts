@@ -7,7 +7,7 @@ import {
 	REPOSITORY_ID_KEY,
 	REPOSITORY_SLUG_KEY,
 } from './checkout-identity.ts';
-import { runGit } from './git-exec.ts';
+import { readStatusPaths, runGit } from './git-exec.ts';
 import { createFinding } from './reporting.ts';
 import {
 	hasEmbeddedCredentials,
@@ -16,6 +16,7 @@ import {
 	sanitizeUrl,
 	CREDENTIAL_GUIDANCE,
 } from './secret-safety.ts';
+import { areAllPathsUnrepresentable } from './windows-checkout.ts';
 
 export interface VerifiedCheckout {
 	report: CheckoutReport;
@@ -54,10 +55,12 @@ const gitErrorMessage = (err: unknown): string => {
 	return sanitizeMessage(details.stderr?.trim() || details.message || String(err));
 };
 
+const READ_ONLY_GIT_ENVIRONMENT = { GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' };
+
 const runReadOnlyGit = (checkoutPath: string, args: string[]): Promise<string> =>
 	runGit(['-c', 'core.askPass=', ...args], {
 		cwd: checkoutPath,
-		env: { GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' },
+		env: READ_ONLY_GIT_ENVIRONMENT,
 	});
 
 const readOptionalGitConfig = async (checkoutPath: string, key: string): Promise<null | string> => {
@@ -142,8 +145,11 @@ const verifyCheckoutState = async (
 	state: VerificationState
 ): Promise<void> => {
 	try {
-		const status = await runReadOnlyGit(entry.path, ['status', '--porcelain']);
-		if (status.length > 0) {
+		const paths = await readStatusPaths(['-c', 'core.askPass='], {
+			cwd: entry.path,
+			env: READ_ONLY_GIT_ENVIRONMENT,
+		});
+		if (paths.length > 0 && !areAllPathsUnrepresentable(paths)) {
 			addBlockedFinding(
 				state,
 				'checkout-blocked',
