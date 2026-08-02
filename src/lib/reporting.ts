@@ -1,6 +1,6 @@
 import type { Subcommand } from './cli-utils.ts';
 
-export const REPORT_SCHEMA_VERSION = 2 as const;
+const REPORT_SCHEMA_VERSION = 2 as const;
 
 export type CheckoutLifecycle = 'active' | 'blocked' | 'retained';
 export type CommandExitCode = 0 | 1 | 130 | 2;

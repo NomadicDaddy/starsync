@@ -13,7 +13,7 @@ export interface ArchiveLockMetadata {
 	startedAt: string;
 }
 
-export type ArchiveProcessState = 'alive' | 'dead' | 'unknown';
+type ArchiveProcessState = 'alive' | 'dead' | 'unknown';
 
 export interface ArchiveLockRuntime {
 	createLockId: () => string;
@@ -28,7 +28,7 @@ const getErrorCode = (err: unknown): null | string => {
 	return typeof err.code === 'string' ? err.code : null;
 };
 
-export const getProcessState = (pid: number): ArchiveProcessState => {
+const getProcessState = (pid: number): ArchiveProcessState => {
 	try {
 		process.kill(pid, 0);
 		return 'alive';

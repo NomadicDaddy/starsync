@@ -5,7 +5,7 @@ import path from 'node:path';
 import { withApiRetry } from './api-retry.ts';
 
 export const ARCHIVE_CONFIG_DIRECTORY = '.starsync';
-export const ARCHIVE_CONFIG_FILE = 'config.json';
+const ARCHIVE_CONFIG_FILE = 'config.json';
 export const CURRENT_ARCHIVE_FORMAT = 2;
 
 export interface ArchiveOwner {

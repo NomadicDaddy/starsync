@@ -12,7 +12,6 @@ import {
 } from '../src/index.ts';
 import {
 	acquireArchiveLock,
-	getArchiveLockPath,
 	readArchiveLock,
 	releaseArchiveLock,
 	type ArchiveLockRuntime,
@@ -21,6 +20,8 @@ import { unlockArchiveWithRuntime } from '../src/lib/archive-unlock.ts';
 
 const targets: string[] = [];
 const projectRoot = path.resolve(import.meta.dir, '..');
+const archiveLockPath = (target: string): string =>
+	path.join(target, '.starsync', 'operation-lock.json');
 
 const createTarget = (name: string): string => {
 	const target = mkdtempSync(path.join(os.tmpdir(), `starsync-${name}-`));
@@ -73,7 +74,7 @@ describe('archive operation locking', () => {
 		expect(contender.message).toContain('sync (PID 101 on portable-host');
 
 		expect(releaseArchiveLock(acquisition.held)).toEqual({ ok: true, removed: true });
-		expect(existsSync(getArchiveLockPath(target))).toBe(false);
+		expect(existsSync(archiveLockPath(target))).toBe(false);
 		expect(readdirSync(target)).toEqual([]);
 	});
 
@@ -128,7 +129,7 @@ describe('archive operation locking', () => {
 			const refused = unlockArchiveWithRuntime({ targetPath: target }, localRuntime);
 			expect(refused.exitCode).toBe(1);
 			expect(refused.findings[0]?.code).toBe('archive-lock-force-required');
-			expect(existsSync(getArchiveLockPath(target))).toBe(true);
+			expect(existsSync(archiveLockPath(target))).toBe(true);
 
 			const progress: string[] = [];
 			const forced = unlockArchiveWithRuntime(
@@ -143,7 +144,7 @@ describe('archive operation locking', () => {
 			expect(forced.exitCode).toBe(0);
 			expect(forced.findings[0]?.code).toBe('archive-lock-force-removed');
 			expect(forced.findings[0]?.severity).toBe('warning');
-			expect(existsSync(getArchiveLockPath(target))).toBe(false);
+			expect(existsSync(archiveLockPath(target))).toBe(false);
 		});
 	}
 
@@ -157,7 +158,7 @@ describe('archive operation locking', () => {
 		const report = unlockArchiveWithRuntime({ force: true, targetPath: target }, runtime);
 		expect(report.exitCode).toBe(1);
 		expect(report.findings[0]?.code).toBe('archive-lock-active');
-		expect(existsSync(getArchiveLockPath(target))).toBe(true);
+		expect(existsSync(archiveLockPath(target))).toBe(true);
 		expect(releaseArchiveLock(acquisition.held)).toEqual({ ok: true, removed: true });
 	});
 
@@ -182,11 +183,11 @@ describe('archive operation locking', () => {
 	test('routes --force through the unlock CLI', async () => {
 		const target = createTarget('lock-cli-force');
 		mkdirSync(path.join(target, '.starsync'));
-		writeFileSync(getArchiveLockPath(target), 'invalid lock metadata', 'utf8');
+		writeFileSync(archiveLockPath(target), 'invalid lock metadata', 'utf8');
 		const { dispatchUnlock } = await import('../src/lib/subcommands.ts');
 
 		expect(dispatchUnlock(['--force', target])).toBe(0);
-		expect(existsSync(getArchiveLockPath(target))).toBe(false);
+		expect(existsSync(archiveLockPath(target))).toBe(false);
 	});
 
 	test('locks the dates CLI entrypoint through the unified dispatcher', () => {
