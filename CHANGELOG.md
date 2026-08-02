@@ -4,16 +4,46 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-01
+
+### Added
+
+- Sync reports the tags it kept at their archived target. A refresh that succeeds or finds the
+  checkout already current now carries a `remote-tags-retained` warning naming up to ten of them,
+  so a moved upstream tag is visible without reading Git output.
+- A repository whose Git LFS objects the server no longer provides is archived with its LFS
+  pointer files instead of failing. StarSync retries the failed clone or refresh once with
+  `GIT_LFS_SKIP_SMUDGE=1` and never writes that setting into the checkout.
+
+### Changed
+
+- Paths the platform cannot represent are now kept out of the working tree with a sparse checkout
+  instead of `skip-worktree` bits. Sparse patterns survive a later fast-forward; the bits did not,
+  so the next refresh tried to write the path again and failed. Either way the path itself stays
+  in Git history and the index. ADR 0009 records the decision.
+
 ### Fixed
 
+- A repository whose upstream moved a tag the archive already stores now refreshes instead of
+  failing. Git exits non-zero on a rejected tag update even when every branch has already
+  advanced, which left the checkout behind. StarSync keeps the archived tag target and finishes
+  the refresh.
+- A repository containing a path Windows cannot represent (one holding `: | < > " ? *`, a control
+  character, a reserved device name, or a trailing space or period) is cloned and refreshed
+  instead of failing.
+- A checkout holding such a path is no longer reported as blocked by `sync`, `verify`, or
+  `migrate`. Git reports it as a staged deletion that can never be resolved, which the guard
+  against overwriting local work read as uncommitted work. Sync now excludes the path before
+  deciding, and verify and migrate discount it without changing the checkout they inspect. All
+  three still block on genuine local changes.
 - An explicitly supplied empty or quoted-empty target path is now the documented usage error with
   exit code 2. It previously fell through to an implicit `starred_repos` directory beside the
   package, so a command could inspect or modify an archive the caller never named.
 
 ### Removed
 
-- Removed the pre-push screenshot artifact guard. It did not apply to this repository, so the hook
-  no longer scans tracked or staged files for screenshots.
+- The pre-push screenshot artifact guard. It did not apply to this repository, so the hook no
+  longer scans tracked or staged files for screenshots.
 
 ## [1.4.1] - 2026-07-28
 
