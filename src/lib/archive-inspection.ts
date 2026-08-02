@@ -6,6 +6,7 @@ import type { Finding } from './reporting.ts';
 
 import { CURRENT_ARCHIVE_FORMAT, readArchiveConfig } from './archive-config.ts';
 import { buildGitEnvironment } from './git-exec.ts';
+import { isOwnedCheckoutArtifactName } from './owned-checkout-artifacts.ts';
 import { createFinding } from './reporting.ts';
 import { sanitizeMessage } from './secret-safety.ts';
 
@@ -68,7 +69,11 @@ const readArchiveEntry = (targetPath: string, entry: fs.Dirent): ArchiveEntry =>
 const readArchiveEntries = (targetPath: string): ArchiveEntry[] =>
 	fs
 		.readdirSync(targetPath, { withFileTypes: true })
-		.filter((entry) => entry.name !== '.starsync')
+		.filter(
+			(entry) =>
+				entry.name !== '.starsync' &&
+				!(entry.isDirectory() && isOwnedCheckoutArtifactName(entry.name))
+		)
 		.sort((left, right) => left.name.localeCompare(right.name))
 		.map((entry) => readArchiveEntry(targetPath, entry));
 

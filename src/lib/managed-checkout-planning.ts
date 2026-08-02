@@ -12,6 +12,7 @@ import {
 	filterDuplicateCheckoutIdentities,
 	inspectManagedCheckoutEntry,
 } from './managed-checkout-inspection.ts';
+import { isOwnedCheckoutArtifactName } from './owned-checkout-artifacts.ts';
 
 export interface StarredRepository extends RepoRecord {
 	folderName: string;
@@ -37,7 +38,12 @@ export interface ManagedSyncPlan {
 const archiveEntryNames = (targetPath: string): string[] =>
 	fs
 		.readdirSync(targetPath, { withFileTypes: true })
-		.filter((entry) => entry.name !== '.starsync' && entry.isDirectory())
+		.filter(
+			(entry) =>
+				entry.name !== '.starsync' &&
+				entry.isDirectory() &&
+				!isOwnedCheckoutArtifactName(entry.name)
+		)
 		.map((entry) => entry.name)
 		.sort((left, right) => left.localeCompare(right));
 
