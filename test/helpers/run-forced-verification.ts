@@ -18,6 +18,14 @@ if (!targetPath) throw new Error('A target path is required.');
 const rawRepository = process.env.TEST_RESOLVED_REPOSITORY;
 if (!rawRepository) throw new Error('TEST_RESOLVED_REPOSITORY is required.');
 const repository = JSON.parse(rawRepository) as ResolvedRepository;
+const rawAliases = process.env.TEST_REPOSITORY_ALIASES ?? '[]';
+const parsedAliases = JSON.parse(rawAliases) as unknown;
+if (!Array.isArray(parsedAliases) || !parsedAliases.every((value) => typeof value === 'string')) {
+	throw new Error('TEST_REPOSITORY_ALIASES must be a JSON array of strings.');
+}
+const acceptedSlugs = new Set(
+	[repository.slug, ...parsedAliases].map((slug) => slug.toLowerCase())
+);
 
 const actualRemove = fs.rmSync;
 const removeSpy =
@@ -44,10 +52,7 @@ const output = await (async (): Promise<string> => {
 			repair: {
 				archiveOwnerId: readArchiveConfig(targetPath).owner.id,
 				resolveRepository: async (owner, name) => {
-					if (
-						owner.toLowerCase() !== repository.owner.toLowerCase() ||
-						name.toLowerCase() !== repository.name.toLowerCase()
-					) {
+					if (!acceptedSlugs.has(`${owner}/${name}`.toLowerCase())) {
 						throw new Error('Repository not found.');
 					}
 					return repository;

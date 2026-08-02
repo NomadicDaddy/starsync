@@ -1,14 +1,14 @@
 import type { ArchiveEntry } from './archive-inspection.ts';
 import type { VerifiedCheckout } from './archive-verification-checkout.ts';
 import type { RepositoryResolver, ResolvedRepository } from './repository-resolution.ts';
-import type { ReplacedCheckout, StagedCheckoutRepository } from './staged-checkout.ts';
+import type { ReplacedCheckout, StagedCheckoutReplacement } from './staged-checkout.ts';
 
 import { canonicalCheckoutName } from './checkout-identity.ts';
 import { sanitizeMessage } from './secret-safety.ts';
 import { replaceAnomalousCheckout } from './staged-checkout.ts';
 
 type CheckoutReplacer = (
-	repository: StagedCheckoutRepository,
+	repository: StagedCheckoutReplacement,
 	targetBase: string,
 	options: { archiveOwnerId: number }
 ) => Promise<ReplacedCheckout>;
@@ -58,11 +58,7 @@ const resolveCandidate = async (
 	const [owner, repository] = slug.split('/');
 	if (!owner || !repository) return null;
 	try {
-		const resolved = await resolveRepository(owner, repository);
-		return canonicalCheckoutName(resolved.slug)?.toLowerCase() ===
-			canonicalCheckoutName(slug)?.toLowerCase()
-			? resolved
-			: null;
+		return await resolveRepository(owner, repository);
 	} catch {
 		return null;
 	}
@@ -71,7 +67,8 @@ const resolveCandidate = async (
 const resolveDamagedRepository = async (
 	entry: ArchiveEntry,
 	verified: VerifiedCheckout,
-	resolveRepository: RepositoryResolver
+	resolveRepository: RepositoryResolver,
+	claimedRepositoryIds: Set<number>
 ): Promise<ResolvedRepository> => {
 	const slugs = [
 		...(verified.repositorySlug === null ? [] : [verified.repositorySlug]),
@@ -80,10 +77,13 @@ const resolveDamagedRepository = async (
 	const resolved = new Map<number, ResolvedRepository>();
 	for (const slug of new Set(slugs.map((value) => value.toLowerCase()))) {
 		const repository = await resolveCandidate(slug, resolveRepository);
+		const canonicalName = repository === null ? null : canonicalCheckoutName(repository.slug);
 		if (
 			repository !== null &&
-			canonicalCheckoutName(repository.slug)?.toLowerCase() === entry.name.toLowerCase() &&
-			(verified.repositoryId === null || verified.repositoryId === repository.id)
+			canonicalName !== null &&
+			(verified.repositoryId === repository.id ||
+				(verified.repositoryId === null &&
+					canonicalName.toLowerCase() === entry.name.toLowerCase()))
 		) {
 			resolved.set(repository.id, repository);
 		}
@@ -98,26 +98,41 @@ const resolveDamagedRepository = async (
 			`More than one GitHub repository matches ${entry.name}; the anomalous checkout was not removed.`
 		);
 	}
-	return [...resolved.values()][0]!;
+	const repository = [...resolved.values()][0]!;
+	if (verified.repositoryId === null) {
+		if (claimedRepositoryIds.has(repository.id)) {
+			throw new Error(
+				`Repository identity ${repository.id} is already used by another checkout; ${entry.name} was not removed.`
+			);
+		}
+		claimedRepositoryIds.add(repository.id);
+	}
+	return repository;
 };
 
 export const repairAnomalousCheckout = async (
 	entry: ArchiveEntry,
 	verified: VerifiedCheckout,
-	options: ArchiveVerificationRepairOptions
+	options: ArchiveVerificationRepairOptions,
+	claimedRepositoryIds: Set<number>
 ): Promise<CheckoutRepairResult> => {
 	try {
 		const repository = await resolveDamagedRepository(
 			entry,
 			verified,
-			options.resolveRepository
+			options.resolveRepository,
+			claimedRepositoryIds
 		);
+		const folderName = canonicalCheckoutName(repository.slug);
+		if (folderName === null)
+			throw new Error(`GitHub returned an invalid slug: ${repository.slug}`);
 		const replacement = await (options.replaceCheckout ?? replaceAnomalousCheckout)(
 			{
 				cloneUrl: `https://github.com/${repository.slug}.git`,
-				folderName: entry.name,
+				folderName,
 				repositoryId: repository.id,
 				repositorySlug: repository.slug,
+				sourceFolderName: entry.name,
 			},
 			options.targetPath,
 			{ archiveOwnerId: options.archiveOwnerId }
