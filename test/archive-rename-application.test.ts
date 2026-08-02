@@ -67,14 +67,24 @@ const createGitCheckout = (
 	return checkout;
 };
 
-const applyRenames = (targetPath: string, useOriginName = false): RenameResult => {
+const runRenames = (
+	targetPath: string,
+	options: {
+		previewOnly?: boolean;
+		repositoryName?: string;
+		repositoryOwner?: string;
+		useOriginName?: boolean;
+	} = {}
+): RenameResult => {
 	const helperPath = path.resolve('test/helpers/run-rename-apply.ts');
 	const result = spawnSync(process.execPath, [helperPath, targetPath], {
 		encoding: 'utf-8',
 		env: {
 			...process.env,
-			TEST_REPOSITORY_OWNER: 'owner',
-			TEST_USE_ORIGIN_NAME: useOriginName ? '1' : '0',
+			TEST_PREVIEW_ONLY: options.previewOnly ? '1' : '0',
+			TEST_REPOSITORY_NAME: options.repositoryName ?? 'repository',
+			TEST_REPOSITORY_OWNER: options.repositoryOwner ?? 'owner',
+			TEST_USE_ORIGIN_NAME: options.useOriginName ? '1' : '0',
 		},
 	});
 	if (result.status !== 0) {
@@ -82,6 +92,9 @@ const applyRenames = (targetPath: string, useOriginName = false): RenameResult =
 	}
 	return JSON.parse(result.stdout) as RenameResult;
 };
+
+const applyRenames = (targetPath: string, useOriginName = false): RenameResult =>
+	runRenames(targetPath, { useOriginName });
 
 describe('managed checkout rename process boundary', () => {
 	test('updates current identity metadata, origin, and folder, then reruns idempotently', () => {
@@ -122,6 +135,52 @@ describe('managed checkout rename process boundary', () => {
 			expect(second.checkouts[0]?.outcome).toBe('current');
 		} finally {
 			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('previews and publishes exact owner-only and repository-only casing changes', () => {
+		for (const repository of [
+			{ name: 'repository', owner: 'Owner', proposedName: 'repository--Owner' },
+			{ name: 'Repository', owner: 'owner', proposedName: 'Repository--owner' },
+		]) {
+			const target = mkdtempSync(path.join(tmpdir(), 'starsync-rename-casing-'));
+			try {
+				writeArchiveConfig(target);
+				createGitCheckout(target, 'repository--owner', 'owner', 'repository');
+				const options = {
+					repositoryName: repository.name,
+					repositoryOwner: repository.owner,
+				};
+
+				const preview = runRenames(target, { ...options, previewOnly: true });
+				expect(preview.checkouts[0]).toEqual(
+					expect.objectContaining({
+						pendingRename: true,
+						rename: expect.objectContaining({
+							classification: 'pending',
+							proposedName: repository.proposedName,
+						}),
+					})
+				);
+
+				const applied = runRenames(target, options);
+				expect(applied.checkouts[0]?.name).toBe(repository.proposedName);
+				expect(readdirSync(target).sort()).toEqual(
+					['.starsync', repository.proposedName].sort()
+				);
+				const canonicalPath = path.join(target, repository.proposedName);
+				expect(
+					run(
+						['git', 'config', '--local', '--get', 'starsync.repository-slug'],
+						canonicalPath
+					)
+				).toBe(`${repository.owner}/${repository.name}`);
+				expect(run(['git', 'config', '--get', 'remote.origin.url'], canonicalPath)).toBe(
+					`https://github.com/${repository.owner}/${repository.name}.git`
+				);
+			} finally {
+				rmSync(target, { force: true, recursive: true });
+			}
 		}
 	});
 

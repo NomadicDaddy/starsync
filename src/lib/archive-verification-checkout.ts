@@ -239,8 +239,7 @@ const getPendingRename = (entry: ArchiveEntry, state: VerificationState): boolea
 			: source
 				? `${source.repository}--${source.owner}`
 				: null;
-	const pendingRename =
-		proposedName !== null && proposedName.toLowerCase() !== entry.name.toLowerCase();
+	const pendingRename = proposedName !== null && proposedName !== entry.name;
 	if (pendingRename) {
 		state.findings.push(
 			createFinding(
