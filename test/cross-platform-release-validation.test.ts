@@ -107,6 +107,17 @@ const addRemoteCommit = (fixture: RepositoryFixture): void => {
 };
 
 describe('cross-platform release validation', () => {
+	test('keeps local deployment guidance compatible with format 2', async () => {
+		const guide = Bun.file(path.resolve('.aidd/deployment.md'));
+		if (!(await guide.exists())) return;
+		const deployment = await guide.text();
+		expect(deployment).toContain('bun pm pkg get version');
+		expect(deployment).toContain('only published tag is `v1.4.1`');
+		expect(deployment).toContain('no `v2.0.0` tag');
+		expect(deployment).toContain('must not be used with a format-2 Managed Archive');
+		expect(deployment).toContain('verified 2.x commit or tag');
+	});
+
 	test('bounds and supersedes the full three-platform release matrix', () => {
 		const workflow = readFileSync(
 			path.resolve('.github/workflows/release-validation.yml'),
