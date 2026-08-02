@@ -111,9 +111,9 @@ const createRenameResult = (
 export const previewArchiveRenames = async (
 	targetPath: string,
 	resolver: RepositoryResolver,
-	options: RenameOptions = {}
+	options: RenameOptions = {},
+	inspection: ArchiveInspection = inspectArchive(targetPath)
 ): Promise<RenameResult> => {
-	const inspection = inspectArchive(targetPath);
 	if (inspection.kind !== 'current') return invalidInspectionResult(inspection);
 	return createRenameResult(inspection, await resolveEntries(inspection, resolver, options));
 };
