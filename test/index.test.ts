@@ -246,15 +246,19 @@ const pushRealBranch = (fixture: RealRefreshFixture, branch: string): void => {
 
 const runRealRefresh = (
 	fixture: RealRefreshFixture,
-	defaultBranch: string
+	defaultBranch: string,
+	labels: { cloneUrl: string; slug: string } = {
+		cloneUrl: fixture.cloneUrl,
+		slug: 'example/repository',
+	}
 ): { message?: string; outcome: string } => {
 	const repository = {
-		clone_url: fixture.cloneUrl,
+		clone_url: labels.cloneUrl,
 		defaultBranch,
 		folderName: path.basename(fixture.checkout),
 		id: 321,
 		name: 'repository',
-		slug: 'example/repository',
+		slug: labels.slug,
 	};
 	const result = Bun.spawnSync({
 		cmd: [
@@ -1672,6 +1676,52 @@ describe('refresh pipeline', () => {
 
 			expect(result.outcome).toBe('blocked');
 			expect(result.message).toContain('Local changes detected');
+			expect(runRealGit(['branch', '--show-current'], fixture.checkout)).toBe('secondary');
+			expect(readFileSync(localFile, 'utf8')).toBe('preserve dirty work\n');
+			expect(runRealGit(['status', '--porcelain'], fixture.checkout)).toContain(
+				'?? LOCAL.txt'
+			);
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('blocked refreshes preserve managed metadata when upstream labels changed', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-blocked-labels-'));
+		try {
+			const fixture = createRealRefreshFixture(root);
+			runRealGit(['switch', '--create', 'secondary'], fixture.checkout);
+			const localFile = path.join(fixture.checkout, 'LOCAL.txt');
+			writeFileSync(localFile, 'preserve dirty work\n');
+			const origin = runRealGit(['remote', 'get-url', 'origin'], fixture.checkout);
+			const repositoryId = runRealGit(
+				['config', '--local', '--get', 'starsync.repository-id'],
+				fixture.checkout
+			);
+			const repositorySlug = runRealGit(
+				['config', '--local', '--get', 'starsync.repository-slug'],
+				fixture.checkout
+			);
+
+			const result = runRealRefresh(fixture, 'main', {
+				cloneUrl: 'https://github.com/new-owner/renamed-repository.git',
+				slug: 'new-owner/renamed-repository',
+			});
+
+			expect(result.outcome).toBe('blocked');
+			expect(runRealGit(['remote', 'get-url', 'origin'], fixture.checkout)).toBe(origin);
+			expect(
+				runRealGit(
+					['config', '--local', '--get', 'starsync.repository-id'],
+					fixture.checkout
+				)
+			).toBe(repositoryId);
+			expect(
+				runRealGit(
+					['config', '--local', '--get', 'starsync.repository-slug'],
+					fixture.checkout
+				)
+			).toBe(repositorySlug);
 			expect(runRealGit(['branch', '--show-current'], fixture.checkout)).toBe('secondary');
 			expect(readFileSync(localFile, 'utf8')).toBe('preserve dirty work\n');
 			expect(runRealGit(['status', '--porcelain'], fixture.checkout)).toContain(
