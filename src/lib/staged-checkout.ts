@@ -29,6 +29,7 @@ export interface StagedCheckoutRepository {
 	repositorySlug: string;
 }
 
+export type StagedCheckoutReplacement = StagedCheckoutRepository & { sourceFolderName: string };
 export interface StagedCheckoutOptions {
 	archiveOwnerId: number;
 }
@@ -96,6 +97,33 @@ const assertArchiveOwner = (targetBase: string, archiveOwnerId: number): void =>
 
 const assertDestinationAvailable = (destinationPath: string, folderName: string): void => {
 	if (fs.existsSync(destinationPath)) {
+		throw new Error(`Canonical checkout folder ${folderName} is already occupied.`);
+	}
+};
+
+const pathsReferToSameEntry = (leftPath: string, rightPath: string): boolean => {
+	if (!fs.existsSync(leftPath) || !fs.existsSync(rightPath)) return false;
+	const left = fs.realpathSync.native(leftPath);
+	const right = fs.realpathSync.native(rightPath);
+	return process.platform === 'win32'
+		? left.toLowerCase() === right.toLowerCase()
+		: left === right;
+};
+const assertReplacementSource = (sourcePath: string, sourceFolderName: string): void => {
+	if (
+		!sourceFolderName ||
+		path.basename(sourceFolderName) !== sourceFolderName ||
+		!fs.existsSync(path.join(sourcePath, '.git'))
+	) {
+		throw new Error(`Anomalous checkout ${sourceFolderName} is no longer present.`);
+	}
+};
+const assertReplacementDestinationAvailable = (
+	sourcePath: string,
+	destinationPath: string,
+	folderName: string
+): void => {
+	if (fs.existsSync(destinationPath) && !pathsReferToSameEntry(sourcePath, destinationPath)) {
 		throw new Error(`Canonical checkout folder ${folderName} is already occupied.`);
 	}
 };
@@ -194,13 +222,6 @@ const cloneValidatedCheckout = async (
 	throw new Error('Checkout clone attempts were exhausted.');
 };
 
-/**
- * Creates a managed checkout without exposing partial Git or identity state.
- *
- * Each clone attempt uses a unique StarSync-owned sibling directory. The
- * checkout is published with a same-filesystem rename only after its origin,
- * object database, archive scope, and stable identity have all been validated.
- */
 export const createStagedCheckout = async (
 	repository: StagedCheckoutRepository,
 	targetBase: string,
@@ -229,32 +250,28 @@ export const createStagedCheckout = async (
 	}
 };
 
-/**
- * Replaces an anomalous managed checkout only after its fresh clone is fully validated.
- *
- * The original directory is moved aside on the same filesystem immediately before publication.
- * A failed publication rolls it back; a successful publication then removes the old directory.
- */
 export const replaceAnomalousCheckout = async (
-	repository: StagedCheckoutRepository,
+	repository: StagedCheckoutReplacement,
 	targetBase: string,
 	options: StagedCheckoutOptions
 ): Promise<ReplacedCheckout> => {
 	assertRepositoryRequest(repository);
+	const sourcePath = path.join(targetBase, repository.sourceFolderName);
 	const destinationPath = path.join(targetBase, repository.folderName);
-	if (!fs.existsSync(path.join(destinationPath, '.git'))) {
-		throw new Error(`Anomalous checkout ${repository.folderName} is no longer present.`);
-	}
+	assertReplacementSource(sourcePath, repository.sourceFolderName);
+	assertReplacementDestinationAvailable(sourcePath, destinationPath, repository.folderName);
 	const stagingPath = await cloneValidatedCheckout(repository, targetBase, options);
 	const backupPath = path.join(targetBase, `${DAMAGED_CHECKOUT_PREFIX}${randomUUID()}`);
 	try {
 		assertArchiveOwner(targetBase, options.archiveOwnerId);
-		fs.renameSync(destinationPath, backupPath);
+		assertReplacementSource(sourcePath, repository.sourceFolderName);
+		assertReplacementDestinationAvailable(sourcePath, destinationPath, repository.folderName);
+		fs.renameSync(sourcePath, backupPath);
 		try {
 			assertDestinationAvailable(destinationPath, repository.folderName);
 			fs.renameSync(stagingPath, destinationPath);
 		} catch (err) {
-			fs.renameSync(backupPath, destinationPath);
+			fs.renameSync(backupPath, sourcePath);
 			throw err;
 		}
 	} catch (err) {
