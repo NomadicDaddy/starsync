@@ -86,18 +86,21 @@ const createLocalOrigin = (root: string, invalidWindowsPath?: string): string =>
 
 const createLocalCloneEnvironment = (
 	root: string,
-	githubUrl: string,
+	githubUrls: string | string[],
 	localOrigin: string
 ): NodeJS.ProcessEnv => {
 	const gitHome = path.join(root, 'git-home');
 	mkdirSync(gitHome, { recursive: true });
+	const urls = Array.isArray(githubUrls) ? githubUrls : [githubUrls];
 	writeFileSync(
 		path.join(gitHome, '.gitconfig'),
 		[
 			'[protocol "file"]',
 			'\tallow = always',
-			`[url "${pathToFileURL(localOrigin).href}"]`,
-			`\tinsteadOf = ${githubUrl}`,
+			...urls.flatMap((githubUrl) => [
+				`[url "${pathToFileURL(localOrigin).href}"]`,
+				`\tinsteadOf = ${githubUrl}`,
+			]),
 			'',
 		].join('\n')
 	);
@@ -128,12 +131,14 @@ const runForcedVerification = (
 		slug: string;
 	},
 	gitEnv: NodeJS.ProcessEnv,
+	repositoryAliases: string[] = [],
 	failDamagedCleanup = false
 ): ArchiveVerificationResult => {
 	const helperPath = path.resolve('test/helpers/run-forced-verification.ts');
 	const output = runCommand(process.execPath, [helperPath, target], target, {
 		...gitEnv,
 		TEST_FAIL_DAMAGED_CLEANUP: failDamagedCleanup ? '1' : '0',
+		TEST_REPOSITORY_ALIASES: JSON.stringify(repositoryAliases),
 		TEST_RESOLVED_REPOSITORY: JSON.stringify(repository),
 	});
 	return JSON.parse(output) as ArchiveVerificationResult;
@@ -311,6 +316,261 @@ describe('staged checkout creation process boundary', () => {
 		}
 	});
 
+	test('recovers dirty valid-ID checkouts after owner, name, and casing renames', () => {
+		const scenarios = [
+			{
+				currentFolder: 'repository--example',
+				currentSlug: 'example/repository',
+				label: 'owner',
+				oldFolder: 'repository--previous',
+				oldSlug: 'previous/repository',
+			},
+			{
+				currentFolder: 'repository--example',
+				currentSlug: 'example/repository',
+				label: 'name',
+				oldFolder: 'previous--example',
+				oldSlug: 'example/previous',
+			},
+			{
+				currentFolder: 'repository--example',
+				currentSlug: 'example/repository',
+				label: 'casing',
+				oldFolder: 'Repository--Example',
+				oldSlug: 'Example/Repository',
+			},
+		];
+
+		for (const scenario of scenarios) {
+			const root = mkdtempSync(path.join(tmpdir(), `starsync-force-${scenario.label}-`));
+			const target = path.join(root, 'archive');
+			const oldCloneUrl = `https://github.com/${scenario.oldSlug}.git`;
+			const currentCloneUrl = `https://github.com/${scenario.currentSlug}.git`;
+			const source = path.join(target, scenario.oldFolder);
+			const destination = path.join(target, scenario.currentFolder);
+			mkdirSync(target);
+			writeManagedArchiveConfig(target);
+			const origin = createLocalOrigin(root);
+			const gitEnv = createLocalCloneEnvironment(
+				root,
+				[oldCloneUrl, currentCloneUrl],
+				origin
+			);
+
+			try {
+				const [, oldName] = scenario.oldSlug.split('/') as [string, string];
+				expect(
+					runStagedCheckout(
+						{
+							clone_url: oldCloneUrl,
+							defaultBranch: 'main',
+							folderName: scenario.oldFolder,
+							id: 321,
+							name: oldName,
+							slug: scenario.oldSlug,
+						},
+						target,
+						7,
+						gitEnv
+					).outcome
+				).toBe('added');
+				writeFileSync(path.join(source, 'local-change.txt'), 'replace me');
+				const [owner, name] = scenario.currentSlug.split('/') as [string, string];
+
+				const result = runForcedVerification(
+					target,
+					{ id: 321, name, owner, slug: scenario.currentSlug },
+					gitEnv,
+					[scenario.oldSlug]
+				);
+
+				expect(result.exitCode).toBe(0);
+				expect(result.checkouts[0]?.name).toBe(scenario.currentFolder);
+				expect(result.checkouts[0]?.outcome).toBe('updated');
+				expect(readdirSync(target)).toContain(scenario.currentFolder);
+				expect(readdirSync(target)).not.toContain(scenario.oldFolder);
+				expect(existsSync(path.join(destination, 'local-change.txt'))).toBe(false);
+				expect(
+					runGit(['config', '--local', '--get', 'starsync.repository-id'], destination)
+				).toBe('321');
+				expect(
+					runGit(['config', '--local', '--get', 'starsync.repository-slug'], destination)
+				).toBe(scenario.currentSlug);
+				expect(
+					runGit(['config', '--local', '--get', 'remote.origin.url'], destination)
+				).toBe(currentCloneUrl);
+			} finally {
+				rmSync(root, { force: true, recursive: true });
+			}
+		}
+	});
+
+	test('preserves a renamed source when its stable ID does not match GitHub', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-force-id-mismatch-'));
+		const target = path.join(root, 'archive');
+		const oldSlug = 'previous/repository';
+		const currentSlug = 'example/repository';
+		const oldCloneUrl = `https://github.com/${oldSlug}.git`;
+		const currentCloneUrl = `https://github.com/${currentSlug}.git`;
+		const source = path.join(target, 'repository--previous');
+		mkdirSync(target);
+		writeManagedArchiveConfig(target);
+		const origin = createLocalOrigin(root);
+		const gitEnv = createLocalCloneEnvironment(root, [oldCloneUrl, currentCloneUrl], origin);
+
+		try {
+			expect(
+				runStagedCheckout(
+					{
+						clone_url: oldCloneUrl,
+						defaultBranch: 'main',
+						folderName: 'repository--previous',
+						id: 321,
+						name: 'repository',
+						slug: oldSlug,
+					},
+					target,
+					7,
+					gitEnv
+				).outcome
+			).toBe('added');
+			writeFileSync(path.join(source, 'local-change.txt'), 'keep me');
+
+			const result = runForcedVerification(
+				target,
+				{ id: 999, name: 'repository', owner: 'example', slug: currentSlug },
+				gitEnv,
+				[oldSlug]
+			);
+
+			expect(result.exitCode).toBe(1);
+			expect(
+				result.checkouts[0]?.findings.some(
+					(finding) => finding.code === 'checkout-reclone-failed'
+				)
+			).toBe(true);
+			expect(existsSync(path.join(source, 'local-change.txt'))).toBe(true);
+			expect(existsSync(path.join(target, 'repository--example'))).toBe(false);
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('does not force-replace a dirty checkout whose stable ID is duplicated', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-force-duplicate-id-'));
+		const target = path.join(root, 'archive');
+		const origin = createLocalOrigin(root);
+		const repositories = [
+			{ folderName: 'first--example', name: 'first', slug: 'example/first' },
+			{ folderName: 'second--example', name: 'second', slug: 'example/second' },
+		];
+		const cloneUrls = repositories.map(({ slug }) => `https://github.com/${slug}.git`);
+		const gitEnv = createLocalCloneEnvironment(root, cloneUrls, origin);
+		mkdirSync(target);
+		writeManagedArchiveConfig(target);
+
+		try {
+			for (const [index, repository] of repositories.entries()) {
+				expect(
+					runStagedCheckout(
+						{
+							clone_url: cloneUrls[index]!,
+							defaultBranch: 'main',
+							...repository,
+							id: 321,
+						},
+						target,
+						7,
+						gitEnv
+					).outcome
+				).toBe('added');
+			}
+			const dirtyPath = path.join(target, 'first--example', 'local-change.txt');
+			writeFileSync(dirtyPath, 'keep me');
+
+			const result = runForcedVerification(
+				target,
+				{ id: 321, name: 'first', owner: 'example', slug: 'example/first' },
+				gitEnv
+			);
+
+			expect(result.exitCode).toBe(1);
+			expect(
+				result.checkouts.every((checkout) =>
+					checkout.findings.some((finding) => finding.code === 'duplicate-identity')
+				)
+			).toBe(true);
+			expect(
+				result.checkouts.some((checkout) =>
+					checkout.findings.some((finding) => finding.code === 'checkout-recloned')
+				)
+			).toBe(false);
+			expect(readFileSync(dirtyPath, 'utf8')).toBe('keep me');
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('preserves a renamed source when the current canonical destination is occupied', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-force-rename-collision-'));
+		const target = path.join(root, 'archive');
+		const oldSlug = 'previous/repository';
+		const currentSlug = 'example/repository';
+		const oldCloneUrl = `https://github.com/${oldSlug}.git`;
+		const currentCloneUrl = `https://github.com/${currentSlug}.git`;
+		const source = path.join(target, 'repository--previous');
+		const destination = path.join(target, 'repository--example');
+		mkdirSync(target);
+		writeManagedArchiveConfig(target);
+		const origin = createLocalOrigin(root);
+		const gitEnv = createLocalCloneEnvironment(root, [oldCloneUrl, currentCloneUrl], origin);
+
+		try {
+			expect(
+				runStagedCheckout(
+					{
+						clone_url: oldCloneUrl,
+						defaultBranch: 'main',
+						folderName: 'repository--previous',
+						id: 321,
+						name: 'repository',
+						slug: oldSlug,
+					},
+					target,
+					7,
+					gitEnv
+				).outcome
+			).toBe('added');
+			writeFileSync(path.join(source, 'local-change.txt'), 'keep source');
+			mkdirSync(destination);
+			writeFileSync(path.join(destination, 'keep.txt'), 'keep destination');
+
+			const result = runForcedVerification(
+				target,
+				{ id: 321, name: 'repository', owner: 'example', slug: currentSlug },
+				gitEnv,
+				[oldSlug]
+			);
+
+			expect(result.exitCode).toBe(1);
+			expect(
+				result.checkouts
+					.find((checkout) => checkout.name === 'repository--previous')
+					?.findings.some(
+						(finding) =>
+							finding.code === 'checkout-reclone-failed' &&
+							finding.message.includes('already occupied')
+					)
+			).toBe(true);
+			expect(readFileSync(path.join(source, 'local-change.txt'), 'utf8')).toBe('keep source');
+			expect(readFileSync(path.join(destination, 'keep.txt'), 'utf8')).toBe(
+				'keep destination'
+			);
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
 	test('keeps failed damaged cleanup out of later archive inspection and planning', async () => {
 		const root = mkdtempSync(path.join(tmpdir(), 'starsync-damaged-cleanup-'));
 		const target = path.join(root, 'archive');
@@ -348,6 +608,7 @@ describe('staged checkout creation process boundary', () => {
 					slug: 'example/repository',
 				},
 				gitEnv,
+				[],
 				true
 			);
 			const backups = readdirSync(target).filter((name) =>
