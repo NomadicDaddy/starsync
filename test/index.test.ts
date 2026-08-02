@@ -2258,6 +2258,105 @@ describe('structured command reporting', () => {
 		expect(report.summary.findings).toEqual({ error: 1, info: 2, warning: 1 });
 	});
 
+	test('reporters sanitize every string leaf plus diagnostics and progress', async () => {
+		const classicPat = `ghp_${'A'.repeat(36)}`;
+		const fineGrainedPat = `github_pat_${'B'.repeat(36)}`;
+		const report = createCommandReport({
+			checkouts: [
+				{
+					findings: [
+						createFinding(
+							'error',
+							`checkout-${classicPat}`,
+							`Failed with ${fineGrainedPat}`
+						),
+					],
+					lifecycle: 'blocked',
+					name: `repository-${classicPat}`,
+					outcome: 'failed',
+					pendingRename: true,
+					rename: {
+						classification: 'failed',
+						proposedName: `renamed-${fineGrainedPat}`,
+						repositoryId: null,
+						repositorySlug: `owner/${classicPat}`,
+					},
+				},
+			],
+			command: 'verify',
+			exitCode: 1,
+			findings: [createFinding('warning', 'top-level', `Warning for ${fineGrainedPat}`)],
+			targetPath: `C:/archive/${fineGrainedPat}`,
+		});
+
+		const captured = await captureConsole(() => {
+			const reporter = createCommandReporter(true);
+			reporter.diagnostic(`Diagnostic ${classicPat}`);
+			reporter.progress(`Progress ${fineGrainedPat}`);
+			reporter.emit(report);
+		});
+		const output = [...captured.stdout, ...captured.stderr].join('\n');
+		const emittedReport = parseReport(captured.stdout);
+
+		expect(output).not.toContain(classicPat);
+		expect(output).not.toContain(fineGrainedPat);
+		expect(output).toContain('[REDACTED]');
+		expect(emittedReport.targetPath).toBe('C:/archive/[REDACTED]');
+		expect(emittedReport.checkouts[0]?.name).toBe('repository-[REDACTED]');
+		expect(emittedReport.checkouts[0]?.findings[0]?.code).toBe('checkout-[REDACTED]');
+		expect(emittedReport.checkouts[0]?.rename?.repositorySlug).toBe('owner/[REDACTED]');
+	});
+
+	test('human CLI output redacts PATs supplied as flags and positional targets', async () => {
+		const { dispatchVerify } = await import('../src/lib/subcommands.ts');
+		const classicPat = `ghp_${'C'.repeat(36)}`;
+		const fineGrainedPat = `github_pat_${'D'.repeat(36)}`;
+		const flagResult = await captureConsole(() => dispatchVerify([`--${classicPat}`]));
+		const targetResult = await captureConsole(() => dispatchVerify([fineGrainedPat]));
+		const output = [
+			...flagResult.stdout,
+			...flagResult.stderr,
+			...targetResult.stdout,
+			...targetResult.stderr,
+		].join('\n');
+
+		expect(flagResult.result).toBe(2);
+		expect(targetResult.result).toBe(1);
+		expect(output).not.toContain(classicPat);
+		expect(output).not.toContain(fineGrainedPat);
+		expect(flagResult.stderr).toContain(
+			'ERROR [invalid-usage]: Unknown argument: --[REDACTED]'
+		);
+		expect(targetResult.stdout.some((line) => line.includes('Archive:'))).toBe(true);
+		expect(output).toContain('[REDACTED]');
+	});
+
+	test('JSON CLI output redacts PATs supplied as flags and positional targets', async () => {
+		const { dispatchVerify } = await import('../src/lib/subcommands.ts');
+		const classicPat = `ghp_${'E'.repeat(36)}`;
+		const fineGrainedPat = `github_pat_${'F'.repeat(36)}`;
+		const flagResult = await captureConsole(() =>
+			dispatchVerify(['--json', `--${fineGrainedPat}`])
+		);
+		const targetResult = await captureConsole(() => dispatchVerify(['--json', classicPat]));
+		const output = [
+			...flagResult.stdout,
+			...flagResult.stderr,
+			...targetResult.stdout,
+			...targetResult.stderr,
+		].join('\n');
+		const flagReport = parseReport(flagResult.stdout);
+		const targetReport = parseReport(targetResult.stdout);
+
+		expect(flagResult.result).toBe(2);
+		expect(targetResult.result).toBe(1);
+		expect(output).not.toContain(classicPat);
+		expect(output).not.toContain(fineGrainedPat);
+		expect(flagReport.findings[0]?.message).toBe('Unknown argument: --[REDACTED]');
+		expect(targetReport.targetPath).toContain('[REDACTED]');
+		expect(output).toContain('[REDACTED]');
+	});
+
 	test('parseArgs accepts --json without changing other defaults', () => {
 		expect(parseArgs(['--json'])).toEqual({
 			concurrency: 4,

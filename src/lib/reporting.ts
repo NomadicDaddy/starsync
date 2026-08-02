@@ -1,5 +1,7 @@
 import type { Subcommand } from './cli-utils.ts';
 
+import { sanitizeMessage } from './secret-safety.ts';
+
 const REPORT_SCHEMA_VERSION = 2 as const;
 
 export type CheckoutLifecycle = 'active' | 'blocked' | 'retained';
@@ -208,21 +210,34 @@ const writeJsonDiagnostics = (report: CommandReport): void => {
 	}
 };
 
+const sanitizeOutputValue = (value: unknown): unknown => {
+	if (typeof value === 'string') return sanitizeMessage(value);
+	if (Array.isArray(value)) return value.map(sanitizeOutputValue);
+	if (value === null || typeof value !== 'object') return value;
+	return Object.fromEntries(
+		Object.entries(value).map(([key, nestedValue]) => [key, sanitizeOutputValue(nestedValue)])
+	);
+};
+
+const sanitizeReport = (report: CommandReport): CommandReport =>
+	sanitizeOutputValue(report) as CommandReport;
+
 export const createCommandReporter = (json: boolean): CommandReporter => ({
-	diagnostic: (message) => console.error(message),
+	diagnostic: (message) => console.error(sanitizeMessage(message)),
 	emit: (report) => {
+		const sanitizedReport = sanitizeReport(report);
 		if (json) {
-			writeJsonDiagnostics(report);
-			console.log(JSON.stringify(report));
+			writeJsonDiagnostics(sanitizedReport);
+			console.log(JSON.stringify(sanitizedReport));
 		} else {
-			renderHumanReport(report);
+			renderHumanReport(sanitizedReport);
 		}
 	},
 	progress: (message) => {
 		if (json) {
-			console.error(message);
+			console.error(sanitizeMessage(message));
 		} else {
-			console.log(message);
+			console.log(sanitizeMessage(message));
 		}
 	},
 });
