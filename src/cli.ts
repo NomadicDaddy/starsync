@@ -2,6 +2,7 @@
 
 import { isSubcommand, type Subcommand } from './lib/cli-utils.ts';
 import { ROOT_HELP_TEXT } from './lib/help-text.ts';
+import { sanitizeMessage } from './lib/secret-safety.ts';
 import {
 	dispatchDates,
 	dispatchInit,
@@ -49,6 +50,6 @@ try {
 	process.exit(2);
 } catch (err) {
 	const message = err instanceof Error ? err.message : String(err);
-	console.error(`Unexpected error: ${message}`);
+	console.error(`Unexpected error: ${sanitizeMessage(message)}`);
 	process.exit(1);
 }
