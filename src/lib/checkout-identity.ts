@@ -83,32 +83,3 @@ export const writeCheckoutIdentity = async (
 		cwd: checkoutPath,
 	});
 };
-
-export const updateCheckoutOrigin = async (
-	checkoutPath: string,
-	repositorySlug: string
-): Promise<void> => {
-	if (canonicalCheckoutName(repositorySlug) === null) {
-		throw new Error('Cannot update an origin from an invalid repository slug.');
-	}
-	await runGit(['remote', 'set-url', 'origin', `https://github.com/${repositorySlug}.git`], {
-		cwd: checkoutPath,
-	});
-};
-
-export const finalizeCheckoutIdentity = async (
-	checkoutPath: string,
-	identity: CheckoutIdentity
-): Promise<Error | null> => {
-	try {
-		await updateCheckoutOrigin(checkoutPath, identity.repositorySlug);
-		await writeCheckoutIdentity(checkoutPath, identity);
-		return null;
-	} catch (err) {
-		return new Error(
-			`Repository refreshed, but managed checkout metadata could not be finalized: ${
-				err instanceof Error ? err.message : String(err)
-			}`
-		);
-	}
-};
