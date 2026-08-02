@@ -23,7 +23,8 @@ import {
 	syncArchive,
 	verifyArchive,
 } from '../src/index.ts';
-import { inspectArchive } from '../src/lib/archive-inspection.ts';
+import { getArchiveModificationFinding, inspectArchive } from '../src/lib/archive-inspection.ts';
+import { applyArchiveRenames } from '../src/lib/archive-rename-apply.ts';
 import { parseArgs, resolveTargetPath, stripQuotes } from '../src/lib/cli-utils.ts';
 import { SYNC_HELP_TEXT } from '../src/lib/help-text.ts';
 import { createCommandReport, createCommandReporter, createFinding } from '../src/lib/reporting.ts';
@@ -829,6 +830,46 @@ describe('managed archive initialization', () => {
 		}
 	});
 
+	test('uses one archive scan for rename application', async () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-rename-scan-'));
+		try {
+			writeManagedArchiveConfig(target);
+			createCheckout(target, 'repository--example');
+			mockManagedCheckoutIdentity('repository--example', 101, 'example/repository');
+			mockExecFileSync.mockReturnValue('https://github.com/example/repository.git\n');
+
+			const report = await applyArchiveRenames(target, () =>
+				Promise.resolve({
+					id: 101,
+					name: 'repository',
+					owner: 'example',
+					slug: 'example/repository',
+				})
+			);
+			const originReads = mockExecFileSync.mock.calls.filter((call) =>
+				(call[1] as string[]).includes('remote.origin.url')
+			);
+
+			expect(report.exitCode).toBe(0);
+			expect(originReads).toHaveLength(1);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('validates modification preflight without scanning checkout Git state', () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-modification-preflight-'));
+		try {
+			writeManagedArchiveConfig(target);
+			createCheckout(target, 'repository--example');
+
+			expect(getArchiveModificationFinding(target)).toBeNull();
+			expect(mockExecFileSync).not.toHaveBeenCalled();
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
 	test('accepts the same account ID after a login rename without upgrading config', async () => {
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-owner-rename-'));
 		try {
@@ -884,6 +925,10 @@ describe('managed archive initialization', () => {
 					path.join(target, '.starsync', 'config.json'),
 					JSON.stringify(testCase.config)
 				);
+				const inspectionFinding = inspectArchive(target).findings.find(
+					(finding) => finding.severity === 'error'
+				);
+				const modificationFinding = getArchiveModificationFinding(target);
 
 				const syncReport = await syncArchive({
 					dryRun: true,
@@ -895,8 +940,11 @@ describe('managed archive initialization', () => {
 					targetPath: target,
 				});
 
-				expect(syncReport.findings[0]?.code).toBe(testCase.code);
-				expect(datesReport.findings[0]?.code).toBe(testCase.code);
+				expect(modificationFinding).toEqual(inspectionFinding ?? null);
+				expect(syncReport.findings[0]).toEqual(inspectionFinding);
+				expect(datesReport.findings[0]).toEqual(inspectionFinding);
+				expect(modificationFinding?.code).toBe(testCase.code);
+				expect(mockExecFileSync).not.toHaveBeenCalled();
 				expect(mockGetAuthenticated).not.toHaveBeenCalled();
 			} finally {
 				rmSync(target, { force: true, recursive: true });

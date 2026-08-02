@@ -89,7 +89,20 @@ const failure = (
 	kind,
 });
 
-const readConfiguredArchive = (targetPath: string): ArchiveInspection => {
+const currentArchiveContract = (): ArchiveInspection => ({
+	archiveFormat: CURRENT_ARCHIVE_FORMAT,
+	entries: [],
+	findings: [
+		createFinding(
+			'info',
+			'archive-format-current',
+			`Archive format ${CURRENT_ARCHIVE_FORMAT} is current.`
+		),
+	],
+	kind: 'current',
+});
+
+const readConfiguredArchiveContract = (targetPath: string): ArchiveInspection => {
 	const configPath = path.join(targetPath, '.starsync', 'config.json');
 	let parsed: unknown;
 	try {
@@ -122,27 +135,16 @@ const readConfiguredArchive = (targetPath: string): ArchiveInspection => {
 			`Cannot read archive config: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`
 		);
 	}
-	return {
-		archiveFormat: CURRENT_ARCHIVE_FORMAT,
-		entries: readArchiveEntries(targetPath),
-		findings: [
-			createFinding(
-				'info',
-				'archive-format-current',
-				`Archive format ${CURRENT_ARCHIVE_FORMAT} is current.`
-			),
-		],
-		kind: 'current',
-	};
+	return currentArchiveContract();
 };
 
-export const inspectArchive = (targetPath: string): ArchiveInspection => {
+const inspectArchiveContract = (targetPath: string): ArchiveInspection => {
 	if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isDirectory()) {
 		return failure('invalid', 'target-not-found', `Archive path does not exist: ${targetPath}`);
 	}
 	const configPath = path.join(targetPath, '.starsync', 'config.json');
 	return fs.existsSync(configPath)
-		? readConfiguredArchive(targetPath)
+		? readConfiguredArchiveContract(targetPath)
 		: failure(
 				'uninitialized',
 				'archive-uninitialized',
@@ -150,9 +152,16 @@ export const inspectArchive = (targetPath: string): ArchiveInspection => {
 			);
 };
 
+export const inspectArchive = (targetPath: string): ArchiveInspection => {
+	const inspection = inspectArchiveContract(targetPath);
+	return inspection.kind === 'current'
+		? { ...inspection, entries: readArchiveEntries(targetPath) }
+		: inspection;
+};
+
 export const getArchiveModificationFinding = (targetPath: string): Finding | null => {
 	try {
-		const inspection = inspectArchive(targetPath);
+		const inspection = inspectArchiveContract(targetPath);
 		return inspection.kind === 'current'
 			? null
 			: (inspection.findings.find((finding) => finding.severity === 'error') ?? null);
