@@ -22,7 +22,6 @@ const parseConcurrency = (value: string): number => {
 	return num;
 };
 
-/** @deprecated Use the explicit options accepted by syncArchive instead. */
 export const parseArgs = (argv: string[] = process.argv.slice(2)): ParsedArgs => {
 	const parsed: ParsedArgs = {
 		concurrency: DEFAULT_CONCURRENCY,
@@ -58,16 +57,15 @@ export const stripQuotes = (value: string): string => value.trim().replace(/^['"
 
 export const resolveTargetPath = (
 	positional: null | string,
-	envTarget: string | undefined,
-	baseDir: string
+	envTarget: string | undefined
 ): string => {
 	if (positional) return path.resolve(positional);
 	const envValue = envTarget ? stripQuotes(envTarget) : '';
 	if (envValue) return path.resolve(envValue);
-	return path.resolve(baseDir, 'starred_repos');
+	throw new Error('A target path or TARGET_PATH is required.');
 };
 
-export const SUBCOMMANDS = ['dates', 'init', 'migrate', 'sync', 'unlock', 'verify'] as const;
+export const SUBCOMMANDS = ['dates', 'init', 'rename', 'sync', 'unlock', 'verify'] as const;
 
 export type Subcommand = (typeof SUBCOMMANDS)[number];
 

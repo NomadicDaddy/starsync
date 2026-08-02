@@ -46,7 +46,7 @@ export const interruptedReport = (
 	});
 
 export const missingTokenReport = (
-	command: 'migrate' | 'sync' | 'verify',
+	command: 'rename' | 'sync' | 'verify',
 	targetPath: string,
 	message: string,
 	dryRun = false

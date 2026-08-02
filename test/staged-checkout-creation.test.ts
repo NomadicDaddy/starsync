@@ -302,6 +302,65 @@ describe('staged checkout creation process boundary', () => {
 		}
 	});
 
+	test('replaces a canonical checkout whose identity metadata is missing', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-staged-missing-identity-'));
+		const target = path.join(root, 'archive');
+		const cloneUrl = 'https://github.com/example/repository.git';
+		const destination = path.join(target, 'repository--example');
+		mkdirSync(target);
+		writeManagedArchiveConfig(target);
+		const origin = createLocalOrigin(root);
+		const gitEnv = createLocalCloneEnvironment(root, cloneUrl, origin);
+
+		try {
+			expect(
+				runStagedCheckout(
+					{
+						clone_url: cloneUrl,
+						defaultBranch: 'main',
+						folderName: 'repository--example',
+						id: 321,
+						name: 'repository',
+						slug: 'example/repository',
+					},
+					target,
+					7,
+					gitEnv
+				).outcome
+			).toBe('added');
+			runGit(['config', '--local', '--unset-all', 'starsync.repository-id'], destination);
+			runGit(['config', '--local', '--unset-all', 'starsync.repository-slug'], destination);
+
+			const result = runForcedVerification(
+				target,
+				{
+					id: 321,
+					name: 'repository',
+					owner: 'example',
+					slug: 'example/repository',
+				},
+				gitEnv
+			);
+
+			expect(result.exitCode).toBe(0);
+			expect(result.checkouts[0]?.outcome).toBe('updated');
+			expect(
+				result.checkouts[0]?.findings.some(
+					(finding) => finding.code === 'checkout-recloned'
+				)
+			).toBe(true);
+			expect(
+				runGit(['config', '--local', '--get', 'starsync.repository-id'], destination)
+			).toBe('321');
+			expect(
+				runGit(['config', '--local', '--get', 'starsync.repository-slug'], destination)
+			).toBe('example/repository');
+			expect(runGit(['status', '--porcelain'], destination)).toBe('');
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
 	test('keeps a damaged checkout when its replacement cannot be cloned', () => {
 		const root = mkdtempSync(path.join(tmpdir(), 'starsync-staged-replace-failure-'));
 		const target = path.join(root, 'archive');

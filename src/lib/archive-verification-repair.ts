@@ -1,5 +1,6 @@
-import type { ArchiveEntry, RepositoryResolver, ResolvedRepository } from './archive-migration.ts';
+import type { ArchiveEntry } from './archive-inspection.ts';
 import type { VerifiedCheckout } from './archive-verification-checkout.ts';
+import type { RepositoryResolver, ResolvedRepository } from './repository-resolution.ts';
 import type { ReplacedCheckout, StagedCheckoutRepository } from './staged-checkout.ts';
 
 import { canonicalCheckoutName } from './checkout-identity.ts';

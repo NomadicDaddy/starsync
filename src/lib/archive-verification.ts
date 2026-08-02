@@ -1,8 +1,8 @@
-import type { ArchiveInspection } from './archive-migration.ts';
+import type { ArchiveInspection } from './archive-inspection.ts';
 import type { VerifiedCheckout } from './archive-verification-checkout.ts';
 import type { CheckoutReport, Finding } from './reporting.ts';
 
-import { inspectArchive } from './archive-migration.ts';
+import { inspectArchive } from './archive-inspection.ts';
 import { verifyCheckout } from './archive-verification-checkout.ts';
 import { applyDuplicateIdentityFindings } from './archive-verification-duplicates.ts';
 import {
@@ -98,9 +98,12 @@ const verifyEntry = async (
 		options.onProgress?.(`Removing abandoned staging checkout — ${entry.name}`);
 		return removeAbandonedStagingEntry(entry, options.repair.targetPath);
 	}
-	const verified = await verifyCheckout(entry, inspection.kind);
+	const verified = await verifyCheckout(entry);
 	const replaceable = verified.report.findings.some(
-		(finding) => finding.code === 'git-integrity-failed' || finding.code === 'checkout-blocked'
+		(finding) =>
+			finding.code === 'git-integrity-failed' ||
+			finding.code === 'checkout-blocked' ||
+			finding.code === 'missing-identity-metadata'
 	);
 	if (options.repair === undefined || !replaceable) return verified;
 	options.onProgress?.(
@@ -113,14 +116,11 @@ const verifyEntry = async (
 		);
 		return verified;
 	}
-	const replacement = await verifyCheckout(
-		{
-			...entry,
-			gitError: null,
-			origin: `https://github.com/${repaired.repository.slug}.git`,
-		},
-		inspection.kind
-	);
+	const replacement = await verifyCheckout({
+		...entry,
+		gitError: null,
+		origin: `https://github.com/${repaired.repository.slug}.git`,
+	});
 	replacement.report.findings.unshift(
 		createFinding(
 			'info',
@@ -166,7 +166,7 @@ export const verifyArchive = async (
 	const inspection = inspectForVerification(targetPath);
 	if (!('kind' in inspection)) return inspection;
 	const findings = [...inspection.findings, ...validateArchiveOwner(targetPath, inspection)];
-	if (['invalid', 'newer-managed', 'uninitialized'].includes(inspection.kind)) {
+	if (inspection.kind !== 'current') {
 		return { checkouts: [], exitCode: 1, findings, interrupted: false };
 	}
 	const results = await verifyEntries(inspection, options);

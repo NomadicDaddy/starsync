@@ -13,11 +13,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import type { RepositoryResolver } from '../src/lib/archive-migration.ts';
 import type { RepoRecord } from '../src/lib/refresh.ts';
+import type { RepositoryResolver } from '../src/lib/repository-resolution.ts';
 
 import { normalizeArchiveDates } from '../src/index.ts';
-import { applyArchiveMigration } from '../src/lib/archive-migration-apply.ts';
+import { applyArchiveRenames } from '../src/lib/archive-rename-apply.ts';
 import { verifyArchive } from '../src/lib/archive-verification.ts';
 import { processRepository, runSyncPool } from '../src/lib/refresh.ts';
 
@@ -82,6 +82,8 @@ const createRepositoryFixture = (
 		['config', '--local', `url.${pathToFileURL(origin).href}.insteadOf`, cloneUrl],
 		checkout
 	);
+	runGit(['config', '--local', 'starsync.repository-id', String(id)], checkout);
+	runGit(['config', '--local', 'starsync.repository-slug', `owner/${repository}`], checkout);
 
 	return {
 		canonicalName: `${repository}--owner`,
@@ -142,13 +144,18 @@ describe('cross-platform release validation', () => {
 		}
 	});
 
-	test('runs a copied archive through migration, verification, refresh, and dates offline', async () => {
+	test('runs a copied format-2 archive through rename, verification, refresh, and dates offline', async () => {
 		const root = mkdtempSync(path.join(tmpdir(), 'starsync-release-copy-'));
 		const sourceArchive = path.join(root, 'source-archive');
 		const copiedArchive = path.join(root, 'representative-copy');
 		mkdirSync(sourceArchive);
+		mkdirSync(path.join(sourceArchive, '.starsync'));
+		writeFileSync(
+			path.join(sourceArchive, '.starsync', 'config.json'),
+			JSON.stringify({ archiveFormat: 2, owner: { id: 7, login: 'archive-owner' } })
+		);
 		const fixtures = [
-			createRepositoryFixture(root, sourceArchive, 'alpha', 'legacy-alpha', 101),
+			createRepositoryFixture(root, sourceArchive, 'alpha', 'alpha--previous-owner', 101),
 			createRepositoryFixture(root, sourceArchive, 'beta', 'beta--owner', 202),
 		];
 		cpSync(sourceArchive, copiedArchive, { recursive: true });
@@ -168,12 +175,9 @@ describe('cross-platform release validation', () => {
 		};
 
 		try {
-			const migration = await applyArchiveMigration(copiedArchive, resolveRepository, {
-				id: 7,
-				login: 'archive-owner',
-			});
-			expect(migration).toMatchObject({ exitCode: 0 });
-			expect(migration.checkouts.map((checkout) => checkout.name).sort()).toEqual([
+			const rename = await applyArchiveRenames(copiedArchive, resolveRepository);
+			expect(rename).toMatchObject({ exitCode: 0 });
+			expect(rename.checkouts.map((checkout) => checkout.name).sort()).toEqual([
 				'alpha--owner',
 				'beta--owner',
 			]);

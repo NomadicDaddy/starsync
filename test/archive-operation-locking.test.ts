@@ -5,8 +5,8 @@ import path from 'node:path';
 
 import {
 	initArchive,
-	migrateArchive,
 	normalizeArchiveDates,
+	renameArchive,
 	syncArchive,
 	verifyArchive,
 } from '../src/index.ts';
@@ -118,7 +118,7 @@ describe('archive operation locking', () => {
 			const target = createTarget(`lock-remote-${platform}`);
 			const remote = acquireArchiveLock(
 				target,
-				'migrate',
+				'rename',
 				createRuntime('remote-host', 505, () => 'alive')
 			);
 			expect(remote.ok).toBe(true);
@@ -222,7 +222,7 @@ describe('archive operation locking', () => {
 
 		const reports = await Promise.all([
 			initArchive({ targetPath: target, token: '' }),
-			migrateArchive({ targetPath: target, token: '' }),
+			renameArchive({ targetPath: target, token: '' }),
 			syncArchive({ targetPath: target, token: '' }),
 			syncArchive({ dryRun: true, targetPath: target, token: '' }),
 			verifyArchive({ targetPath: target }),

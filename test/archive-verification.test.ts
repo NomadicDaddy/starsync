@@ -133,25 +133,22 @@ describe('archive verification process boundary', () => {
 		}
 	});
 
-	test('allows legacy verification while warning about missing identity and pending rename', () => {
-		const target = mkdtempSync(path.join(tmpdir(), 'starsync-verify-legacy-'));
+	test('rejects a current archive checkout that lacks stable identity metadata', () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-verify-missing-identity-'));
 		try {
 			createRepository(target, 'repo', 'https://github.com/owner/repo.git');
+			writeArchiveConfig(target, { id: 7, login: 'archive-owner' });
 
 			const result = verify(target);
 			const checkout = result.report.checkouts[0];
 
-			expect(result.status).toBe(0);
+			expect(result.status).toBe(1);
 			expect(checkout?.pendingRename).toBe(true);
 			expect(
 				checkout?.findings.some(
 					(finding) =>
-						finding.code === 'missing-identity-metadata' &&
-						finding.severity === 'warning'
+						finding.code === 'missing-identity-metadata' && finding.severity === 'error'
 				)
-			).toBe(true);
-			expect(
-				result.report.findings.some((finding) => finding.code === 'archive-owner-unbound')
 			).toBe(true);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
@@ -196,7 +193,7 @@ describe('archive verification process boundary', () => {
 		}
 	});
 
-	test('rejects missing managed owner binding and corrupt Git objects', () => {
+	test('rejects corrupt Git objects in a current archive', () => {
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-verify-corrupt-'));
 		try {
 			const checkout = createRepository(
@@ -205,7 +202,7 @@ describe('archive verification process boundary', () => {
 				'https://github.com/owner/repo.git',
 				{ id: 123, slug: 'owner/repo' }
 			);
-			writeArchiveConfig(target, null);
+			writeArchiveConfig(target, { id: 7, login: 'archive-owner' });
 			const objectFile = run(['git', 'rev-parse', '--git-path', 'objects'], checkout);
 			const objectDirectories = readdirSync(path.join(checkout, objectFile)).filter(
 				(name) => name.length === 2 && name !== 'info' && name !== 'pack'
@@ -217,9 +214,6 @@ describe('archive verification process boundary', () => {
 			const result = verify(target);
 
 			expect(result.status).toBe(1);
-			expect(
-				result.report.findings.some((finding) => finding.code === 'invalid-archive-owner')
-			).toBe(true);
 			expect(
 				result.report.checkouts[0]?.findings.some(
 					(finding) => finding.code === 'git-integrity-failed'
@@ -234,6 +228,7 @@ describe('archive verification process boundary', () => {
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-verify-interrupted-'));
 		try {
 			createRepository(target, 'repo', 'https://github.com/owner/repo.git');
+			writeArchiveConfig(target, { id: 7, login: 'archive-owner' });
 			const moduleUrl = pathToFileURL(
 				path.join(projectRoot, 'src', 'lib', 'archive-verification.ts')
 			).href;

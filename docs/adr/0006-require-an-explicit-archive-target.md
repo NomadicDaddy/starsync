@@ -16,8 +16,8 @@ Every StarSync command requires either a positional `[target-path]` or `TARGET_P
 positional value has priority. Missing or quoted-empty input is a usage error with exit code 2 and
 must not create files.
 
-The deprecated bare 1.x invocation remains an alias for `sync`, but it follows the same explicit
-target rule.
+Bare invocation is invalid. Callers must select `sync`, `verify`, `rename`, `dates`, `init`, or
+`unlock`; root `--help` is the only root-level action.
 
 ## Implementation
 

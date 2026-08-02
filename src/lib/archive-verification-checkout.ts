@@ -1,7 +1,6 @@
-import type { ArchiveEntry, ArchiveKind } from './archive-migration.ts';
+import type { ArchiveEntry } from './archive-inspection.ts';
 import type { CheckoutReport, Finding } from './reporting.ts';
 
-import { parseGitHubRepositorySlug } from './archive-migration.ts';
 import {
 	canonicalCheckoutName,
 	REPOSITORY_ID_KEY,
@@ -9,6 +8,7 @@ import {
 } from './checkout-identity.ts';
 import { readStatusPaths, runGit } from './git-exec.ts';
 import { createFinding } from './reporting.ts';
+import { parseGitHubRepositorySlug } from './repository-resolution.ts';
 import {
 	hasEmbeddedCredentials,
 	isGitHubDotComUrl,
@@ -213,20 +213,15 @@ const recordIdentity = (rawId: string, rawSlug: string, state: VerificationState
 	}
 };
 
-const verifyIdentity = async (
-	entry: ArchiveEntry,
-	archiveKind: ArchiveKind,
-	state: VerificationState
-): Promise<void> => {
+const verifyIdentity = async (entry: ArchiveEntry, state: VerificationState): Promise<void> => {
 	const identity = await readIdentity(entry, state);
 	if (identity === null) return;
 	const [rawId, rawSlug] = identity;
 	if (rawId === null || rawSlug === null) {
-		const severity = archiveKind === 'legacy' ? 'warning' : 'error';
-		if (severity === 'error') state.blocked = true;
+		state.blocked = true;
 		state.findings.push(
 			createFinding(
-				severity,
+				'error',
 				'missing-identity-metadata',
 				`Checkout must define ${REPOSITORY_ID_KEY} and ${REPOSITORY_SLUG_KEY} in local Git config.`
 			)
@@ -258,10 +253,7 @@ const getPendingRename = (entry: ArchiveEntry, state: VerificationState): boolea
 	return pendingRename;
 };
 
-export const verifyCheckout = async (
-	entry: ArchiveEntry,
-	archiveKind: ArchiveKind
-): Promise<VerifiedCheckout> => {
+export const verifyCheckout = async (entry: ArchiveEntry): Promise<VerifiedCheckout> => {
 	if (!entry.isGitCheckout) {
 		return failEntry(entry, 'unrelated-archive-entry', 'Archive entry is not a Git checkout.');
 	}
@@ -275,7 +267,7 @@ export const verifyCheckout = async (
 	await verifyGitIntegrity(entry, state);
 	verifyOrigin(entry, state);
 	await verifyCheckoutState(entry, state);
-	await verifyIdentity(entry, archiveKind, state);
+	await verifyIdentity(entry, state);
 	const pendingRename = getPendingRename(entry, state);
 	return {
 		report: {
