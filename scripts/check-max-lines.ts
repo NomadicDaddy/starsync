@@ -7,36 +7,25 @@ const MAX_FILE_LINES = 300;
 const MAX_FUNCTION_LINES = 40;
 const MAX_NESTING_DEPTH = 3;
 
-const EXTRACTED_MODULES = new Set([
-	'src/lib/archive-api-dates.ts',
-	'src/lib/archive-api-rename.ts',
-	'src/lib/archive-api-reporting.ts',
-	'src/lib/archive-api-sync-planning.ts',
-	'src/lib/archive-api-sync.ts',
-	'src/lib/archive-api-verification.ts',
-	'src/lib/archive-api.ts',
-	'src/lib/archive-inspection.ts',
-	'src/lib/archive-rename-apply.ts',
-	'src/lib/archive-rename.ts',
-	'src/lib/archive-verification-checkout.ts',
-	'src/lib/archive-verification-duplicates.ts',
-	'src/lib/archive-verification-reporting.ts',
-	'src/lib/archive-verification.ts',
-	'src/lib/checkout-rename-apply.ts',
-	'src/lib/checkout-rename-classification.ts',
-	'src/lib/checkout-rename-resolution.ts',
-	'src/lib/checkout-state-transition.ts',
-	'src/lib/dates-command.ts',
-	'src/lib/dates-discovery.ts',
-	'src/lib/dates-reporting.ts',
-	'src/lib/managed-checkout-classification.ts',
-	'src/lib/managed-checkout-inspection.ts',
-	'src/lib/managed-checkout-planning.ts',
-	'src/lib/refresh-clone.ts',
-	'src/lib/refresh-existing.ts',
-	'src/lib/refresh-pool.ts',
-	'src/lib/refresh.ts',
-]);
+interface FunctionLimitBaseline {
+	complexity?: number;
+	lines?: number;
+	nesting?: number;
+}
+
+const FUNCTION_LIMIT_BASELINES: Readonly<Record<string, Readonly<FunctionLimitBaseline>>> = {
+	'src/lib/archive-initialization.ts#initArchiveUnlocked': { complexity: 12 },
+	'src/lib/archive-lock-metadata.ts#parseArchiveLockMetadata': { complexity: 15 },
+	'src/lib/archive-lock.ts#acquireArchiveLock': { complexity: 17 },
+	'src/lib/archive-unlock.ts#unlockArchiveWithRuntime': { complexity: 16, nesting: 4 },
+	'src/lib/archive-verification-repair.ts#resolveDamagedRepository': { complexity: 13 },
+	'src/lib/checkout-clone.ts#cloneManagedCheckout': { nesting: 4 },
+	'src/lib/cli-utils.ts#parseArgs': { nesting: 8 },
+	'src/lib/default-branch-refresh.ts#advanceToRemoteDefault': { lines: 41 },
+	'src/lib/reporting.ts#renderHumanReport': { complexity: 15 },
+	'src/lib/repository-resolution.ts#parseGitHubRepositorySlug': { complexity: 12 },
+	'src/lib/subcommands.ts#parseSubcommandArgs': { complexity: 13, nesting: 8 },
+};
 
 const EXCLUDED_PATHS = [
 	/(?:^|\/)(?:generated|schema|test|tests)(?:\/|$)/,
@@ -160,21 +149,25 @@ const inspectFunctions = (filePath: string, sourceFile: ts.SourceFile): Violatio
 		if (isFunctionNode(node)) {
 			const metrics = analyzeFunction(node, sourceFile);
 			const prefix = `${metrics.name} at line ${metrics.startLine}`;
-			if (metrics.complexity > MAX_COMPLEXITY) {
+			const baseline = FUNCTION_LIMIT_BASELINES[`${filePath}#${metrics.name}`];
+			const complexityLimit = baseline?.complexity ?? MAX_COMPLEXITY;
+			const functionLineLimit = baseline?.lines ?? MAX_FUNCTION_LINES;
+			const nestingLimit = baseline?.nesting ?? MAX_NESTING_DEPTH;
+			if (metrics.complexity > complexityLimit) {
 				violations.push({
-					message: `${prefix} has complexity ${metrics.complexity} (maximum ${MAX_COMPLEXITY})`,
+					message: `${prefix} has complexity ${metrics.complexity} (maximum ${complexityLimit})`,
 					path: filePath,
 				});
 			}
-			if (metrics.lines > MAX_FUNCTION_LINES) {
+			if (metrics.lines > functionLineLimit) {
 				violations.push({
-					message: `${prefix} has ${metrics.lines} non-comment lines (maximum ${MAX_FUNCTION_LINES})`,
+					message: `${prefix} has ${metrics.lines} non-comment lines (maximum ${functionLineLimit})`,
 					path: filePath,
 				});
 			}
-			if (metrics.maxNesting > MAX_NESTING_DEPTH) {
+			if (metrics.maxNesting > nestingLimit) {
 				violations.push({
-					message: `${prefix} has nesting depth ${metrics.maxNesting} (maximum ${MAX_NESTING_DEPTH})`,
+					message: `${prefix} has nesting depth ${metrics.maxNesting} (maximum ${nestingLimit})`,
 					path: filePath,
 				});
 			}
@@ -197,7 +190,6 @@ const inspectFile = (filePath: string): Violation[] => {
 					},
 				]
 			: [];
-	if (!EXTRACTED_MODULES.has(filePath)) return violations;
 	const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.ES2022, true);
 	return [...violations, ...inspectFunctions(filePath, sourceFile)];
 };

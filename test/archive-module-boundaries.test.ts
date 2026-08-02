@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import * as archiveApi from '../src/lib/archive-api.ts';
 import * as archiveRename from '../src/lib/archive-rename.ts';
@@ -35,6 +38,17 @@ const internalDeclarations = {
 
 const readSource = (relativePath: string): string =>
 	readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
+
+const runSourceShapeGate = (cwd: string): ReturnType<typeof Bun.spawnSync> =>
+	Bun.spawnSync({
+		cmd: [
+			process.execPath,
+			fileURLToPath(new URL('../scripts/check-max-lines.ts', import.meta.url)),
+		],
+		cwd,
+		stderr: 'pipe',
+		stdout: 'pipe',
+	});
 
 describe('archive module facades', () => {
 	test('preserves the command-level archive API exports', () => {
@@ -74,5 +88,39 @@ describe('archive module facades', () => {
 		const archiveLockSource = readSource('src/lib/archive-lock.ts');
 		expect(archiveLockSource).not.toMatch(/export\s*\{[^}]*\bgetProcessState\b/s);
 		expect(archiveLockSource).not.toMatch(/export\s+type\s*\{[^}]*\bArchiveProcessState\b/s);
+	});
+
+	test('checks function shape in every non-excluded production module', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-source-shape-'));
+		try {
+			const sourceDirectory = path.join(root, 'src', 'lib');
+			mkdirSync(sourceDirectory, { recursive: true });
+			writeFileSync(
+				path.join(sourceDirectory, 'previously-unlisted.ts'),
+				`export const overLimit = (value: number): number => {
+	let result = value;
+	if (value > 0) result++;
+	if (value > 1) result++;
+	if (value > 2) result++;
+	if (value > 3) result++;
+	if (value > 4) result++;
+	if (value > 5) result++;
+	if (value > 6) result++;
+	if (value > 7) result++;
+	if (value > 8) result++;
+	if (value > 9) result++;
+	return result;
+};\n`
+			);
+
+			const result = runSourceShapeGate(root);
+			const stderr = result.stderr?.toString() ?? '';
+			expect(result.exitCode).toBe(1);
+			expect(stderr).toContain(
+				'src/lib/previously-unlisted.ts: overLimit at line 1 has complexity 11 (maximum 10)'
+			);
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
 	});
 });
