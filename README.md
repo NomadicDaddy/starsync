@@ -111,8 +111,16 @@ transfer keeps using the existing checkout and reports a pending rename until mi
 explicitly applied. Duplicate identities and occupied canonical folders are errors and are never
 published or renamed over. After each successful add or refresh, StarSync aligns the checkout
 folder timestamp with its Archive Date. On Windows, staged clones retain the complete Git object
-database while marking NTFS-incompatible paths as `skip-worktree`; every portable path is
-materialized and the resulting checkout remains clean.
+database while excluding NTFS-incompatible paths from the working tree through a sparse checkout;
+every portable path is materialized, the resulting checkout remains clean, and later refreshes keep
+the exclusion instead of reporting the missing paths as local changes.
+
+A refresh keeps preserved history in two further cases. When upstream moves a tag the archive
+already stores, StarSync keeps the archived tag target, advances the checkout, and reports the
+retained tags as a warning rather than following the move. When a Git LFS object the server no
+longer provides breaks a clone or refresh, StarSync retries that operation once with
+`GIT_LFS_SKIP_SMUDGE=1` so the repository is archived with its pointer files; the setting is never
+recorded in the checkout.
 
 `dates` is fully local and does not require `GITHUB_TOKEN` or network access. It recognizes managed
 checkouts by their stable local identity, calculates each Archive Date from the newest committer
@@ -241,14 +249,14 @@ representative-copy gate are separate required evidence.
 
 | Script                    | What it runs                                                      |
 | ------------------------- | ----------------------------------------------------------------- |
-| `bun run sync`            | `bun ./src/cli.ts`                                                |
-| `bun start`               | `bun src/cli.ts`                                                  |
+| `bun run sync`            | `bun ./src/cli.ts sync`                                           |
+| `bun start`               | `bun ./src/cli.ts`                                                |
 | `bun run build`           | `bun build ./src/cli.ts --target=bun --outdir=dist`               |
 | `bun run check:max-lines` | production file and extracted-function source-shape limits        |
 | `bun run compile`         | standalone binary in `dist/`                                      |
 | `bun run typecheck`       | `tsc --noEmit`                                                    |
 | `bun run lint`            | `eslint src scripts test eslint.config.js --max-warnings 0`       |
-| `bun run test`            | `bun scripts/test.ts`                                             |
+| `bun run test`            | `bun ./scripts/test.ts`                                           |
 | `bun run smoke:live`      | opt-in read-only smoke against an explicit temporary archive copy |
 | `bun run smoke:qc`        | source shape, typecheck, lint, format check, test                  |
 | `bun run format`          | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"` |
