@@ -6,7 +6,7 @@ import {
 	invalidTargetReport,
 	resolveExplicitTarget,
 } from './archive-api-reporting.ts';
-import { getArchiveModificationFinding } from './archive-migration.ts';
+import { getArchiveModificationFinding } from './archive-inspection.ts';
 import { formatDatesTables, runDatesCommand } from './dates-command.ts';
 import { createCommandReport } from './reporting.ts';
 

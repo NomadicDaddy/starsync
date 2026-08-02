@@ -1,38 +1,39 @@
 # StarSync
 
-StarSync maintains a local archive of repositories selected through a user's GitHub stars. The archive is intended for preservation and browsing, not active development.
+StarSync maintains a local archive of repositories selected through one user's GitHub stars. The
+archive is intended for preservation and browsing, not active development.
 
 ## Language
 
 **Starred Repository**:
-A public or private GitHub.com repository selected by the user with a star and eligible for inclusion in the archive.
+A public or private GitHub.com repository selected by the archive owner and eligible for inclusion.
 
 **Repository Identity**:
-The stable identifier assigned by GitHub.com that continues to identify a repository when its name or owner changes.
+The stable numeric ID assigned by GitHub.com. It remains unchanged when the repository name or
+owner changes.
 _Avoid_: Repository slug, repository name, folder name
 
 **Repository Slug**:
-The current human-readable `owner/name` pair for a GitHub repository.
+The current human-readable `owner/name` pair.
 _Avoid_: Repository identity
 
 **Managed Archive**:
-The local collection of primary Git repository histories and usable checkouts that StarSync preserves and refreshes, excluding externally stored content and GitHub-hosted metadata.
-_Avoid_: Mirror, backup
+A format-2 collection of primary Git histories and usable checkouts that StarSync preserves and
+refreshes, excluding externally stored content and GitHub-hosted metadata.
+_Avoid_: Mirror, backup, arbitrary directory
 
 **Archive Owner**:
-The GitHub.com account whose current stars determine which checkouts are active in a **Managed Archive**.
+The GitHub.com account whose current stars determine active checkouts.
 _Avoid_: Token owner, filesystem owner
 
 **Initialized Archive**:
-A **Managed Archive** whose owner and archive format have been recorded before other operations may use it.
+A **Managed Archive** with an exact `.starsync/config.json` recording format 2 and a valid
+**Archive Owner**. A configless directory is uninitialized, regardless of its contents.
 _Avoid_: Target directory, repository folder
 
-**Legacy Archive**:
-A configless collection of GitHub.com checkouts recognized for verification and migration only.
-_Avoid_: Initialized Archive, arbitrary directory
-
 **Managed Checkout**:
-A usable local copy of a repository whose updates are controlled by StarSync and which is not an active development workspace.
+A usable local repository whose updates are controlled by StarSync, with a stable repository ID
+and last-known slug in local Git configuration.
 _Avoid_: Working copy, worktree
 
 **Active Checkout**:
@@ -40,90 +41,102 @@ A **Managed Checkout** whose repository is currently starred and eligible for re
 _Avoid_: Current checkout, updated checkout
 
 **Retained Checkout**:
-A **Managed Checkout** kept in the archive without refresh because its repository is not currently starred.
+A **Managed Checkout** kept without refresh because its repository is not currently starred.
 _Avoid_: Deleted repository, stale checkout
 
 **Blocked Checkout**:
-A **Managed Checkout** that StarSync retains but cannot safely refresh because it contains unexpected local state.
+A **Managed Checkout** StarSync retains but cannot safely refresh or rename because it contains
+unexpected or unverifiable local state.
 _Avoid_: Failed repository, broken checkout
 
 **Pending Rename**:
-A **Managed Checkout** whose folder label no longer matches the repository's current slug and awaits an explicitly approved rename.
+A **Managed Checkout** whose stored slug, origin, or folder label differs from the repository's
+current slug and awaits explicit rename application.
 _Avoid_: Identity change, new repository
 
 **Archive Date**:
-The newest Git committer time reachable from any locally stored reference in a **Managed Checkout**.
+The newest Git committer time reachable from any locally stored reference.
 _Avoid_: Sync time, folder modification time
 
 **Refresh**:
-Update a **Managed Checkout** with available remote branches and tags without pruning retained history or rewriting local state.
+Update a **Managed Checkout** with available remote branches and tags without pruning retained
+history or rewriting local state.
 _Avoid_: Pull
 
 **Verify**:
-Inspect a **Managed Archive** for Git integrity and identity or lifecycle inconsistencies without changing it.
+Inspect a **Managed Archive** for format, owner, Git integrity, identity, and lifecycle
+inconsistencies without changing it.
 _Avoid_: Synchronize, repair
 
+**Rename**:
+Resolve each **Managed Checkout** by its existing stable identity, preview current slug and folder
+changes, and optionally apply safe slug, origin, and canonical-folder updates.
+_Avoid_: Identity backfill, synchronize
+
 **Sync Outcome**:
-The result of one synchronization attempt for a checkout: added, updated, current, skipped, or failed.
+The result of one synchronization attempt: added, updated, current, skipped, or failed.
 _Avoid_: Checkout state, status
 
 **Synchronize**:
-Add missing **Starred Repositories** to the **Managed Archive**, refresh their **Managed Checkouts**, and retain repositories that are no longer starred.
+Add missing **Starred Repositories**, refresh active **Managed Checkouts**, and retain repositories
+that are no longer starred.
 _Avoid_: Mirror
 
 ## Relationships
 
-- A **Managed Archive** contains zero or more **Managed Checkouts**
-- A **Managed Archive** belongs to exactly one **Archive Owner**
-- A **Managed Archive** becomes an **Initialized Archive** before synchronization, verification, or date normalization
-- A **Legacy Archive** may be inspected by StarSync but does not become an **Initialized Archive** until migration is explicitly applied
-- An **Archive Owner** may have one or more separate **Managed Archives**
-- Each **Starred Repository** has exactly one **Repository Identity** and one current **Repository Slug**
-- A **Starred Repository** has at most one **Managed Checkout** in a **Managed Archive**
-- Each **Managed Checkout** corresponds to exactly one **Repository Identity**
-- A repository rename or ownership transfer changes its **Repository Slug** without changing its **Repository Identity**
-- A **Managed Checkout** may remain in the **Managed Archive** after its repository is unstarred or becomes unavailable
-- A changed **Repository Slug** gives its **Managed Checkout** a **Pending Rename** without blocking refresh
-- A currently starred repository has an **Active Checkout** after it has been added to the archive
-- An unstarred repository's **Managed Checkout** becomes a **Retained Checkout**
-- A **Retained Checkout** becomes refreshable again when its repository is starred again
-- A **Refresh** preserves available branches, tags, and previously retained history in a **Managed Checkout**
-- A **Managed Checkout** with at least one commit has one **Archive Date**
-- Adding or successfully refreshing a **Managed Checkout** aligns its folder timestamp with its **Archive Date**
-- A successful **Refresh** leaves the **Managed Checkout** on the repository's current default branch
-- A **Managed Checkout** becomes a **Blocked Checkout** when refreshing it would overwrite or rewrite local state
-- A **Blocked Checkout** remains in the **Managed Archive** while other checkouts continue to synchronize
-- Each attempted checkout action has one **Sync Outcome** independent of the checkout's lifecycle state and **Pending Rename** flag
-- **Verify** may report a **Blocked Checkout** or **Pending Rename** but never refresh, rename, or repair a checkout
+- A **Managed Archive** contains zero or more **Managed Checkouts**.
+- A **Managed Archive** belongs to exactly one **Archive Owner**.
+- Format 2 is the only accepted archive format; every other format is unsupported.
+- A configless or malformed directory is not a **Managed Archive** and its contents are not
+  inspected for conversion.
+- Each **Managed Checkout** has exactly one valid **Repository Identity** and one last-known
+  **Repository Slug**.
+- A **Starred Repository** has at most one **Managed Checkout** in an archive.
+- Duplicate or missing checkout identities are errors.
+- A rename or ownership transfer changes the **Repository Slug** without changing the
+  **Repository Identity**.
+- A changed slug produces a **Pending Rename** without blocking refresh.
+- **Rename** requires the stored ID to match GitHub's resolved ID; it never creates identity.
+- Rename preview is read-only. Rename application authenticates the **Archive Owner**.
+- A dirty, unverifiable, duplicated, mismatched, or colliding checkout is not renamed.
+- Successful rename updates remain when another checkout fails or processing is interrupted.
+- A currently starred repository has an **Active Checkout** after addition.
+- An unstarred repository becomes a **Retained Checkout** and becomes active again if re-starred.
+- A **Refresh** preserves available branches, tags, and previously retained history.
+- A successful refresh leaves the checkout on the current default branch.
+- A checkout becomes **Blocked** when refresh or rename would overwrite real local state.
+- A path the host cannot represent is not local state; it remains in Git history and the index.
+- Each attempted action has one outcome independent of lifecycle and pending-rename state.
+- **Verify** never refreshes, renames, or repairs unless the caller explicitly selects `--force`.
+- Forced verification may replace a missing-identity checkout only when its canonical folder
+  resolves uniquely; it never writes identity into the existing checkout.
+- A checkout with at least one commit has one **Archive Date**.
 
 ## Example dialogue
 
-> **Dev:** "Should **Synchronize** remove a **Managed Checkout** when its repository is no longer starred?"
-> **Domain expert:** "No. It becomes a **Retained Checkout**, so it remains available for browsing without further refreshes."
+> **Dev:** "Should synchronization remove a checkout when its repository is no longer starred?"
+> **Domain expert:** "No. It becomes retained and stays available for browsing."
 >
-> **Dev:** "What happens when a **Managed Checkout** contains local work?"
-> **Domain expert:** "It becomes a **Blocked Checkout** and is retained without being refreshed."
+> **Dev:** "Does an ownership transfer create another checkout?"
+> **Domain expert:** "No. Its stable identity is unchanged, so the existing checkout gets a
+> pending rename."
 >
-> **Dev:** "Does an ownership transfer create another **Managed Checkout**?"
-> **Domain expert:** "No. Its **Repository Identity** is unchanged, so the existing checkout gets a **Pending Rename**."
+> **Dev:** "Can rename repair a checkout without identity metadata?"
+> **Domain expert:** "No. Format-2 identity is required before any rename can be previewed or
+> applied."
 
 ## Flagged ambiguities
 
-- "sync" previously suggested an exact mirror of the current starred list. It is additive: missing repositories are added, existing managed checkouts are refreshed, and absent repositories are retained.
-- "local copy" could mean either a **Managed Checkout** or an active development workspace. StarSync manages only the former.
-- A repository's slug, short name, and local folder name are not its identity. **Repository Identity** means the stable identifier assigned by GitHub; **Repository Slug** means the current `owner/name` pair.
-- The **Archive Owner** is identified by the GitHub account itself, not by whichever token or login name happens to be used later.
-- An existing repository directory is not an **Initialized Archive** until StarSync records its owner and archive format.
-- A configless directory is a **Legacy Archive** only when StarSync recognizes GitHub.com checkouts in it; empty or unrelated directories remain uninitialized.
-- A blocked refresh does not mean the repository is unavailable or corrupt. It means StarSync found local state that it will not rewrite automatically.
-- A path the host filesystem cannot represent is not local state. It stays in Git history and the index while its working-tree copy is excluded, so it never makes a checkout a **Blocked Checkout**.
-- A **Pending Rename** is a label mismatch, not a new repository or a refresh failure.
-- "status" previously mixed persistent checkout state with the result of one run. Canonical reports separate lifecycle state, **Pending Rename**, and **Sync Outcome**.
-- A **Retained Checkout** is dormant, not deleted or damaged; starring its repository again resumes refreshes.
-- An **Archive Date** reflects repository history across all local references, not when StarSync last ran or which branch is checked out.
-- **Archive Date** uses committer time rather than author time so it represents when that exact commit entered repository history.
-- **Verify** is read-only; any resulting migration or repair is a separate, explicitly approved action.
-- "archive" means the primary Git repository and a usable checkout, not a complete backup of LFS objects, submodules, issues, discussions, release assets, wikis, or workflow artifacts.
-- StarSync manages GitHub.com repositories only; repositories hosted on GitHub Enterprise Server or other Git services are outside its context.
-- Repository visibility does not change archive membership; private repositories require Git credentials outside StarSync.
-- "pull" described the previous update mechanism but not the preservation contract. The canonical verb is **Refresh**.
+- "Sync" is additive rather than an exact mirror: absent stars are retained.
+- "Local copy" may mean a managed checkout or an active development workspace; StarSync manages
+  only the former.
+- Slug, short name, and folder name are labels, not identity.
+- The owner is identified by stable GitHub account ID, not a token or mutable login.
+- A repository directory is not initialized until exact format-2 owner configuration exists.
+- A blocked action means StarSync found state it will not overwrite; it does not prove corruption.
+- Pending rename is a label mismatch, not a refresh failure or new repository.
+- Lifecycle, pending rename, and command outcome are separate reporting concepts.
+- Archive Date is repository history time, not the time StarSync last ran.
+- The archive covers primary Git data and a usable checkout, not all LFS objects, submodules,
+  issues, discussions, release assets, wikis, or workflow artifacts.
+- StarSync manages GitHub.com only; other Git hosts are outside its context.

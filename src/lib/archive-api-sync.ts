@@ -22,7 +22,7 @@ import {
 import { partitionValidRepositories, previewSync } from './archive-api-sync-planning.ts';
 import { DEFAULT_ARCHIVE_CONCURRENCY } from './archive-api.ts';
 import { getAuthenticatedArchiveOwner, readArchiveConfig } from './archive-config.ts';
-import { getArchiveModificationFinding } from './archive-migration.ts';
+import { getArchiveModificationFinding } from './archive-inspection.ts';
 import { planManagedSync } from './managed-checkout-planning.ts';
 import { processRepository, runSyncPool } from './refresh.ts';
 import { createCommandReport, createFinding } from './reporting.ts';

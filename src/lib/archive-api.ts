@@ -1,7 +1,7 @@
 import type { CommandReport } from './reporting.ts';
 
 import { normalizeArchiveDatesUnlocked } from './archive-api-dates.ts';
-import { migrateArchiveUnlocked } from './archive-api-migration.ts';
+import { renameArchiveUnlocked } from './archive-api-rename.ts';
 import { syncArchiveUnlocked } from './archive-api-sync.ts';
 import { verifyArchiveUnlocked } from './archive-api-verification.ts';
 import { initArchiveUnlocked, type InitArchiveOptions } from './archive-initialization.ts';
@@ -18,7 +18,7 @@ export interface ArchiveOperationOptions {
 	targetPath: string;
 }
 
-export interface MigrateArchiveOptions extends ArchiveOperationOptions {
+export interface RenameArchiveOptions extends ArchiveOperationOptions {
 	apply?: boolean;
 	token: string;
 }
@@ -41,11 +41,11 @@ export interface VerifyArchiveOptions extends ArchiveOperationOptions {
 export const initArchive = (options: InitArchiveOptions): Promise<CommandReport> =>
 	withArchiveOperationLock('init', options, (held) => initArchiveUnlocked(options, held));
 
-export const migrateArchive = (options: MigrateArchiveOptions): Promise<CommandReport> =>
+export const renameArchive = (options: RenameArchiveOptions): Promise<CommandReport> =>
 	withArchiveOperationLock(
-		'migrate',
+		'rename',
 		options,
-		() => migrateArchiveUnlocked(options),
+		() => renameArchiveUnlocked(options),
 		!(options.apply ?? false)
 	);
 

@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test';
+import { execFile as actualExecFile, execFileSync as actualExecFileSync } from 'node:child_process';
 import {
 	existsSync,
 	mkdirSync,
@@ -6,35 +7,30 @@ import {
 	readdirSync,
 	readFileSync,
 	rmSync,
-	statSync,
 	writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import type { ParsedArgs, Repository, SyncResult } from '../src/index.ts';
+import type { ParsedArgs } from '../src/lib/cli-utils.ts';
 import type { CommandReport } from '../src/lib/reporting.ts';
 
 import {
-	cloneOrPull,
-	DEFAULT_CONCURRENCY,
-	HELP_TEXT,
 	initArchive,
-	inspectArchive,
-	listFolders,
-	migrateArchive,
 	normalizeArchiveDates,
-	normalizeRepoUrl,
-	parseArgs,
-	parseGitHubRepositorySlug,
-	previewArchiveMigration,
-	resolveTargetPath,
-	runStarsync,
-	stripQuotes,
+	renameArchive,
 	syncArchive,
 	verifyArchive,
 } from '../src/index.ts';
+import { inspectArchive } from '../src/lib/archive-inspection.ts';
+import {
+	DEFAULT_CONCURRENCY,
+	parseArgs,
+	resolveTargetPath,
+	stripQuotes,
+} from '../src/lib/cli-utils.ts';
+import { SYNC_HELP_TEXT } from '../src/lib/help-text.ts';
 import { createCommandReport, createCommandReporter, createFinding } from '../src/lib/reporting.ts';
 import {
 	hasEmbeddedCredentials,
@@ -44,6 +40,7 @@ import {
 	sanitizeUrl,
 	extractHost,
 } from '../src/lib/secret-safety.ts';
+import { dispatchSync } from '../src/lib/subcommands.ts';
 
 const mockExecFileSync = mock(
 	(_cmd: string, _args: string[], _options?: unknown): string | undefined => undefined
@@ -60,6 +57,18 @@ const mockExecFile = mock(
 		callback(null, '', '');
 	}
 );
+
+const callActualExecFile = actualExecFile as unknown as (
+	cmd: string,
+	args: string[],
+	options: unknown,
+	callback: (err: Error | null, stdout: string, stderr: string) => void
+) => void;
+const callActualExecFileSync = actualExecFileSync as unknown as (
+	cmd: string,
+	args: string[],
+	options?: unknown
+) => string;
 
 mock.module('node:child_process', () => ({
 	execFile: mockExecFile,
@@ -382,23 +391,6 @@ const mockSuccessfulCloneAndDateOperations = (
 	});
 };
 
-const mockGitReads = (
-	origins: Record<string, string>,
-	statuses: Record<string, string> = {}
-): void => {
-	mockExecFileSync.mockImplementation((_cmd, args, options) => {
-		const cwd = (options as { cwd?: string } | undefined)?.cwd ?? '';
-		const name = path.basename(cwd);
-		if (args.includes('config')) {
-			const origin = origins[name];
-			if (origin === undefined) throw new Error(`No origin for ${name}`);
-			return `${origin}\n`;
-		}
-		if (args.includes('status')) return statuses[name] ?? '';
-		throw new Error(`Unexpected Git read: ${args.join(' ')}`);
-	});
-};
-
 afterEach(() => {
 	mockExecFile.mockClear();
 	mockExecFileSync.mockReset();
@@ -415,295 +407,9 @@ afterEach(() => {
 	mockPaginate.mockReset();
 });
 
-describe('repository URL normalization', () => {
-	test('normalizes casing, suffixes, and trailing slashes', () => {
-		expect(normalizeRepoUrl(' HTTPS://GitHub.com/Owner/Repository.GIT/// ')).toBe(
-			'github.com/owner/repository'
-		);
-	});
-
-	test('treats GitHub HTTPS and SSH forms as the same repository', () => {
-		const expected = 'github.com/owner/repository';
-
-		expect(normalizeRepoUrl('https://github.com/Owner/Repository.git')).toBe(expected);
-		expect(normalizeRepoUrl('git@github.com:Owner/Repository.git')).toBe(expected);
-		expect(normalizeRepoUrl('ssh://git@github.com/Owner/Repository.git')).toBe(expected);
-	});
-
-	test('normalizes canonically equivalent Unicode without discarding it', () => {
-		const composed = normalizeRepoUrl('https://github.com/Example/Caf\u00e9.git');
-		const decomposed = normalizeRepoUrl('https://github.com/Example/Cafe\u0301.git');
-
-		expect(decomposed).toBe(composed);
-		expect(composed).toBe('github.com/example/caf\u00e9');
-	});
-});
-
-describe('cloneOrPull', () => {
-	const repo: Repository = {
-		clone_url: 'https://github.com/example/test-repo.git',
-		name: 'test-repo',
-	};
-
-	test('clones a new repository when folder does not exist', () => {
-		mockExecFileSync.mockReturnValue(undefined);
-		const result: SyncResult = cloneOrPull(repo, '/tmp/target', new Set());
-
-		expect(result.ok).toBe(true);
-		expect(mockExecFileSync).toHaveBeenCalledTimes(1);
-		expect(mockExecFileSync).toHaveBeenCalledWith(
-			'git',
-			['-c', 'core.askPass=', 'clone', repo.clone_url],
-			expect.objectContaining({ cwd: '/tmp/target', stdio: 'inherit' })
-		);
-	});
-
-	test('clones a repository when folder exists but lacks .git directory', () => {
-		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
-		try {
-			mkdirSync(path.join(root, 'test-repo'));
-			mockExecFileSync.mockReturnValue(undefined);
-
-			const existing = new Set(['test-repo']);
-			const result: SyncResult = cloneOrPull(repo, root, existing);
-
-			expect(result.ok).toBe(true);
-			expect(mockExecFileSync).toHaveBeenCalledTimes(1);
-			expect(mockExecFileSync).toHaveBeenCalledWith(
-				'git',
-				['-c', 'core.askPass=', 'clone', repo.clone_url],
-				expect.objectContaining({ cwd: root, stdio: 'inherit' })
-			);
-		} finally {
-			rmSync(root, { force: true, recursive: true });
-		}
-	});
-
-	test('pulls an existing repository when folder has .git directory and remote URL matches', () => {
-		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
-		try {
-			mkdirSync(path.join(root, 'test-repo'));
-			mkdirSync(path.join(root, 'test-repo', '.git'));
-
-			const existing = new Set(['test-repo']);
-			// First call: remote URL check; second call: git pull
-			mockExecFileSync
-				.mockReturnValueOnce('https://github.com/example/test-repo.git\n')
-				.mockReturnValueOnce(undefined);
-
-			const result: SyncResult = cloneOrPull(repo, root, existing);
-
-			expect(result.ok).toBe(true);
-			expect(mockExecFileSync).toHaveBeenCalledTimes(2);
-			expect(mockExecFileSync).toHaveBeenNthCalledWith(
-				1,
-				'git',
-				['-C', path.join(root, 'test-repo'), 'config', '--get', 'remote.origin.url'],
-				expect.objectContaining({
-					encoding: 'utf-8',
-					env: expect.objectContaining({ GIT_TERMINAL_PROMPT: '0' }),
-				})
-			);
-			expect(mockExecFileSync).toHaveBeenNthCalledWith(
-				2,
-				'git',
-				['-c', 'core.askPass=', 'pull'],
-				expect.objectContaining({ cwd: path.join(root, 'test-repo'), stdio: 'inherit' })
-			);
-		} finally {
-			rmSync(root, { force: true, recursive: true });
-		}
-	});
-
-	test('returns failure when remote URL does not match the expected clone URL', () => {
-		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
-		try {
-			mkdirSync(path.join(root, 'test-repo'));
-			mkdirSync(path.join(root, 'test-repo', '.git'));
-
-			const otherRepo: Repository = {
-				clone_url: 'https://github.com/other-user/test-repo.git',
-				name: 'test-repo',
-			};
-			mockExecFileSync.mockReturnValueOnce('https://github.com/example/test-repo.git\n');
-
-			const existing = new Set(['test-repo']);
-			const result: SyncResult = cloneOrPull(otherRepo, root, existing);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.failure.verb).toBe('clone');
-				expect(result.failure.name).toBe('test-repo');
-				expect(result.failure.message).toContain('Remote URL mismatch');
-				expect(result.failure.message).toContain(
-					'https://github.com/other-user/test-repo.git'
-				);
-				expect(result.failure.message).toContain(
-					'https://github.com/example/test-repo.git'
-				);
-			}
-			// Should only have called execFileSync once (the remote URL check), not git pull
-			expect(mockExecFileSync).toHaveBeenCalledTimes(1);
-		} finally {
-			rmSync(root, { force: true, recursive: true });
-		}
-	});
-
-	test('pulls when folder with .git exists on disk but its name is missing from the existing set', () => {
-		// Simulates a case-insensitive filesystem (Windows) where the folder is e.g.
-		// 'Test-Repo' but the GitHub repo name is 'test-repo' — the Set lookup misses,
-		// but the filesystem check must still detect the existing clone.
-		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
-		try {
-			mkdirSync(path.join(root, 'test-repo'));
-			mkdirSync(path.join(root, 'test-repo', '.git'));
-
-			mockExecFileSync
-				.mockReturnValueOnce('https://github.com/example/test-repo.git\n')
-				.mockReturnValueOnce(undefined);
-
-			const result: SyncResult = cloneOrPull(repo, root, new Set());
-
-			expect(result.ok).toBe(true);
-			expect(mockExecFileSync).toHaveBeenCalledTimes(2);
-			expect(mockExecFileSync).toHaveBeenNthCalledWith(
-				2,
-				'git',
-				['-c', 'core.askPass=', 'pull'],
-				expect.objectContaining({ cwd: path.join(root, 'test-repo'), stdio: 'inherit' })
-			);
-		} finally {
-			rmSync(root, { force: true, recursive: true });
-		}
-	});
-
-	test('pulls when remote URL differs only by owner casing', () => {
-		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
-		try {
-			mkdirSync(path.join(root, 'test-repo'));
-			mkdirSync(path.join(root, 'test-repo', '.git'));
-
-			// GitHub owner names are case-insensitive: Example vs example is the same repo
-			mockExecFileSync
-				.mockReturnValueOnce('https://github.com/Example/test-repo.git\n')
-				.mockReturnValueOnce(undefined);
-
-			const existing = new Set(['test-repo']);
-			const result: SyncResult = cloneOrPull(repo, root, existing);
-
-			expect(result.ok).toBe(true);
-			expect(mockExecFileSync).toHaveBeenCalledTimes(2);
-			expect(mockExecFileSync).toHaveBeenNthCalledWith(
-				2,
-				'git',
-				['-c', 'core.askPass=', 'pull'],
-				expect.objectContaining({ cwd: path.join(root, 'test-repo'), stdio: 'inherit' })
-			);
-		} finally {
-			rmSync(root, { force: true, recursive: true });
-		}
-	});
-
-	test('pulls when remote URL differs only by a missing .git suffix', () => {
-		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
-		try {
-			mkdirSync(path.join(root, 'test-repo'));
-			mkdirSync(path.join(root, 'test-repo', '.git'));
-
-			mockExecFileSync
-				.mockReturnValueOnce('https://github.com/example/test-repo\n')
-				.mockReturnValueOnce(undefined);
-
-			const existing = new Set(['test-repo']);
-			const result: SyncResult = cloneOrPull(repo, root, existing);
-
-			expect(result.ok).toBe(true);
-			expect(mockExecFileSync).toHaveBeenCalledTimes(2);
-		} finally {
-			rmSync(root, { force: true, recursive: true });
-		}
-	});
-
-	test('returns failure when clone throws an error', () => {
-		mockExecFileSync.mockImplementation(() => {
-			throw new Error('fatal: repository not found');
-		});
-
-		const result: SyncResult = cloneOrPull(repo, '/tmp/target', new Set());
-
-		expect(result.ok).toBe(false);
-		if (!result.ok) {
-			expect(result.failure.verb).toBe('clone');
-			expect(result.failure.name).toBe('test-repo');
-			expect(result.failure.message).toContain('fatal: repository not found');
-		}
-	});
-
-	test('returns failure when pull throws an error', () => {
-		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
-		try {
-			mkdirSync(path.join(root, 'test-repo'));
-			mkdirSync(path.join(root, 'test-repo', '.git'));
-			// First call: remote URL check succeeds; second call: git pull throws
-			mockExecFileSync
-				.mockReturnValueOnce('https://github.com/example/test-repo.git\n')
-				.mockImplementation(() => {
-					throw new Error('CONFLICT: merge conflict in file.ts');
-				});
-
-			const existing = new Set(['test-repo']);
-			const result: SyncResult = cloneOrPull(repo, root, existing);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.failure.verb).toBe('pull');
-				expect(result.failure.name).toBe('test-repo');
-				expect(result.failure.message).toContain('CONFLICT');
-			}
-		} finally {
-			rmSync(root, { force: true, recursive: true });
-		}
-	});
-
-	test('removes parent secrets from the synchronous Git environment', () => {
-		const savedEnvironment = {
-			AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
-			DB_PASSWORD: process.env.DB_PASSWORD,
-			GITHUB_TOKEN: process.env.GITHUB_TOKEN,
-			NPM_TOKEN: process.env.NPM_TOKEN,
-			SERVICE_API_KEY: process.env.SERVICE_API_KEY,
-		};
-		Object.assign(process.env, {
-			AWS_SECRET_ACCESS_KEY: 'aws-secret',
-			DB_PASSWORD: 'database-secret',
-			GITHUB_TOKEN: 'github-secret',
-			NPM_TOKEN: 'npm-secret',
-			SERVICE_API_KEY: 'service-secret',
-		});
-
-		try {
-			mockExecFileSync.mockReturnValue(undefined);
-			expect(cloneOrPull(repo, '/tmp/target', new Set()).ok).toBe(true);
-
-			const options = mockExecFileSync.mock.calls.at(-1)?.[2] as
-				{ env?: NodeJS.ProcessEnv } | undefined;
-			expect(options?.env).toEqual(expect.objectContaining({ GIT_TERMINAL_PROMPT: '0' }));
-			for (const key of [
-				'AWS_SECRET_ACCESS_KEY',
-				'DB_PASSWORD',
-				'GITHUB_TOKEN',
-				'NPM_TOKEN',
-				'SERVICE_API_KEY',
-			]) {
-				expect(options?.env).not.toHaveProperty(key);
-			}
-		} finally {
-			for (const [key, value] of Object.entries(savedEnvironment)) {
-				if (value === undefined) delete process.env[key];
-				else process.env[key] = value;
-			}
-		}
-	});
+afterAll(() => {
+	mockExecFile.mockImplementation(callActualExecFile);
+	mockExecFileSync.mockImplementation(callActualExecFileSync);
 });
 
 describe('argument parsing', () => {
@@ -746,41 +452,22 @@ describe('argument parsing', () => {
 
 describe('target path resolution', () => {
 	test('positional target overrides environment target', () => {
-		expect(resolveTargetPath('repos', '/ignored', '/base')).toBe(path.resolve('repos'));
+		expect(resolveTargetPath('repos', '/ignored')).toBe(path.resolve('repos'));
 	});
 
 	test('uses quoted environment target when no positional target is provided', () => {
-		expect(resolveTargetPath(null, '"repos from env"', '/base')).toBe(
-			path.resolve('repos from env')
-		);
+		expect(resolveTargetPath(null, '"repos from env"')).toBe(path.resolve('repos from env'));
 	});
 
-	test('falls back to starred_repos under the base directory', () => {
-		expect(resolveTargetPath(null, '', '/base')).toBe(path.resolve('/base', 'starred_repos'));
+	test('rejects a missing explicit target', () => {
+		expect(() => resolveTargetPath(null, '')).toThrow(
+			'A target path or TARGET_PATH is required.'
+		);
 	});
 
 	test('strips surrounding quotes and whitespace', () => {
 		expect(stripQuotes(' "C:/repos" ')).toBe('C:/repos');
 		expect(stripQuotes("'C:/repos'")).toBe('C:/repos');
-	});
-});
-
-describe('folder discovery', () => {
-	test('returns only immediate folder names', () => {
-		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
-		try {
-			mkdirSync(path.join(root, 'repo-a'));
-			mkdirSync(path.join(root, 'repo-b'));
-			writeFileSync(path.join(root, 'README.md'), 'not a directory');
-
-			expect([...listFolders(root)].sort()).toEqual(['repo-a', 'repo-b']);
-		} finally {
-			rmSync(root, { force: true, recursive: true });
-		}
-	});
-
-	test('returns an empty set for a missing path', () => {
-		expect(listFolders(path.join(tmpdir(), 'starsync-missing-path')).size).toBe(0);
 	});
 });
 
@@ -839,7 +526,7 @@ describe('programmatic archive API', () => {
 
 			expect(captured.stdout).toEqual([]);
 			expect(captured.stderr).toEqual([]);
-			expect(captured.result.schemaVersion).toBe(1);
+			expect(captured.result.schemaVersion).toBe(2);
 			expect(captured.result.command).toBe('sync');
 			expect(captured.result.exitCode).toBe(0);
 			expect(captured.result.checkouts[0]).toEqual(
@@ -859,7 +546,7 @@ describe('programmatic archive API', () => {
 		try {
 			const captured = await captureConsole(async () => [
 				await initArchive({ targetPath: target, token: 'test-token' }),
-				await migrateArchive({ apply: true, targetPath: target, token: 'test-token' }),
+				await renameArchive({ apply: true, targetPath: target, token: 'test-token' }),
 				await normalizeArchiveDates({ dryRun: true, targetPath: target }),
 				await verifyArchive({ targetPath: path.join(target, 'missing') }),
 			]);
@@ -868,11 +555,11 @@ describe('programmatic archive API', () => {
 			expect(captured.stderr).toEqual([]);
 			expect(captured.result.map((report) => report.command)).toEqual([
 				'init',
-				'migrate',
+				'rename',
 				'dates',
 				'verify',
 			]);
-			for (const report of captured.result) expect(report.schemaVersion).toBe(1);
+			for (const report of captured.result) expect(report.schemaVersion).toBe(2);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
 		}
@@ -1047,7 +734,7 @@ describe('managed archive initialization', () => {
 			]);
 			expect(configText).not.toContain('secret-test-token');
 			expect(readdirSync(target)).toEqual(['.starsync']);
-			expect(inspectArchive(target).kind).toBe('current-managed');
+			expect(inspectArchive(target).kind).toBe('current');
 		} finally {
 			rmSync(target, { force: true, recursive: true });
 		}
@@ -1101,6 +788,28 @@ describe('managed archive initialization', () => {
 		}
 	});
 
+	test('rejects rename application for another account before resolving repositories', async () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-rename-owner-mismatch-'));
+		try {
+			writeManagedArchiveConfig(target, { id: 7, login: 'original-owner' });
+			mockGetAuthenticated.mockResolvedValue({
+				data: { id: 8, login: 'different-owner' },
+			});
+
+			const report = await renameArchive({
+				apply: true,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(1);
+			expect(report.findings[0]?.code).toBe('archive-owner-mismatch');
+			expect(mockGetRepository).not.toHaveBeenCalled();
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
 	test('accepts the same account ID after a login rename without upgrading config', async () => {
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-owner-rename-'));
 		try {
@@ -1125,15 +834,15 @@ describe('managed archive initialization', () => {
 		}
 	});
 
-	test('blocks modifying commands for older, newer, and invalid managed configs', async () => {
+	test('blocks modifying commands for unsupported and invalid archive configs', async () => {
 		const cases = [
 			{
-				code: 'older-archive-read-only',
+				code: 'archive-format-unsupported',
 				config: { archiveFormat: 1, owner: { id: 7, login: 'archive-owner' } },
 				prefix: 'starsync-older-managed-',
 			},
 			{
-				code: 'archive-format-newer',
+				code: 'archive-format-unsupported',
 				config: { archiveFormat: 3, owner: { id: 7, login: 'archive-owner' } },
 				prefix: 'starsync-newer-managed-',
 			},
@@ -1177,138 +886,6 @@ describe('managed archive initialization', () => {
 	});
 });
 
-describe('runStarsync', () => {
-	let savedToken: string | undefined;
-
-	const withToken = (fn: () => Promise<void> | void) => async () => {
-		savedToken = process.env.GITHUB_TOKEN;
-		process.env.GITHUB_TOKEN = 'test-token';
-		try {
-			await fn();
-		} finally {
-			if (savedToken === undefined) {
-				delete process.env.GITHUB_TOKEN;
-			} else {
-				process.env.GITHUB_TOKEN = savedToken;
-			}
-		}
-	};
-
-	test('returns exit code 2 when no explicit target is provided', async () => {
-		const savedTarget = process.env.TARGET_PATH;
-		delete process.env.GITHUB_TOKEN;
-		delete process.env.TARGET_PATH;
-		try {
-			const captured = await captureConsole(() => runStarsync([]));
-			expect(captured.result).toBe(2);
-			expect(captured.stderr).toContain(
-				'ERROR [invalid-usage]: A target path or TARGET_PATH is required.'
-			);
-		} finally {
-			if (savedTarget !== undefined) process.env.TARGET_PATH = savedTarget;
-		}
-	});
-
-	test(
-		'returns exit code 0 for --help flag',
-		withToken(async () => {
-			const exitCode = await runStarsync(['--help']);
-			expect(exitCode).toBe(0);
-		})
-	);
-
-	test(
-		'returns exit code 2 for unknown argument',
-		withToken(async () => {
-			const exitCode = await runStarsync(['--unknown']);
-			expect(exitCode).toBe(2);
-		})
-	);
-
-	test(
-		'returns exit code 0 on successful sync with two repos',
-		withToken(async () => {
-			mockPaginate.mockResolvedValue([
-				mockStarredRepository('repo-a', 101),
-				mockStarredRepository('repo-b', 102),
-			]);
-			mockSuccessfulCloneAndDateOperations();
-
-			const target = mkdtempSync(path.join(tmpdir(), 'starsync-sync-'));
-			try {
-				writeManagedArchiveConfig(target);
-				const exitCode = await runStarsync([target]);
-				expect(exitCode).toBe(0);
-				for (const folderName of ['repo-a--example', 'repo-b--example']) {
-					expect(
-						Math.abs(
-							statSync(path.join(target, folderName)).mtimeMs -
-								new Date('2026-07-16T10:00:00Z').getTime()
-						)
-					).toBeLessThan(1_000);
-				}
-			} finally {
-				rmSync(target, { force: true, recursive: true });
-			}
-		})
-	);
-
-	test(
-		'keeps the Git outcome and exits 1 when Archive Date maintenance fails',
-		withToken(async () => {
-			mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
-			mockSuccessfulCloneAndDateOperations(undefined, {
-				onArchiveDateRead: (cwd, callback) => {
-					rmSync(cwd, { force: true, recursive: true });
-					callback(null, '2026-07-16T10:00:00Z\n', '');
-					return true;
-				},
-			});
-
-			const target = mkdtempSync(path.join(tmpdir(), 'starsync-date-failure-'));
-			try {
-				writeManagedArchiveConfig(target);
-				const report = await syncArchive({
-					targetPath: target,
-					token: 'test-token',
-				});
-
-				expect(report.exitCode).toBe(1);
-				expect(report.checkouts[0]?.outcome).toBe('added');
-				expect(report.checkouts[0]?.findings).toContainEqual(
-					expect.objectContaining({
-						code: 'archive-date-update-failed',
-						severity: 'error',
-					})
-				);
-			} finally {
-				rmSync(target, { force: true, recursive: true });
-			}
-		})
-	);
-
-	test(
-		'returns exit code 1 when one clone fails (partial failure)',
-		withToken(async () => {
-			mockPaginate.mockResolvedValue([
-				mockStarredRepository('repo-a', 101),
-				mockStarredRepository('repo-b', 102),
-			]);
-			// repo-a succeeds, repo-b fails
-			mockSuccessfulCloneAndDateOperations('repo-b');
-
-			const target = mkdtempSync(path.join(tmpdir(), 'starsync-sync-'));
-			try {
-				writeManagedArchiveConfig(target);
-				const exitCode = await runStarsync([target]);
-				expect(exitCode).toBe(1);
-			} finally {
-				rmSync(target, { force: true, recursive: true });
-			}
-		})
-	);
-});
-
 describe('sync --dry-run', () => {
 	let savedToken: string | undefined;
 
@@ -1330,7 +907,7 @@ describe('sync --dry-run', () => {
 		try {
 			writeManagedArchiveConfig(target);
 			const captured = await captureConsole(() =>
-				runStarsync(['--json', target, '--dry-run'])
+				dispatchSync(['--json', target, '--dry-run'])
 			);
 			const report = parseReport(captured.stdout);
 			expect(captured.result).toBe(0);
@@ -1338,7 +915,11 @@ describe('sync --dry-run', () => {
 				expect.objectContaining({ code: 'date-update-planned' })
 			);
 			// In dry-run mode, no git clone/pull should be called
-			expect(mockExecFileSync).not.toHaveBeenCalled();
+			expect(
+				mockExecFileSync.mock.calls.some((call) =>
+					(call[1] as string[]).some((arg) => ['clone', 'fetch', 'merge'].includes(arg))
+				)
+			).toBe(false);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
 		}
@@ -1369,7 +950,11 @@ describe('sync --dry-run', () => {
 					(call[1] as string[]).some((arg) => ['clone', 'fetch', 'merge'].includes(arg))
 				)
 			).toBe(false);
-			expect(mockExecFileSync).not.toHaveBeenCalled();
+			expect(
+				mockExecFileSync.mock.calls.some((call) =>
+					(call[1] as string[]).some((arg) => ['clone', 'fetch', 'merge'].includes(arg))
+				)
+			).toBe(false);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
 		}
@@ -1435,7 +1020,7 @@ describe('subcommand dispatch', () => {
 		const { isSubcommand } = await import('../src/lib/cli-utils.ts');
 		expect(isSubcommand('sync')).toBe(true);
 		expect(isSubcommand('verify')).toBe(true);
-		expect(isSubcommand('migrate')).toBe(true);
+		expect(isSubcommand('rename')).toBe(true);
 		expect(isSubcommand('dates')).toBe(true);
 		expect(isSubcommand('init')).toBe(true);
 		expect(isSubcommand('unlock')).toBe(true);
@@ -1467,26 +1052,26 @@ describe('subcommand dispatch', () => {
 		expect(exitCode).toBe(2);
 	});
 
-	test('dispatchMigrate exits 1 when a preview cannot run', async () => {
-		const { dispatchMigrate } = await import('../src/lib/subcommands.ts');
+	test('dispatchRename exits 1 when a preview cannot run', async () => {
+		const { dispatchRename } = await import('../src/lib/subcommands.ts');
 		const originalToken = process.env.GITHUB_TOKEN;
 		try {
 			delete process.env.GITHUB_TOKEN;
-			const exitCode = await dispatchMigrate(['C:/archive']);
+			const exitCode = await dispatchRename(['C:/archive']);
 			expect(exitCode).toBe(1);
 		} finally {
 			if (originalToken !== undefined) process.env.GITHUB_TOKEN = originalToken;
 		}
 	});
 
-	test('dispatchMigrate --apply completes an empty current archive', async () => {
-		const { dispatchMigrate } = await import('../src/lib/subcommands.ts');
+	test('dispatchRename --apply completes an empty current archive', async () => {
+		const { dispatchRename } = await import('../src/lib/subcommands.ts');
 		const savedToken = process.env.GITHUB_TOKEN;
-		const target = mkdtempSync(path.join(tmpdir(), 'starsync-empty-migration-'));
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-empty-rename-'));
 		process.env.GITHUB_TOKEN = 'test-token';
 		try {
 			writeManagedArchiveConfig(target);
-			const exitCode = await dispatchMigrate(['--apply', target]);
+			const exitCode = await dispatchRename(['--apply', target]);
 			expect(exitCode).toBe(0);
 		} finally {
 			if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
@@ -1495,9 +1080,9 @@ describe('subcommand dispatch', () => {
 		}
 	});
 
-	test('dispatchMigrate --help exits 0', async () => {
-		const { dispatchMigrate } = await import('../src/lib/subcommands.ts');
-		const exitCode = await dispatchMigrate(['--help']);
+	test('dispatchRename --help exits 0', async () => {
+		const { dispatchRename } = await import('../src/lib/subcommands.ts');
+		const exitCode = await dispatchRename(['--help']);
 		expect(exitCode).toBe(0);
 	});
 
@@ -1636,267 +1221,7 @@ describe('subcommand dispatch', () => {
 		expect(defaultParsed.concurrency).toBe(DEFAULT_CONCURRENCY);
 		expect(parsed.concurrency).toBe(2);
 		expect(captured.result).toBe(0);
-		expect(captured.stdout).toEqual([HELP_TEXT]);
-	});
-});
-
-describe('legacy archive migration preview', () => {
-	test('parses supported GitHub HTTPS and SSH repository slugs', () => {
-		expect(parseGitHubRepositorySlug('https://github.com/Owner/Repo.git')).toEqual({
-			owner: 'Owner',
-			repository: 'Repo',
-		});
-		expect(parseGitHubRepositorySlug('git@github.com:Owner/Repo.git')).toEqual({
-			owner: 'Owner',
-			repository: 'Repo',
-		});
-		expect(parseGitHubRepositorySlug('https://github.com/owner/repo/issues')).toBeNull();
-	});
-
-	test('recognizes only configless directories containing GitHub.com checkouts as legacy', () => {
-		const empty = mkdtempSync(path.join(tmpdir(), 'starsync-empty-archive-'));
-		const unrelated = mkdtempSync(path.join(tmpdir(), 'starsync-unrelated-archive-'));
-		const legacy = mkdtempSync(path.join(tmpdir(), 'starsync-legacy-archive-'));
-		try {
-			mkdirSync(path.join(unrelated, 'documents'));
-			createCheckout(legacy, 'repo');
-			mockGitReads({ repo: 'https://github.com/example/repo.git' });
-
-			expect(inspectArchive(empty).kind).toBe('uninitialized');
-			expect(inspectArchive(unrelated).kind).toBe('uninitialized');
-			const inspection = inspectArchive(legacy);
-			expect(inspection.kind).toBe('legacy');
-			expect(inspection.archiveFormat).toBe(1);
-			expect(inspection.findings[0]?.code).toBe('legacy-archive-recognized');
-		} finally {
-			rmSync(empty, { force: true, recursive: true });
-			rmSync(unrelated, { force: true, recursive: true });
-			rmSync(legacy, { force: true, recursive: true });
-		}
-	});
-
-	test('classifies safe, pending, blocked, invalid, credential-bearing, and unrelated entries', async () => {
-		const target = mkdtempSync(path.join(tmpdir(), 'starsync-migration-preview-'));
-		try {
-			createCheckout(target, 'canonical--owner');
-			createCheckout(target, 'rename-me');
-			createCheckout(target, 'dirty');
-			createCheckout(target, 'bad-host');
-			createCheckout(target, 'credential');
-			writeFileSync(path.join(target, 'notes.txt'), 'archive notes');
-			mockGitReads(
-				{
-					'bad-host': 'https://gitlab.com/owner/bad-host.git',
-					'canonical--owner': 'https://github.com/owner/canonical.git',
-					credential: 'https://user:secret@github.com/owner/credential.git',
-					dirty: 'https://github.com/owner/dirty.git',
-					'rename-me': 'git@github.com:owner/renamed.git',
-				},
-				{ dirty: ' M local-change.ts' }
-			);
-
-			const before = readdirSync(target).sort();
-			const result = await previewArchiveMigration(target, async (owner, repository) => ({
-				id: repository.length,
-				name: repository,
-				owner,
-				slug: `${owner}/${repository}`,
-			}));
-			const byName = new Map(result.checkouts.map((checkout) => [checkout.name, checkout]));
-
-			expect(byName.get('canonical--owner')?.migration?.classification).toBe(
-				'safely-migratable'
-			);
-			expect(byName.get('rename-me')?.migration).toEqual({
-				classification: 'pending-rename',
-				proposedName: 'renamed--owner',
-				repositoryId: 7,
-				repositorySlug: 'owner/renamed',
-			});
-			expect(byName.get('dirty')?.migration?.classification).toBe('adopted-but-blocked');
-			expect(byName.get('bad-host')?.migration?.classification).toBe('failed');
-			expect(byName.get('credential')?.findings[0]?.code).toBe('credential-bearing-origin');
-			expect(byName.get('notes.txt')?.findings[0]?.code).toBe('unrelated-archive-entry');
-			expect(result.exitCode).toBe(1);
-			expect(readdirSync(target).sort()).toEqual(before);
-			expect(readdirSync(target)).not.toContain('.starsync');
-			expect(mockExecFileSync).toHaveBeenCalledWith(
-				'git',
-				expect.any(Array),
-				expect.objectContaining({
-					env: expect.objectContaining({ GIT_OPTIONAL_LOCKS: '0' }),
-				})
-			);
-		} finally {
-			rmSync(target, { force: true, recursive: true });
-		}
-	});
-
-	test('detects duplicate identities and proposed-folder collisions', async () => {
-		const target = mkdtempSync(path.join(tmpdir(), 'starsync-migration-conflicts-'));
-		try {
-			createCheckout(target, 'first');
-			createCheckout(target, 'second');
-			mkdirSync(path.join(target, 'repo--owner'));
-			mockGitReads({
-				first: 'https://github.com/owner/repo.git',
-				second: 'https://github.com/owner/repo.git',
-			});
-
-			const result = await previewArchiveMigration(target, async () => ({
-				id: 42,
-				name: 'repo',
-				owner: 'owner',
-				slug: 'owner/repo',
-			}));
-
-			expect(
-				result.checkouts.find((checkout) => checkout.name === 'first')?.findings[0]?.code
-			).toBe('duplicate-identity');
-			expect(
-				result.checkouts.find((checkout) => checkout.name === 'second')?.findings[0]?.code
-			).toBe('duplicate-identity');
-			expect(result.exitCode).toBe(1);
-		} finally {
-			rmSync(target, { force: true, recursive: true });
-		}
-	});
-
-	test('rejects invalid identity responses and reports partial results after interruption', async () => {
-		const invalidTarget = mkdtempSync(path.join(tmpdir(), 'starsync-invalid-identity-'));
-		const interruptedTarget = mkdtempSync(path.join(tmpdir(), 'starsync-interrupted-preview-'));
-		try {
-			createCheckout(invalidTarget, 'invalid');
-			createCheckout(interruptedTarget, 'first');
-			createCheckout(interruptedTarget, 'second');
-			mockGitReads({
-				first: 'https://github.com/owner/first.git',
-				invalid: 'https://github.com/owner/invalid.git',
-				second: 'https://github.com/owner/second.git',
-			});
-
-			const invalidResult = await previewArchiveMigration(invalidTarget, async () => ({
-				id: 0,
-				name: '../invalid',
-				owner: 'owner',
-				slug: 'owner/invalid',
-			}));
-			expect(invalidResult.checkouts[0]?.findings[0]?.code).toBe(
-				'invalid-repository-identity'
-			);
-
-			let interruptionChecks = 0;
-			const interruptedResult = await previewArchiveMigration(
-				interruptedTarget,
-				async (owner, repository) => ({
-					id: 1,
-					name: repository,
-					owner,
-					slug: `${owner}/${repository}`,
-				}),
-				{ isInterruptionRequested: () => interruptionChecks++ > 0 }
-			);
-			expect(interruptedResult.exitCode).toBe(130);
-			expect(interruptedResult.interrupted).toBe(true);
-			expect(
-				interruptedResult.checkouts.find((checkout) => checkout.name === 'second')
-					?.findings[0]?.code
-			).toBe('interrupted-before-inspection');
-		} finally {
-			rmSync(invalidTarget, { force: true, recursive: true });
-			rmSync(interruptedTarget, { force: true, recursive: true });
-		}
-	});
-
-	test('allows preview for older managed formats and refuses newer formats', () => {
-		const older = mkdtempSync(path.join(tmpdir(), 'starsync-older-archive-'));
-		const newer = mkdtempSync(path.join(tmpdir(), 'starsync-newer-archive-'));
-		try {
-			mkdirSync(path.join(older, '.starsync'));
-			mkdirSync(path.join(newer, '.starsync'));
-			writeFileSync(path.join(older, '.starsync', 'config.json'), '{"archiveFormat":1}');
-			writeFileSync(path.join(newer, '.starsync', 'config.json'), '{"archiveFormat":3}');
-
-			expect(inspectArchive(older).kind).toBe('older-managed');
-			const newerInspection = inspectArchive(newer);
-			expect(newerInspection.kind).toBe('newer-managed');
-			expect(newerInspection.findings[0]?.code).toBe('archive-format-newer');
-		} finally {
-			rmSync(older, { force: true, recursive: true });
-			rmSync(newer, { force: true, recursive: true });
-		}
-	});
-
-	test('dispatchMigrate emits one read-only JSON preview document', async () => {
-		const target = mkdtempSync(path.join(tmpdir(), 'starsync-migration-command-'));
-		const originalToken = process.env.GITHUB_TOKEN;
-		try {
-			createCheckout(target, 'test-repo');
-			mockGitReads({ 'test-repo': 'https://github.com/example/test-repo.git' });
-			mockGetRepository.mockResolvedValue({
-				data: {
-					full_name: 'example/test-repo',
-					id: 123,
-					name: 'test-repo',
-					owner: { login: 'example' },
-				},
-			});
-			process.env.GITHUB_TOKEN = 'test-token';
-			const before = readdirSync(target).sort();
-			const { dispatchMigrate } = await import('../src/lib/subcommands.ts');
-			const captured = await captureConsole(() => dispatchMigrate(['--json', target]));
-			const report = parseReport(captured.stdout);
-
-			expect(captured.result).toBe(0);
-			expect(captured.stdout).toHaveLength(1);
-			expect(report.command).toBe('migrate');
-			expect(report.dryRun).toBe(true);
-			expect(report.checkouts[0]?.migration?.repositoryId).toBe(123);
-			expect(report.checkouts[0]?.migration?.classification).toBe('pending-rename');
-			expect(readdirSync(target).sort()).toEqual(before);
-		} finally {
-			if (originalToken === undefined) {
-				delete process.env.GITHUB_TOKEN;
-			} else {
-				process.env.GITHUB_TOKEN = originalToken;
-			}
-			rmSync(target, { force: true, recursive: true });
-		}
-	});
-
-	test('sync and dates refuse to modify a recognized legacy archive', async () => {
-		const target = mkdtempSync(path.join(tmpdir(), 'starsync-legacy-guard-'));
-		const originalToken = process.env.GITHUB_TOKEN;
-		try {
-			createCheckout(target, 'repo');
-			writeFileSync(
-				path.join(target, 'repo', '.git', 'config'),
-				'[remote "origin"]\n\turl = https://github.com/example/repo.git\n'
-			);
-			mockGitReads({ repo: 'https://github.com/example/repo.git' });
-			process.env.GITHUB_TOKEN = 'test-token';
-
-			const syncResult = await captureConsole(() => runStarsync(['--json', target]));
-			const { dispatchDates } = await import('../src/lib/subcommands.ts');
-			const datesResult = await captureConsole(() => dispatchDates(['--json', target]));
-
-			expect(syncResult.result).toBe(1);
-			expect(parseReport(syncResult.stdout).findings.at(-1)?.code).toBe(
-				'legacy-archive-read-only'
-			);
-			expect(datesResult.result).toBe(1);
-			expect(parseReport(datesResult.stdout).findings.at(-1)?.code).toBe(
-				'legacy-archive-read-only'
-			);
-			expect(mockPaginate).not.toHaveBeenCalled();
-		} finally {
-			if (originalToken === undefined) {
-				delete process.env.GITHUB_TOKEN;
-			} else {
-				process.env.GITHUB_TOKEN = originalToken;
-			}
-			rmSync(target, { force: true, recursive: true });
-		}
+		expect(captured.stdout).toEqual([SYNC_HELP_TEXT]);
 	});
 });
 
@@ -2001,117 +1326,6 @@ describe('secret safety', () => {
 
 	test('isGitHubDotComUrl returns false for non-GitHub hosts', () => {
 		expect(isGitHubDotComUrl('https://gitlab.com/owner/repo.git')).toBe(false);
-	});
-});
-
-describe('cloneOrPull secret safety integration', () => {
-	const githubRepo: Repository = {
-		clone_url: 'https://github.com/example/test-repo.git',
-		name: 'test-repo',
-	};
-
-	test('rejects non-GitHub.com repository origins', () => {
-		const gheRepo: Repository = {
-			clone_url: 'https://ghe.corp.com/example/test-repo.git',
-			name: 'test-repo',
-		};
-		const result: SyncResult = cloneOrPull(gheRepo, '/tmp/target', new Set());
-
-		expect(result.ok).toBe(false);
-		if (!result.ok) {
-			expect(result.failure.message).toContain('not GitHub.com');
-			expect(result.failure.message).toContain('ghe.corp.com');
-		}
-		expect(mockExecFileSync).not.toHaveBeenCalled();
-	});
-
-	test('rejects GitLab repository origins', () => {
-		const gitlabRepo: Repository = {
-			clone_url: 'https://gitlab.com/example/test-repo.git',
-			name: 'test-repo',
-		};
-		const result: SyncResult = cloneOrPull(gitlabRepo, '/tmp/target', new Set());
-
-		expect(result.ok).toBe(false);
-		if (!result.ok) {
-			expect(result.failure.message).toContain('not GitHub.com');
-		}
-	});
-
-	test('sanitizes embedded credentials from remote URL mismatch messages', () => {
-		const root = mkdtempSync(path.join(tmpdir(), 'starsync-test-'));
-		try {
-			mkdirSync(path.join(root, 'test-repo'));
-			mkdirSync(path.join(root, 'test-repo', '.git'));
-
-			// Remote URL contains embedded credentials
-			mockExecFileSync.mockReturnValueOnce(
-				'https://user:secret@github.com/example/test-repo.git\n'
-			);
-
-			const result: SyncResult = cloneOrPull(
-				{
-					clone_url: 'https://github.com/other/test-repo.git',
-					name: 'test-repo',
-				},
-				root,
-				new Set(['test-repo'])
-			);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.failure.message).not.toContain('user:secret');
-				expect(result.failure.message).toContain(
-					'https://github.com/example/test-repo.git'
-				);
-			}
-		} finally {
-			rmSync(root, { force: true, recursive: true });
-		}
-	});
-
-	test('appends credential guidance on Git auth errors', () => {
-		mockExecFileSync.mockImplementation(() => {
-			throw new Error('fatal: Authentication failed for repository');
-		});
-
-		const result: SyncResult = cloneOrPull(githubRepo, '/tmp/target', new Set());
-
-		expect(result.ok).toBe(false);
-		if (!result.ok) {
-			expect(result.failure.message).toContain('Authentication failed');
-			expect(result.failure.message).toContain('Git Credential Manager');
-		}
-	});
-
-	test('does not append guidance on non-auth Git errors', () => {
-		mockExecFileSync.mockImplementation(() => {
-			throw new Error('fatal: repository not found');
-		});
-
-		const result: SyncResult = cloneOrPull(githubRepo, '/tmp/target', new Set());
-
-		expect(result.ok).toBe(false);
-		if (!result.ok) {
-			expect(result.failure.message).not.toContain('Git Credential Manager');
-		}
-	});
-
-	test('redacts tokens in error messages from Git failures', () => {
-		mockExecFileSync.mockImplementation(() => {
-			throw new Error(
-				"fatal: could not read Username for 'https://ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@github.com/repo.git'"
-			);
-		});
-
-		const result: SyncResult = cloneOrPull(githubRepo, '/tmp/target', new Set());
-
-		expect(result.ok).toBe(false);
-		if (!result.ok) {
-			expect(result.failure.message).not.toContain('ghp_');
-			expect(result.failure.message).not.toContain('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
-			expect(result.failure.message).toContain('https://github.com/repo.git');
-		}
 	});
 });
 
@@ -2949,7 +2163,7 @@ describe('structured command reporting', () => {
 		const {
 			dispatchDates,
 			dispatchInit,
-			dispatchMigrate,
+			dispatchRename,
 			dispatchSync,
 			dispatchUnlock,
 			dispatchVerify,
@@ -2957,7 +2171,7 @@ describe('structured command reporting', () => {
 		const commands: [CommandReport['command'], () => number | Promise<number>][] = [
 			['dates', () => dispatchDates(['--json', '--help'])],
 			['init', () => dispatchInit(['--json', '--help'])],
-			['migrate', () => dispatchMigrate(['--json', '--help'])],
+			['rename', () => dispatchRename(['--json', '--help'])],
 			['sync', () => dispatchSync(['--json', '--help'])],
 			['unlock', () => dispatchUnlock(['--json', '--help'])],
 			['verify', () => dispatchVerify(['--json', '--help'])],
@@ -2968,7 +2182,7 @@ describe('structured command reporting', () => {
 			expect(captured.result).toBe(0);
 			expect(captured.stdout).toHaveLength(1);
 			const report = parseReport(captured.stdout);
-			expect(report.schemaVersion).toBe(1);
+			expect(report.schemaVersion).toBe(2);
 			expect(report.command).toBe(command);
 			expect(report.exitCode).toBe(0);
 		}
@@ -3060,14 +2274,14 @@ describe('structured command reporting', () => {
 		try {
 			writeManagedArchiveConfig(target);
 			const captured = await captureConsole(() =>
-				runStarsync(['--json', '--concurrency=1', target])
+				dispatchSync(['--json', '--concurrency=1', target])
 			);
 			const report = parseReport(captured.stdout);
 
 			expect(captured.result).toBe(0);
 			expect(captured.stdout).toHaveLength(1);
 			expect(captured.stderr.some((line) => line.includes('Syncing 1/1'))).toBe(true);
-			expect(report.schemaVersion).toBe(1);
+			expect(report.schemaVersion).toBe(2);
 			expect(report.checkouts[0]).toEqual(
 				expect.objectContaining({
 					lifecycle: 'active',
@@ -3092,7 +2306,7 @@ describe('structured command reporting', () => {
 		const target = mkdtempSync(path.join(tmpdir(), 'starsync-human-'));
 		try {
 			writeManagedArchiveConfig(target);
-			const captured = await captureConsole(() => runStarsync(['--concurrency=1', target]));
+			const captured = await captureConsole(() => dispatchSync(['--concurrency=1', target]));
 
 			expect(captured.result).toBe(0);
 			expect(captured.stdout).toContain(
@@ -3117,7 +2331,7 @@ describe('structured command reporting', () => {
 		process.env.TARGET_PATH = '""';
 		mockPaginate.mockResolvedValue([]);
 		try {
-			const captured = await captureConsole(() => runStarsync(['--json', '--dry-run']));
+			const captured = await captureConsole(() => dispatchSync(['--json', '--dry-run']));
 			const report = parseReport(captured.stdout);
 
 			expect(captured.result).toBe(2);
@@ -3147,7 +2361,7 @@ describe('structured command reporting', () => {
 				' M local-file\n'
 			);
 			const captured = await captureConsole(() =>
-				runStarsync(['--json', '--concurrency=1', target])
+				dispatchSync(['--json', '--concurrency=1', target])
 			);
 			const report = parseReport(captured.stdout);
 

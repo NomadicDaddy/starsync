@@ -12,12 +12,10 @@ import {
 	resolveExplicitTarget,
 } from './archive-api-reporting.ts';
 import { getAuthenticatedArchiveOwner, readArchiveConfig } from './archive-config.ts';
-import {
-	createGitHubRepositoryResolver,
-	getArchiveModificationFinding,
-} from './archive-migration.ts';
+import { getArchiveModificationFinding } from './archive-inspection.ts';
 import { verifyArchive as verifyArchiveContents } from './archive-verification.ts';
 import { createCommandReport } from './reporting.ts';
+import { createGitHubRepositoryResolver } from './repository-resolution.ts';
 import { sanitizeMessage } from './secret-safety.ts';
 
 interface VerifyContext {

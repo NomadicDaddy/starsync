@@ -3,10 +3,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import type { ArchiveEntry, ResolvedRepository } from '../src/lib/archive-migration.ts';
+import type { ArchiveEntry } from '../src/lib/archive-inspection.ts';
+import type { ResolvedRepository } from '../src/lib/repository-resolution.ts';
 
-import { resolveMigrationEntry } from '../src/lib/archive-migration-resolution.ts';
 import { verifyCheckout } from '../src/lib/archive-verification-checkout.ts';
+import { resolveRenameEntry } from '../src/lib/checkout-rename-resolution.ts';
 import { refreshCheckoutOnDefaultBranch } from '../src/lib/default-branch-refresh.ts';
 import { parsePorcelainStatusPaths, readStatusPaths } from '../src/lib/git-exec.ts';
 import { isLfsSmudgeFailure } from '../src/lib/git-recovery.ts';
@@ -280,9 +281,9 @@ describe('unrepresentable paths in read-only inspection', () => {
 			runGit(['config', 'starsync.repository-id', '4242'], checkout);
 			runGit(['config', 'starsync.repository-slug', 'NomadicDaddy/starsync'], checkout);
 
-			const clean = await verifyCheckout(archiveEntry(checkout), 'current-managed');
+			const clean = await verifyCheckout(archiveEntry(checkout));
 			writeFileSync(path.join(checkout, 'README.md'), '# edited locally\n');
-			const dirty = await verifyCheckout(archiveEntry(checkout), 'current-managed');
+			const dirty = await verifyCheckout(archiveEntry(checkout));
 
 			expect(clean.report.findings.map((finding) => finding.code)).not.toContain(
 				'checkout-blocked'
@@ -293,19 +294,21 @@ describe('unrepresentable paths in read-only inspection', () => {
 		});
 	});
 
-	windowsOnly('migrate does not call an unrepresentable path a rename blocker', async () => {
-		await withTemporaryRoot('starsync-migrate-invalid-path-', async (root) => {
+	windowsOnly('rename does not call an unrepresentable path a blocker', async () => {
+		await withTemporaryRoot('starsync-rename-invalid-path-', async (root) => {
 			const invalidPath = 'screens/localhost:5287.png';
 			const origin = createOrigin(root, invalidPath);
 			const checkout = path.join(root, 'checkout');
 			stageWithoutUnrepresentablePath(checkout, origin, root, invalidPath);
+			runGit(['config', 'starsync.repository-id', '4242'], checkout);
+			runGit(['config', 'starsync.repository-slug', 'NomadicDaddy/starsync'], checkout);
 
-			const clean = await resolveMigrationEntry(
+			const clean = await resolveRenameEntry(
 				archiveEntry(checkout),
 				resolveFixtureRepository
 			);
 			writeFileSync(path.join(checkout, 'README.md'), '# edited locally\n');
-			const dirty = await resolveMigrationEntry(
+			const dirty = await resolveRenameEntry(
 				archiveEntry(checkout),
 				resolveFixtureRepository
 			);
@@ -324,10 +327,12 @@ describe('unrepresentable paths in read-only inspection', () => {
 			const origin = createOrigin(root, invalidPath);
 			const checkout = path.join(root, 'checkout');
 			stageWithoutUnrepresentablePath(checkout, origin, root, invalidPath);
+			runGit(['config', 'starsync.repository-id', '4242'], checkout);
+			runGit(['config', 'starsync.repository-slug', 'NomadicDaddy/starsync'], checkout);
 			const before = runGit(['status', '--porcelain'], checkout);
 
-			await verifyCheckout(archiveEntry(checkout), 'current-managed');
-			await resolveMigrationEntry(archiveEntry(checkout), resolveFixtureRepository);
+			await verifyCheckout(archiveEntry(checkout));
+			await resolveRenameEntry(archiveEntry(checkout), resolveFixtureRepository);
 
 			expect(runGit(['status', '--porcelain'], checkout)).toBe(before);
 		});

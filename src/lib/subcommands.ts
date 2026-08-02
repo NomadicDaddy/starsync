@@ -1,12 +1,9 @@
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import type { CommandReport } from './reporting.ts';
 
 import {
 	initArchive,
-	migrateArchive,
 	normalizeArchiveDates,
+	renameArchive,
 	syncArchive,
 	unlockArchive,
 	verifyArchive,
@@ -15,16 +12,13 @@ import { parseArgs, resolveTargetPath, stripQuotes, type Subcommand } from './cl
 import {
 	DATES_HELP_TEXT,
 	INIT_HELP_TEXT,
-	MIGRATE_HELP_TEXT,
+	RENAME_HELP_TEXT,
 	SYNC_HELP_TEXT,
 	UNLOCK_HELP_TEXT,
 	VERIFY_HELP_TEXT,
 } from './help-text.ts';
 import { createInterruptControl } from './interrupt-control.ts';
 import { createCommandReport, createCommandReporter, createFinding } from './reporting.ts';
-
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repoDir = path.resolve(scriptDir, '..', '..');
 
 export interface ParsedSubcommandArgs {
 	apply: boolean;
@@ -34,8 +28,14 @@ export interface ParsedSubcommandArgs {
 	json: boolean;
 	targetPath: null | string;
 }
+type SubcommandArgumentOptions = Partial<
+	Record<'allowApply' | 'allowDryRun' | 'allowForce', boolean>
+>;
 
-const parseSubcommandArgs = (argv: string[], allowForce = false): ParsedSubcommandArgs => {
+const parseSubcommandArgs = (
+	argv: string[],
+	options: SubcommandArgumentOptions = {}
+): ParsedSubcommandArgs => {
 	const parsed: ParsedSubcommandArgs = {
 		apply: false,
 		dryRun: false,
@@ -47,11 +47,11 @@ const parseSubcommandArgs = (argv: string[], allowForce = false): ParsedSubcomma
 	for (const arg of argv) {
 		if (arg === '--help' || arg === '-h') {
 			parsed.help = true;
-		} else if (arg === '--dry-run') {
+		} else if (arg === '--dry-run' && options.allowDryRun) {
 			parsed.dryRun = true;
-		} else if (arg === '--apply') {
+		} else if (arg === '--apply' && options.allowApply) {
 			parsed.apply = true;
-		} else if (arg === '--force' && allowForce) {
+		} else if (arg === '--force' && options.allowForce) {
 			parsed.force = true;
 		} else if (arg === '--json') {
 			parsed.json = true;
@@ -113,7 +113,7 @@ const resolveRequiredTarget = (
 		);
 		return null;
 	}
-	return resolveTargetPath(positionalValue, process.env.TARGET_PATH, repoDir);
+	return resolveTargetPath(positionalValue, process.env.TARGET_PATH);
 };
 
 export const dispatchSync = async (argv: string[]): Promise<number> => {
@@ -152,7 +152,7 @@ export const dispatchSync = async (argv: string[]): Promise<number> => {
 export const dispatchVerify = async (argv: string[]): Promise<number> => {
 	let args: ParsedSubcommandArgs;
 	try {
-		args = parseSubcommandArgs(argv, true);
+		args = parseSubcommandArgs(argv, { allowForce: true });
 	} catch (err) {
 		return emitUsageError('verify', argv, VERIFY_HELP_TEXT, err);
 	}
@@ -181,15 +181,15 @@ export const dispatchVerify = async (argv: string[]): Promise<number> => {
 	return report.exitCode;
 };
 
-export const dispatchMigrate = async (argv: string[]): Promise<number> => {
+export const dispatchRename = async (argv: string[]): Promise<number> => {
 	let args: ParsedSubcommandArgs;
 	try {
-		args = parseSubcommandArgs(argv);
+		args = parseSubcommandArgs(argv, { allowApply: true });
 	} catch (err) {
-		return emitUsageError('migrate', argv, MIGRATE_HELP_TEXT, err);
+		return emitUsageError('rename', argv, RENAME_HELP_TEXT, err);
 	}
-	if (args.help) return emitHelp('migrate', args.json, MIGRATE_HELP_TEXT);
-	const targetPath = resolveRequiredTarget('migrate', argv, MIGRATE_HELP_TEXT, args.targetPath);
+	if (args.help) return emitHelp('rename', args.json, RENAME_HELP_TEXT);
+	const targetPath = resolveRequiredTarget('rename', argv, RENAME_HELP_TEXT, args.targetPath);
 	if (targetPath === null) return 2;
 	const reporter = createCommandReporter(args.json);
 	const interrupt = createInterruptControl(
@@ -198,7 +198,7 @@ export const dispatchMigrate = async (argv: string[]): Promise<number> => {
 	);
 	let report: CommandReport;
 	try {
-		report = await migrateArchive({
+		report = await renameArchive({
 			apply: args.apply,
 			onProgress: reporter.progress,
 			signal: interrupt.signal,
@@ -215,7 +215,7 @@ export const dispatchMigrate = async (argv: string[]): Promise<number> => {
 export const dispatchDates = async (argv: string[]): Promise<number> => {
 	let args: ParsedSubcommandArgs;
 	try {
-		args = parseSubcommandArgs(argv);
+		args = parseSubcommandArgs(argv, { allowDryRun: true });
 	} catch (err) {
 		return emitUsageError('dates', argv, DATES_HELP_TEXT, err);
 	}
@@ -276,7 +276,7 @@ export const dispatchInit = async (argv: string[]): Promise<number> => {
 export const dispatchUnlock = (argv: string[]): number => {
 	let args: ParsedSubcommandArgs;
 	try {
-		args = parseSubcommandArgs(argv, true);
+		args = parseSubcommandArgs(argv, { allowForce: true });
 	} catch (err) {
 		return emitUsageError('unlock', argv, UNLOCK_HELP_TEXT, err);
 	}

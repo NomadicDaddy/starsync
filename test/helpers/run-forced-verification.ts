@@ -1,4 +1,4 @@
-import type { ResolvedRepository } from '../../src/lib/archive-migration.ts';
+import type { ResolvedRepository } from '../../src/lib/repository-resolution.ts';
 
 import { readArchiveConfig } from '../../src/lib/archive-config.ts';
 import { verifyArchive } from '../../src/lib/archive-verification.ts';

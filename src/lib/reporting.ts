@@ -1,17 +1,16 @@
 import type { Subcommand } from './cli-utils.ts';
 
-export const REPORT_SCHEMA_VERSION = 1 as const;
+export const REPORT_SCHEMA_VERSION = 2 as const;
 
 export type CheckoutLifecycle = 'active' | 'blocked' | 'retained';
 export type CommandExitCode = 0 | 1 | 130 | 2;
 export type CommandOutcome = 'added' | 'current' | 'failed' | 'skipped' | 'updated';
 export type FindingSeverity = 'error' | 'info' | 'warning';
 
-export type MigrationClassification =
-	'adopted-but-blocked' | 'failed' | 'pending-rename' | 'safely-migratable';
+export type RenameClassification = 'blocked' | 'current' | 'failed' | 'pending';
 
-export interface MigrationPreview {
-	classification: MigrationClassification;
+export interface RenamePreview {
+	classification: RenameClassification;
 	proposedName: null | string;
 	repositoryId: null | number;
 	repositorySlug: null | string;
@@ -26,11 +25,11 @@ export interface Finding {
 export interface CheckoutReport {
 	findings: Finding[];
 	lifecycle: CheckoutLifecycle | null;
-	migration?: MigrationPreview;
 	name: string;
 	outcome: CommandOutcome;
 	pendingRename: boolean;
 	plannedOutcome?: Exclude<CommandOutcome, 'failed' | 'skipped'>;
+	rename?: RenamePreview;
 }
 
 interface CheckoutSummary {
@@ -164,15 +163,15 @@ const renderHumanReport = (report: CommandReport): void => {
 		if (!shouldRenderCheckout(report, checkout)) continue;
 		const lifecycle = checkout.lifecycle === null ? 'not-created' : checkout.lifecycle;
 		const planned = checkout.plannedOutcome ? `, planned ${checkout.plannedOutcome}` : '';
-		const rename = checkout.pendingRename ? ', pending rename' : '';
-		const migration = checkout.migration
-			? `, migration ${checkout.migration.classification}` +
-				` (identity ${checkout.migration.repositoryId ?? 'unresolved'}, ` +
-				`slug ${checkout.migration.repositorySlug ?? 'unresolved'}, ` +
-				`proposed ${checkout.migration.proposedName ?? 'unresolved'})`
+		const pendingRename = checkout.pendingRename ? ', pending rename' : '';
+		const rename = checkout.rename
+			? `, rename ${checkout.rename.classification}` +
+				` (identity ${checkout.rename.repositoryId ?? 'unresolved'}, ` +
+				`slug ${checkout.rename.repositorySlug ?? 'unresolved'}, ` +
+				`proposed ${checkout.rename.proposedName ?? 'unresolved'})`
 			: '';
 		console.log(
-			`- ${checkout.name}: ${lifecycle}, ${checkout.outcome}${planned}${rename}${migration}`
+			`- ${checkout.name}: ${lifecycle}, ${checkout.outcome}${planned}${pendingRename}${rename}`
 		);
 		for (const finding of checkout.findings) writeFinding(finding);
 	}

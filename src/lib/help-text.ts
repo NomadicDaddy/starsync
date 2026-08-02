@@ -2,13 +2,12 @@ export const ROOT_HELP_TEXT = `starsync - archive command suite for GitHub starr
 
 Usage:
   starsync <command> [options] [target-path]
-  starsync [options] [target-path]        (deprecated alias for 'sync')
   bun src/cli.ts <command> [options] [target-path]
 
 Commands:
   sync       Add or refresh managed checkouts by stable repository identity
   verify     Inspect the archive for integrity without changing it
-  migrate    Preview or apply managed checkout identity migration
+  rename     Preview or apply canonical checkout renames
   dates      Normalize managed checkout folders to their Archive Dates
   init       Initialize a managed archive with owner and format
   unlock     Release an archive operation lock
@@ -18,13 +17,13 @@ Options:
   --json            Emit one schema-versioned JSON result document on stdout
   --dry-run         Sync/dates: preview without changing the archive
   --concurrency=N   Sync only: concurrent repository processing (default: 4, range: 1-8)
-  --apply           Migrate only: apply the previewed identity and folder migration
+  --apply           Rename only: apply the previewed slug, origin, and folder updates
   --force           Verify: re-clone damaged or locally modified checkouts. Unlock:
                     remove a remote or
                     uncertain lock after assessing the risk
 
 Environment:
-  GITHUB_TOKEN      Required for init, sync, migrate, and verify --force.
+  GITHUB_TOKEN      Required for init, sync, rename, and verify --force.
   TARGET_PATH       Required if no positional target-path is given.
 
 Run 'starsync <command> --help' for command-specific options.`;
@@ -58,36 +57,36 @@ Usage:
 Options:
   --help, -h        Show this help
   --json            Emit one schema-versioned JSON result document on stdout
-  --force           Replace checkouts that fail Git integrity or contain local changes
-                    with validated fresh clones; remove abandoned clone staging directories
+  --force           Replace checkouts that fail Git integrity, contain local changes, or lack
+                    identity metadata; remove abandoned clone staging directories
 
 Environment:
   GITHUB_TOKEN      Required with --force to resolve repository identities.
   TARGET_PATH       Required if no positional target-path is given.
 
 A positional target-path argument overrides TARGET_PATH.
-Without --force, verification is local and read-only. Forced recovery preserves a damaged
-checkout until its replacement clone passes origin, object, owner, and identity validation.`;
+Without --force, verification is local and read-only. Missing identity can be recovered only from
+a canonical folder. Forced recovery preserves a checkout until its replacement clone passes
+origin, object, owner, and identity validation.`;
 
-export const MIGRATE_HELP_TEXT = `starsync migrate - preview or apply managed checkout identity migration.
+export const RENAME_HELP_TEXT = `starsync rename - preview or apply canonical checkout renames.
 
 Usage:
-  starsync migrate [options] [target-path]
-  bun src/cli.ts migrate [options] [target-path]
+  starsync rename [options] [target-path]
+  bun src/cli.ts rename [options] [target-path]
 
 Options:
   --help, -h        Show this help
   --json            Emit one schema-versioned JSON result document on stdout
-  --apply           Record checkout identities, safely rename canonical folders, and
-                    finalize the archive format after every identity is recorded
+  --apply           Update repository slugs and origins, and safely rename folders
 
 Environment:
-  GITHUB_TOKEN      Required. Resolves repository identities and binds migration owner.
+  GITHUB_TOKEN      Required. Resolves repositories; apply also authenticates the archive owner.
   TARGET_PATH       Required if no positional target-path is given.
 
 A positional target-path argument overrides TARGET_PATH.
-Without --apply, migration is read-only. Applied migrations preserve completed checkout work
-across failures and resume from checkout-local identity plus temporary owner state.`;
+Without --apply, rename is read-only. Apply requires existing stable checkout identities,
+preserves blocked local work, and reports partial success without temporary state.`;
 
 export const DATES_HELP_TEXT = `starsync dates - normalize managed checkout folders to their Archive Dates.
 
