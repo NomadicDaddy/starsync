@@ -81,11 +81,22 @@ const refreshIssue = (severity: Finding['severity'], code: string, message: stri
 const withDefault = (message: string | undefined, fallback: string): string =>
 	message === undefined ? fallback : message;
 
+/**
+ * Surfaces the note a successful refresh may carry.
+ *
+ * A refresh succeeds while still declining to overwrite preserved history, so
+ * the note reports what the archive kept rather than what it failed to do.
+ */
+const refreshNote = (result: RefreshResult): Finding[] =>
+	result.message === undefined
+		? []
+		: refreshIssue('warning', 'remote-tags-retained', result.message);
+
 const refreshFinding = (result: RefreshResult): Finding[] => {
 	switch (result.outcome) {
 		case 'added':
 		case 'updated':
-			return [];
+			return refreshNote(result);
 		case 'blocked':
 			return refreshIssue(
 				'error',
@@ -93,7 +104,10 @@ const refreshFinding = (result: RefreshResult): Finding[] => {
 				withDefault(result.message, 'Local state would be overwritten.')
 			);
 		case 'current':
-			return refreshIssue('info', 'checkout-current', 'Checkout is current.');
+			return [
+				...refreshIssue('info', 'checkout-current', 'Checkout is current.'),
+				...refreshNote(result),
+			];
 		case 'failed':
 			return refreshIssue(
 				'error',

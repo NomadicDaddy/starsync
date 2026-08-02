@@ -5,7 +5,7 @@ import type { ArchiveEntry, RepositoryResolver, ResolvedRepository } from './arc
 import type { CheckoutReport, MigrationPreview } from './reporting.ts';
 
 import { withApiRetry } from './api-retry.ts';
-import { buildGitEnvironment } from './git-exec.ts';
+import { buildGitEnvironment, parsePorcelainStatusPaths } from './git-exec.ts';
 import { createFinding } from './reporting.ts';
 import {
 	hasEmbeddedCredentials,
@@ -13,6 +13,7 @@ import {
 	sanitizeMessage,
 	sanitizeUrl,
 } from './secret-safety.ts';
+import { areAllPathsUnrepresentable } from './windows-checkout.ts';
 
 export interface ResolvedEntry {
 	blockedReason: null | string;
@@ -20,13 +21,16 @@ export interface ResolvedEntry {
 	preview: MigrationPreview;
 }
 
-export const readMigrationGit = (checkoutPath: string, args: string[]): string =>
+const readMigrationGitRaw = (checkoutPath: string, args: string[]): string =>
 	execFileSync('git', ['-c', 'core.askPass=', ...args], {
 		cwd: checkoutPath,
 		encoding: 'utf-8',
 		env: buildGitEnvironment(process.env, { GIT_OPTIONAL_LOCKS: '0' }),
 		stdio: ['ignore', 'pipe', 'pipe'],
-	}).trim();
+	});
+
+export const readMigrationGit = (checkoutPath: string, args: string[]): string =>
+	readMigrationGitRaw(checkoutPath, args).trim();
 
 const failedCheckout = (entry: ArchiveEntry, code: string, message: string): CheckoutReport => ({
 	findings: [createFinding('error', code, message)],
@@ -140,9 +144,20 @@ const resolveRepositoryIdentity = async (
 	}
 };
 
+/**
+ * Reports the local state that would make a folder rename unsafe.
+ *
+ * A path this platform cannot represent in a working tree is reported by Git
+ * as a deletion that can never be resolved, so it is not local work and does
+ * not block a rename. Migration only inspects; the exclusion that clears the
+ * report is applied by the refresh that owns the checkout.
+ */
 const inspectBlockedReason = (entry: ArchiveEntry): null | string => {
 	try {
-		return readMigrationGit(entry.path, ['status', '--porcelain']).length > 0
+		const paths = parsePorcelainStatusPaths(
+			readMigrationGitRaw(entry.path, ['status', '--porcelain', '-z'])
+		);
+		return paths.length > 0 && !areAllPathsUnrepresentable(paths)
 			? 'Local changes prevent a safe folder rename.'
 			: null;
 	} catch (err) {
