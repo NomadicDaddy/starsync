@@ -1306,6 +1306,53 @@ describe('secret safety', () => {
 		expect(sanitized).not.toContain(token);
 	});
 
+	test('sanitizeMessage redacts provider key prefixes', () => {
+		const secrets = [
+			`sk-proj-${'A'.repeat(32)}`,
+			`AKIA${'A'.repeat(16)}`,
+			`AIza${'A'.repeat(35)}`,
+		];
+		const sanitized = sanitizeMessage(`Provider credentials: ${secrets.join(' ')}`);
+		for (const secret of secrets) expect(sanitized).not.toContain(secret);
+		expect(sanitized.match(/\[REDACTED\]/g)).toHaveLength(3);
+	});
+
+	test('sanitizeMessage redacts opaque bearer values case-insensitively', () => {
+		const token = 'opaque.bearer-token_123+/=';
+		const sanitized = sanitizeMessage(`Request used bEaReR ${token}`);
+		expect(sanitized).toBe('Request used bEaReR [REDACTED]');
+	});
+
+	test('sanitizeMessage redacts Authorization header values case-insensitively', () => {
+		const secret = 'Basic Zm9vOmJhcg==';
+		const sanitized = sanitizeMessage(`AUTHORIZATION: ${secret}\nStatus: 401`);
+		expect(sanitized).toBe('AUTHORIZATION: [REDACTED]\nStatus: 401');
+	});
+
+	test('sanitizeMessage redacts generic secret key-value forms', () => {
+		const secrets = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'];
+		const message = [
+			`API_KEY=${secrets[0]}`,
+			`client_secret: ${secrets[1]}`,
+			`TOKEN = ${secrets[2]}`,
+			`password='${secrets[3]}'`,
+			`passwd="${secrets[4]}"`,
+			`pwd: ${secrets[5]}`,
+		].join(' ');
+		const sanitized = sanitizeMessage(message);
+		for (const secret of secrets) expect(sanitized).not.toContain(secret);
+		expect(sanitized.match(/\[REDACTED\]/g)).toHaveLength(6);
+	});
+
+	test('sanitizeMessage redacts secret values in URL query parameters', () => {
+		const token = 'query-secret-value';
+		const sanitized = sanitizeMessage(
+			`Request failed for https://api.github.com/repos?token=${token}&per_page=100`
+		);
+		expect(sanitized).not.toContain(token);
+		expect(sanitized).toContain('?token=[REDACTED]&per_page=100');
+	});
+
 	test('isGitAuthError detects authentication failure messages', () => {
 		expect(isGitAuthError('fatal: Authentication failed for repository')).toBe(true);
 		expect(isGitAuthError("fatal: could not read Username for 'https://...'")).toBe(true);
