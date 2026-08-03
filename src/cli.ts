@@ -1,4 +1,7 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+// The published `starsync` binary is the node-target bundle at dist/cli.js, and `bun build`
+// copies this shebang into it verbatim, so it has to name the runtime that bundle expects.
+// Contributors run the TypeScript through bun explicitly (`bun src/cli.ts`), which ignores it.
 
 import { isSubcommand, type Subcommand } from './lib/cli-utils.ts';
 import { ROOT_HELP_TEXT } from './lib/help-text.ts';
