@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-08-03
+
+### Added
+
+- StarSync now generates its own third-party attribution from the lockfile.
+  `THIRD_PARTY_LICENSES.md` records the license of every declared dependency and of the closure
+  resolved beneath them, and `THIRD_PARTY_NOTICES.md` reproduces each package's own copyright line
+  and terms. `bun run licenses:generate` writes both; `bun run check:licenses` fails when they no
+  longer match `bun.lock`. A dependency whose license family has no reviewed notice text stops the
+  run instead of being listed as if its obligations were known.
+- A commit-time secret scan. `.githooks/pre-commit` runs the leak guard over the staged diff, then
+  the static checks, and adds the license checks when `bun.lock` or `package.json` is staged.
+  `bun install` points `core.hooksPath` at `.githooks/` and seeds the machine-local pattern file,
+  so a fresh clone picks up the hook without a separate setup step.
+- `bun run smoke:qc:fast` runs the static half of the quality gate without the test suite, and
+  `bun run check:leak-guard` self-tests the guard against fixtures assembled at runtime.
+
+### Changed
+
+- `smoke:qc` now runs the fast static gate, the leak-guard self-test, the license checks, and then
+  the tests.
+- `@octokit/rest` is pinned to an exact version. The attribution documents are generated from the
+  lockfile, so a floating range lets an install move the dependency closure away from what they
+  describe.
+- Prettier writes trailing commas in every position, which reformatted the source, scripts, and
+  tests. No behavior changed.
+- The README Scripts table lists the license and leak-guard commands, and the License section
+  explains what the two attribution documents cover, why neither ships inside the published
+  tarball, and why they still matter to anyone distributing the `compile` executable.
+
+### Fixed
+
+- The screenshot push guard no longer fails a version-tag push in a repository that never captures
+  screenshots. A missing `screenshots/` directory now means the repository does not capture at all;
+  once the directory exists, a tag with no capture under it still fails.
+
 ## [2.1.0] - 2026-08-03
 
 ### Added
