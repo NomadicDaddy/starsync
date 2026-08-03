@@ -4,6 +4,51 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-08-03
+
+### Added
+
+- StarSync runs under Node 24 or newer as well as Bun. `npx starsync sync <path>` works on a machine
+  that has never installed Bun, and root help lists the `npx` and `bunx` forms alongside the others.
+- The build emits TypeScript declarations next to the bundles, so `import { syncArchive } from
+  'starsync'` is typed for consumers that never see the source.
+
+### Changed
+
+- The package is published to npm rather than held private. `bin`, `main`, `module`, and `types`
+  resolve into `dist/`, and the tarball carries only the built entry points, the declarations, the
+  README, and the license.
+- The Bun-only install guard moved from `preinstall` to `prepare`. It still rejects npm, yarn, and
+  pnpm for anyone working on the repository, and it no longer fires for anyone installing the
+  published package, which is what killed `npx starsync` before it reached the CLI. `prepare` also
+  builds, so a fresh clone or a Git dependency has working entry points.
+- `engines` declares `node >=24.0.0` next to the existing Bun floor.
+- Rename application and sync planning share one archive and checkout inventory instead of
+  rescanning, and modification guards read the exact archive config without spawning Git.
+
+### Fixed
+
+- A case-only rename publishes through a temporary intermediate path, so `Owner` to `owner`
+  completes on a case-insensitive filesystem. Existence checks that decide whether a destination is
+  occupied now compare exact casing instead of trusting the filesystem's own answer.
+- `verify --force` recovers a checkout that was renamed upstream and also has local changes.
+  Replacements resolve by stable repository ID, keep the source and canonical destination distinct,
+  and refuse duplicate identities or occupied destinations.
+- Checkout discovery and planning ignore StarSync's own staging and damaged-backup directories.
+  `verify --force` clears abandoned ones under the archive lock instead of treating them as archive
+  members.
+- A blocked checkout keeps its existing label and metadata. Labels are reconciled only after a
+  current or updated outcome.
+- Checkout label changes are atomic. Metadata is snapshotted and verified, restored when a later
+  step fails, and a folder move is compensated rather than left pointing at an occupied path.
+
+### Security
+
+- Report strings, progress lines, diagnostics, and unexpected errors are sanitized before they are
+  written, so a token passed as a command-line argument cannot reach human or JSON output.
+- Redaction covers authorization headers, bearer tokens, generic key and value credential shapes,
+  and provider-specific credential forms in addition to GitHub personal access tokens.
+
 ## [2.0.0] - 2026-08-02
 
 ### Added
