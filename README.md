@@ -101,7 +101,7 @@ Use `init` on an existing empty directory. It authenticates the GitHub account a
 format-2 owner binding. Operations that authenticate compare the stable account ID, so a login
 rename is accepted while a different account is rejected.
 
-### Moving from StarSync 1.5.0
+### Moving from StarSync 1.x
 
 There is no in-place upgrade or conversion. Preserve the existing archive as a backup, create a
 different empty directory, run `init` there, and then run `sync` to build a format-2 archive from
@@ -254,31 +254,51 @@ bun run smoke:live -- <temporary-managed-archive>
 
 ## Scripts
 
-| Script                    | Purpose                                                                     |
-| ------------------------- | --------------------------------------------------------------------------- |
-| `bun run sync`            | Run the explicit sync command                                               |
-| `bun run start`           | Run any subcommand from source                                              |
-| `bun run build`           | Run `build:bundle`, then `build:types`                                      |
-| `bun run build:bundle`    | Bundle `src/cli.ts` and `src/index.ts` into `dist/` for Node, deps external |
-| `bun run build:types`     | Emit declarations into `dist/types` through `tsconfig.types.json`           |
-| `bun run compile`         | Compile the standalone executable into `dist/`                              |
-| `bun run deploy`          | Alias for `compile`                                                         |
-| `bun run smoke:qc`        | Run source-shape, type, lint, format, and test gates                        |
-| `bun run smoke:live`      | Run the opt-in read-only smoke against an explicit archive copy             |
-| `bun run check:max-lines` | Enforce production file size and extracted-function shape limits            |
-| `bun run typecheck`       | `tsc --noEmit`                                                              |
-| `bun run lint`            | `eslint src scripts test eslint.config.js --max-warnings 0`                 |
-| `bun run lint:fix`        | The same scope with `--fix`                                                 |
-| `bun run test`            | Run the unit suite                                                          |
-| `bun run format`          | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
-| `bun run format:check`    | The same globs with `--check`                                               |
+| Script                       | Purpose                                                                     |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| `bun run sync`               | Run the explicit sync command                                               |
+| `bun run start`              | Run any subcommand from source                                              |
+| `bun run build`              | Run `build:bundle`, then `build:types`                                      |
+| `bun run build:bundle`       | Bundle `src/cli.ts` and `src/index.ts` into `dist/` for Node, deps external |
+| `bun run build:types`        | Emit declarations into `dist/types` through `tsconfig.types.json`           |
+| `bun run compile`            | Compile the standalone executable into `dist/`                              |
+| `bun run deploy`             | Alias for `compile`                                                         |
+| `bun run smoke:qc`           | Run `smoke:qc:fast`, the leak-guard and license checks, then tests          |
+| `bun run smoke:qc:fast`      | Static gate only: source shape, types, lint, format. No tests               |
+| `bun run smoke:live`         | Run the opt-in read-only smoke against an explicit archive copy             |
+| `bun run check:max-lines`    | Enforce production file size and extracted-function shape limits            |
+| `bun run check:leak-guard`   | Self-test `.githooks/leak-guard.sh` against synthetic fixtures              |
+| `bun run check:licenses`     | Run both license checks: the shared core, then the attribution documents    |
+| `bun run check:license-core` | Verify the shared license core against the installed dependency graph       |
+| `bun run licenses:generate`  | Rewrite `THIRD_PARTY_LICENSES.md` and `THIRD_PARTY_NOTICES.md`              |
+| `bun run typecheck`          | `tsc --noEmit`                                                              |
+| `bun run lint`               | `eslint src scripts test eslint.config.js --max-warnings 0`                 |
+| `bun run lint:fix`           | The same scope with `--fix`                                                 |
+| `bun run test`               | Run the unit suite                                                          |
+| `bun run format`             | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
+| `bun run format:check`       | The same globs with `--check`                                               |
 
 `prepare` and `prepublishOnly` are lifecycle hooks rather than commands to run by hand. `prepare`
-runs the install guard and then the build; `prepublishOnly` runs `smoke:qc`.
+runs the install guard, points `core.hooksPath` at `.githooks/`, seeds the leak-guard pattern file,
+and then builds; `prepublishOnly` runs `smoke:qc`.
 
 Schedule the explicit `sync` command with Task Scheduler, cron, launchd, or another periodic
 runner. A non-zero exit lets the scheduler surface failures.
 
 ## License
 
-MIT
+StarSync is MIT; see [`LICENSE`](./LICENSE).
+
+The published package carries first-party source only — `build:bundle` passes `--packages=external`,
+so dependencies are installed by the consumer rather than redistributed inside the tarball.
+[`THIRD_PARTY_LICENSES.md`](./THIRD_PARTY_LICENSES.md) records the license inventory of that
+dependency closure, and [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md) reproduces each
+package's own copyright line and terms. Both are generated from `bun.lock` by
+`bun run licenses:generate`; `bun run check:licenses` fails when they drift from it, and a license
+family with no reviewed notice text fails the generator rather than being summarized as if its
+obligations were known.
+
+Neither document ships in the tarball: a consumer's own resolver decides which versions it
+installs, so a copy pinned to this repository's lockfile would describe versions they may not
+have. Both matter to anyone distributing the `bun run compile` executable, which does embed the
+whole closure — see the scope sections in `THIRD_PARTY_LICENSES.md`.
