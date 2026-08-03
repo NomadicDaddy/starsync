@@ -73,7 +73,7 @@ async function storeCopies(root: string, name: string): Promise<string[]> {
 		.map((entry) => join(store, entry, 'node_modules', name));
 }
 
-const SKIPPED_ENTRIES = new Set(['.bin', '.cache', '.bun']);
+const SKIPPED_ENTRIES = new Set(['.bin', '.bun', '.cache']);
 
 const isTraversable = (entry: Dirent): boolean =>
 	(entry.isDirectory() || entry.isSymbolicLink()) && !SKIPPED_ENTRIES.has(entry.name);
