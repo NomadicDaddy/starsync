@@ -13,7 +13,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import type { ArchiveVerificationResult } from '../src/lib/archive-verification.ts';
-import type { RepoRecord, RefreshResult } from '../src/lib/refresh.ts';
+import type { RefreshResult, RepoRecord } from '../src/lib/refresh.ts';
 
 import { inspectArchive } from '../src/lib/archive-inspection.ts';
 import { acquireArchiveLock, releaseArchiveLock } from '../src/lib/archive-lock.ts';
