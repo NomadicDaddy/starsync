@@ -36,7 +36,7 @@ const writeArchiveConfig = (target: string): void => {
 	mkdirSync(path.join(target, '.starsync'));
 	writeFileSync(
 		path.join(target, '.starsync', 'config.json'),
-		JSON.stringify({ archiveFormat: 2, owner: { id: 7, login: 'archive-owner' } })
+		JSON.stringify({ archiveFormat: 2, owner: { id: 7, login: 'archive-owner' } }),
 	);
 };
 
@@ -45,7 +45,7 @@ const createGitCheckout = (
 	name: string,
 	owner = 'old-owner',
 	repository = 'repository',
-	identityId = 42
+	identityId = 42,
 ): string => {
 	const checkout = path.join(root, name);
 	mkdirSync(checkout);
@@ -57,12 +57,12 @@ const createGitCheckout = (
 	run(['git', 'commit', '-m', 'initial'], checkout);
 	run(
 		['git', 'remote', 'add', 'origin', `https://github.com/${owner}/${repository}.git`],
-		checkout
+		checkout,
 	);
 	run(['git', 'config', '--local', 'starsync.repository-id', String(identityId)], checkout);
 	run(
 		['git', 'config', '--local', 'starsync.repository-slug', `${owner}/${repository}`],
-		checkout
+		checkout,
 	);
 	return checkout;
 };
@@ -74,7 +74,7 @@ const runRenames = (
 		repositoryName?: string;
 		repositoryOwner?: string;
 		useOriginName?: boolean;
-	} = {}
+	} = {},
 ): RenameResult => {
 	const helperPath = path.resolve('test/helpers/run-rename-apply.ts');
 	const result = spawnSync(process.execPath, [helperPath, targetPath], {
@@ -112,21 +112,21 @@ describe('managed checkout rename process boundary', () => {
 					name: 'repository--owner',
 					outcome: 'updated',
 					pendingRename: false,
-				})
+				}),
 			);
 			expect(first.checkouts[0]?.plannedOutcome).toBeUndefined();
 			expect(existsSync(canonicalPath)).toBe(true);
 			expect(
-				run(['git', 'config', '--local', '--get', 'starsync.repository-id'], canonicalPath)
+				run(['git', 'config', '--local', '--get', 'starsync.repository-id'], canonicalPath),
 			).toBe('42');
 			expect(
 				run(
 					['git', 'config', '--local', '--get', 'starsync.repository-slug'],
-					canonicalPath
-				)
+					canonicalPath,
+				),
 			).toBe('owner/repository');
 			expect(run(['git', 'config', '--get', 'remote.origin.url'], canonicalPath)).toBe(
-				'https://github.com/owner/repository.git'
+				'https://github.com/owner/repository.git',
 			);
 			expect(readdirSync(path.join(target, '.starsync'))).toEqual(['config.json']);
 
@@ -160,23 +160,23 @@ describe('managed checkout rename process boundary', () => {
 							classification: 'pending',
 							proposedName: repository.proposedName,
 						}),
-					})
+					}),
 				);
 
 				const applied = runRenames(target, options);
 				expect(applied.checkouts[0]?.name).toBe(repository.proposedName);
 				expect(readdirSync(target).sort()).toEqual(
-					['.starsync', repository.proposedName].sort()
+					['.starsync', repository.proposedName].sort(),
 				);
 				const canonicalPath = path.join(target, repository.proposedName);
 				expect(
 					run(
 						['git', 'config', '--local', '--get', 'starsync.repository-slug'],
-						canonicalPath
-					)
+						canonicalPath,
+					),
 				).toBe(`${repository.owner}/${repository.name}`);
 				expect(run(['git', 'config', '--get', 'remote.origin.url'], canonicalPath)).toBe(
-					`https://github.com/${repository.owner}/${repository.name}.git`
+					`https://github.com/${repository.owner}/${repository.name}.git`,
 				);
 			} finally {
 				rmSync(target, { force: true, recursive: true });
@@ -199,13 +199,13 @@ describe('managed checkout rename process boundary', () => {
 					lifecycle: 'blocked',
 					name: 'repository--old-owner',
 					outcome: 'skipped',
-				})
+				}),
 			);
 			expect(readFileSync(path.join(checkout, 'local-work.txt'), 'utf-8')).toBe(
-				'preserve me'
+				'preserve me',
 			);
 			expect(
-				run(['git', 'config', '--local', '--get', 'starsync.repository-slug'], checkout)
+				run(['git', 'config', '--local', '--get', 'starsync.repository-slug'], checkout),
 			).toBe('old-owner/repository');
 			expect(existsSync(path.join(target, 'repository--owner'))).toBe(false);
 		} finally {
@@ -244,8 +244,8 @@ describe('managed checkout rename process boundary', () => {
 			expect(partial.exitCode).toBe(1);
 			expect(
 				partial.checkouts.some(
-					(checkout) => checkout.findings[0]?.code === 'rename-name-collision'
-				)
+					(checkout) => checkout.findings[0]?.code === 'rename-name-collision',
+				),
 			).toBe(true);
 			expect(existsSync(path.join(target, 'good--owner'))).toBe(true);
 			expect(existsSync(path.join(target, 'bad--old-owner'))).toBe(true);

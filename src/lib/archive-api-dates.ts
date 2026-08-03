@@ -11,7 +11,7 @@ import { formatDatesTables, runDatesCommand } from './dates-command.ts';
 import { createCommandReport } from './reporting.ts';
 
 export const normalizeArchiveDatesUnlocked = async (
-	options: NormalizeArchiveDatesOptions
+	options: NormalizeArchiveDatesOptions,
 ): Promise<CommandReport> => {
 	const targetPath = resolveExplicitTarget(options.targetPath);
 	if (targetPath === null) return invalidTargetReport('dates');

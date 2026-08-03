@@ -42,13 +42,13 @@ const archiveEntryNames = (targetPath: string): string[] =>
 			(entry) =>
 				entry.name !== '.starsync' &&
 				entry.isDirectory() &&
-				!isOwnedCheckoutArtifactName(entry.name)
+				!isOwnedCheckoutArtifactName(entry.name),
 		)
 		.map((entry) => entry.name)
 		.sort((left, right) => left.localeCompare(right));
 
 export const scanManagedCheckouts = async (
-	targetPath: string
+	targetPath: string,
 ): Promise<{ checkouts: ManagedCheckout[]; names: string[]; reports: CheckoutReport[] }> => {
 	const checkouts: ManagedCheckout[] = [];
 	const reports: CheckoutReport[] = [];
@@ -64,7 +64,7 @@ export const scanManagedCheckouts = async (
 
 const collectRetainedReports = (
 	checkouts: ManagedCheckout[],
-	starredIds: Set<number>
+	starredIds: Set<number>,
 ): CheckoutReport[] => {
 	const reports: CheckoutReport[] = [];
 	for (const checkout of checkouts) {
@@ -75,7 +75,7 @@ const collectRetainedReports = (
 
 export const planManagedSync = async (
 	targetPath: string,
-	repositories: StarredRepositoryRecord[]
+	repositories: StarredRepositoryRecord[],
 ): Promise<ManagedSyncPlan> => {
 	const scan = await scanManagedCheckouts(targetPath);
 	const context = {

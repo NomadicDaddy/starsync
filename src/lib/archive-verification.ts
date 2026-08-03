@@ -35,7 +35,7 @@ export interface ArchiveVerificationResult {
 }
 
 const inspectForVerification = (
-	targetPath: string
+	targetPath: string,
 ): ArchiveInspection | ArchiveVerificationResult => {
 	try {
 		return inspectArchive(targetPath);
@@ -50,30 +50,30 @@ const repairEntry = async (
 	index: number,
 	options: ArchiveVerificationOptions,
 	claimedRepositoryIds: Set<number>,
-	verified: VerifiedCheckout
+	verified: VerifiedCheckout,
 ): Promise<VerifiedCheckout> => {
 	const replaceable = verified.report.findings.some(
 		(finding) =>
 			finding.code === 'git-integrity-failed' ||
 			finding.code === 'checkout-blocked' ||
-			finding.code === 'missing-identity-metadata'
+			finding.code === 'missing-identity-metadata',
 	);
 	const duplicated = verified.report.findings.some(
-		(finding) => finding.code === 'duplicate-identity'
+		(finding) => finding.code === 'duplicate-identity',
 	);
 	if (options.repair === undefined || !replaceable || duplicated) return verified;
 	options.onProgress?.(
-		`Recloning anomalous checkout ${index + 1}/${inspection.entries.length} — ${entry.name}`
+		`Recloning anomalous checkout ${index + 1}/${inspection.entries.length} — ${entry.name}`,
 	);
 	const repaired = await repairAnomalousCheckout(
 		entry,
 		verified,
 		options.repair,
-		claimedRepositoryIds
+		claimedRepositoryIds,
 	);
 	if (!repaired.ok) {
 		verified.report.findings.push(
-			createFinding('error', 'checkout-reclone-failed', repaired.reason)
+			createFinding('error', 'checkout-reclone-failed', repaired.reason),
 		);
 		return verified;
 	}
@@ -89,12 +89,12 @@ const repairEntry = async (
 		createFinding(
 			'info',
 			'checkout-recloned',
-			`Anomalous checkout was replaced from ${repaired.repository.slug}.`
-		)
+			`Anomalous checkout was replaced from ${repaired.repository.slug}.`,
+		),
 	);
 	if (repaired.cleanupWarning !== null) {
 		replacement.report.findings.push(
-			createFinding('warning', 'damaged-checkout-cleanup-failed', repaired.cleanupWarning)
+			createFinding('warning', 'damaged-checkout-cleanup-failed', repaired.cleanupWarning),
 		);
 	}
 	if (replacement.report.lifecycle === 'active') replacement.report.outcome = 'updated';
@@ -103,7 +103,7 @@ const repairEntry = async (
 
 const verifyEntries = async (
 	inspection: ArchiveInspection,
-	options: ArchiveVerificationOptions
+	options: ArchiveVerificationOptions,
 ): Promise<(undefined | VerifiedCheckout)[]> => {
 	const results: (undefined | VerifiedCheckout)[] = new Array(inspection.entries.length);
 	let nextIndex = 0;
@@ -113,7 +113,7 @@ const verifyEntries = async (
 			if (index >= inspection.entries.length) return;
 			const entry = inspection.entries[index]!;
 			options.onProgress?.(
-				`Verifying ${index + 1}/${inspection.entries.length} — ${entry.name}`
+				`Verifying ${index + 1}/${inspection.entries.length} — ${entry.name}`,
 			);
 			results[index] = await verifyCheckout(entry);
 		}
@@ -126,12 +126,12 @@ const verifyEntries = async (
 const repairEntries = async (
 	inspection: ArchiveInspection,
 	options: ArchiveVerificationOptions,
-	results: (undefined | VerifiedCheckout)[]
+	results: (undefined | VerifiedCheckout)[],
 ): Promise<void> => {
 	const claimedRepositoryIds = new Set(
 		results.flatMap((result) =>
-			result === undefined || result.repositoryId === null ? [] : [result.repositoryId]
-		)
+			result === undefined || result.repositoryId === null ? [] : [result.repositoryId],
+		),
 	);
 	let nextIndex = 0;
 	const worker = async (): Promise<void> => {
@@ -146,7 +146,7 @@ const repairEntries = async (
 				index,
 				options,
 				claimedRepositoryIds,
-				verified
+				verified,
 			);
 		}
 	};
@@ -156,7 +156,7 @@ const repairEntries = async (
 
 export const verifyArchive = async (
 	targetPath: string,
-	options: ArchiveVerificationOptions = {}
+	options: ArchiveVerificationOptions = {},
 ): Promise<ArchiveVerificationResult> => {
 	const inspection = inspectForVerification(targetPath);
 	if (!('kind' in inspection)) return inspection;
@@ -166,7 +166,7 @@ export const verifyArchive = async (
 	}
 	const results = await verifyEntries(inspection, options);
 	applyDuplicateIdentityFindings(
-		results.filter((result): result is VerifiedCheckout => result !== undefined)
+		results.filter((result): result is VerifiedCheckout => result !== undefined),
 	);
 	if (options.repair !== undefined) await repairEntries(inspection, options, results);
 	const verified = results.filter((result): result is VerifiedCheckout => result !== undefined);

@@ -2,7 +2,7 @@ import type { RefreshResult, RepoRecord, SyncPoolOptions, SyncPoolResult } from 
 
 type ProcessRepository = (
 	repo: RepoRecord,
-	isInterruptionRequested: () => boolean
+	isInterruptionRequested: () => boolean,
 ) => Promise<RefreshResult>;
 
 interface PoolState {
@@ -22,14 +22,14 @@ const formatElapsed = (startedAt: number): string => {
 const reportHeartbeat = (
 	state: PoolState,
 	options: SyncPoolOptions,
-	onProgress: (message: string) => void
+	onProgress: (message: string) => void,
 ): void => {
 	if (state.active.size === 0) return;
 	const active = [...state.active.values()]
 		.map(({ name, startedAt }) => `${name} (${formatElapsed(startedAt)})`)
 		.join(', ');
 	onProgress(
-		`Still working — ${state.completed}/${options.totalCount} complete; active: ${active}`
+		`Still working — ${state.completed}/${options.totalCount} complete; active: ${active}`,
 	);
 };
 
@@ -37,7 +37,7 @@ const runWorker = async (
 	repos: RepoRecord[],
 	processRepository: ProcessRepository,
 	options: SyncPoolOptions,
-	state: PoolState
+	state: PoolState,
 ): Promise<void> => {
 	const onProgress = options.onProgress ?? ((message: string) => console.log(message));
 	const interrupted = (): boolean => options.signal?.aborted ?? false;
@@ -57,7 +57,7 @@ const runWorker = async (
 			state.results[index] = result;
 			state.completed++;
 			onProgress(
-				`Completed ${state.completed}/${options.totalCount} — ${result.name}: ${result.outcome}`
+				`Completed ${state.completed}/${options.totalCount} — ${result.name}: ${result.outcome}`,
 			);
 		} finally {
 			state.active.delete(index);
@@ -69,7 +69,7 @@ const runWorker = async (
 export const runSyncPool = async (
 	repos: RepoRecord[],
 	processRepository: ProcessRepository,
-	options: SyncPoolOptions
+	options: SyncPoolOptions,
 ): Promise<SyncPoolResult> => {
 	const state: PoolState = {
 		active: new Map(),
@@ -81,13 +81,13 @@ export const runSyncPool = async (
 	const onProgress = options.onProgress ?? ((message: string) => console.log(message));
 	const heartbeat = setInterval(
 		() => reportHeartbeat(state, options, onProgress),
-		options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS
+		options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS,
 	);
 	try {
 		await Promise.all(
 			Array.from({ length: workerCount }, () =>
-				runWorker(repos, processRepository, options, state)
-			)
+				runWorker(repos, processRepository, options, state),
+			),
 		);
 	} finally {
 		clearInterval(heartbeat);

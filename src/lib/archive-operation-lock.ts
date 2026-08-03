@@ -27,7 +27,7 @@ const resolveLockableTarget = (targetPath: string): null | string => {
 const rebuildReport = (
 	report: CommandReport,
 	additionalFindings: Finding[],
-	releaseFailed = false
+	releaseFailed = false,
 ): CommandReport => {
 	if (additionalFindings.length === 0) return report;
 	return createCommandReport({
@@ -47,7 +47,7 @@ const lockFailureReport = (
 	targetPath: string,
 	code: string,
 	message: string,
-	dryRun: boolean
+	dryRun: boolean,
 ): CommandReport =>
 	createCommandReport({
 		command,
@@ -60,7 +60,7 @@ const lockFailureReport = (
 const finishLockedOperation = (
 	report: CommandReport,
 	held: HeldArchiveLock,
-	reclaimedFinding: Finding | null
+	reclaimedFinding: Finding | null,
 ): CommandReport => {
 	const removal = releaseArchiveLock(held);
 	const findings = reclaimedFinding === null ? [] : [reclaimedFinding];
@@ -68,13 +68,13 @@ const finishLockedOperation = (
 	return rebuildReport(
 		report,
 		[...findings, createFinding('error', removal.code, removal.message)],
-		true
+		true,
 	);
 };
 
 const getReclaimedFinding = (
 	reclaimed: ArchiveLockMetadata | null,
-	onProgress?: (message: string) => void
+	onProgress?: (message: string) => void,
 ): Finding | null => {
 	if (reclaimed === null) return null;
 	const message = `Reclaimed stale archive lock from ${describeArchiveLock(reclaimed)}.`;
@@ -86,7 +86,7 @@ export const withArchiveOperationLock = async (
 	command: Exclude<Subcommand, 'unlock'>,
 	options: LockableOperationOptions,
 	operation: (held: HeldArchiveLock | null) => CommandReport | Promise<CommandReport>,
-	dryRun = false
+	dryRun = false,
 ): Promise<CommandReport> => {
 	const targetPath = resolveLockableTarget(options.targetPath);
 	if (targetPath === null) return operation(null);
@@ -97,7 +97,7 @@ export const withArchiveOperationLock = async (
 			targetPath,
 			acquisition.code,
 			acquisition.message,
-			dryRun
+			dryRun,
 		);
 	}
 	const reclaimedFinding = getReclaimedFinding(acquisition.reclaimed, options.onProgress);

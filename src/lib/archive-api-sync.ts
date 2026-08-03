@@ -37,7 +37,7 @@ type OwnerResult = { owner: ArchiveOwner } | { report: CommandReport };
 
 const appendFindings = (
 	report: CommandReport,
-	findings: CommandReport['findings']
+	findings: CommandReport['findings'],
 ): CommandReport =>
 	findings.length === 0 ? report : { ...report, findings: [...report.findings, ...findings] };
 
@@ -63,7 +63,7 @@ const validateSyncOptions = (options: SyncArchiveOptions): CommandReport | SyncC
 				createFinding(
 					'error',
 					'invalid-concurrency',
-					`concurrency must be an integer from ${MIN_ARCHIVE_CONCURRENCY} to ${MAX_ARCHIVE_CONCURRENCY}.`
+					`concurrency must be an integer from ${MIN_ARCHIVE_CONCURRENCY} to ${MAX_ARCHIVE_CONCURRENCY}.`,
 				),
 			],
 			targetPath,
@@ -75,7 +75,7 @@ const validateSyncOptions = (options: SyncArchiveOptions): CommandReport | SyncC
 const authenticateOwner = async (
 	targetPath: string,
 	token: string,
-	dryRun: boolean
+	dryRun: boolean,
 ): Promise<OwnerResult> => {
 	let configured: ArchiveOwner;
 	try {
@@ -87,7 +87,7 @@ const authenticateOwner = async (
 				targetPath,
 				'invalid-archive-config',
 				`Cannot read archive config: ${sanitizeMessage(getErrorMessage(err))}`,
-				dryRun
+				dryRun,
 			),
 		};
 	}
@@ -101,7 +101,7 @@ const authenticateOwner = async (
 				targetPath,
 				'github-authentication-failed',
 				`Cannot authenticate GitHub account: ${sanitizeMessage(getErrorMessage(err))}`,
-				dryRun
+				dryRun,
 			),
 		};
 	}
@@ -112,14 +112,14 @@ const authenticateOwner = async (
 			targetPath,
 			'archive-owner-mismatch',
 			`Archive belongs to GitHub account ${configured.login} (identity ${configured.id}), but the authenticated account is ${authenticated.login} (identity ${authenticated.id}).`,
-			dryRun
+			dryRun,
 		),
 	};
 };
 
 const fetchStarredRepositories = async (
 	token: string,
-	context: SyncContext
+	context: SyncContext,
 ): Promise<CommandReport | StarredRepositoryRecord[]> => {
 	const octokit = new Octokit({ auth: token });
 	try {
@@ -128,7 +128,7 @@ const fetchStarredRepositories = async (
 				octokit.paginate(octokit.rest.activity.listReposStarredByAuthenticatedUser, {
 					per_page: 100,
 				}),
-			{ maxRetries: 2 }
+			{ maxRetries: 2 },
 		);
 		return response.map((repository) => ({
 			clone_url: repository.clone_url,
@@ -143,7 +143,7 @@ const fetchStarredRepositories = async (
 			context.targetPath,
 			'github-api-failed',
 			`Error fetching repositories: ${sanitizeMessage(getErrorMessage(err))}`,
-			context.dryRun
+			context.dryRun,
 		);
 	}
 };
@@ -151,7 +151,7 @@ const fetchStarredRepositories = async (
 const loadSyncPlan = async (
 	targetPath: string,
 	records: StarredRepositoryRecord[],
-	dryRun: boolean
+	dryRun: boolean,
 ): Promise<CommandReport | ManagedSyncPlan> => {
 	try {
 		return await planManagedSync(targetPath, records);
@@ -161,14 +161,14 @@ const loadSyncPlan = async (
 			targetPath,
 			'target-read-failed',
 			`Cannot inspect managed checkouts: ${sanitizeMessage(getErrorMessage(err))}`,
-			dryRun
+			dryRun,
 		);
 	}
 };
 
 const fetchSyncPlan = async (
 	options: SyncArchiveOptions,
-	context: SyncContext
+	context: SyncContext,
 ): Promise<CommandReport | ManagedSyncPlan> => {
 	options.onProgress?.(`Target: ${context.targetPath}`);
 	options.onProgress?.('Fetching starred repositories...');
@@ -187,7 +187,7 @@ const executeSync = async (
 	plan: ManagedSyncPlan,
 	context: SyncContext,
 	owner: ArchiveOwner,
-	options: SyncArchiveOptions
+	options: SyncArchiveOptions,
 ): Promise<CommandReport> => {
 	const repositories = partitionValidRepositories(context.targetPath, plan.repositories);
 	options.onProgress?.(`Concurrency: ${context.concurrency}`);
@@ -202,15 +202,15 @@ const executeSync = async (
 			onProgress: options.onProgress ?? (() => {}),
 			...(options.signal === undefined ? {} : { signal: options.signal }),
 			totalCount: repositories.valid.length,
-		}
+		},
 	);
 	const refreshed = await Promise.all(
 		pool.results.map((result) =>
 			maintainCheckoutArchiveDate(
 				reportRefreshResult(result, context.targetPath),
-				context.targetPath
-			)
-		)
+				context.targetPath,
+			),
+		),
 	);
 	const reported = new Set(pool.results.map((result) => result.name));
 	const interrupted = pool.interrupted
@@ -222,8 +222,8 @@ const executeSync = async (
 						checkoutExists(context.targetPath, repository.folderName) ? 'active' : null,
 						'interrupted-before-start',
 						'Operation was not scheduled because interruption was requested.',
-						repository.pendingRename
-					)
+						repository.pendingRename,
+					),
 				)
 		: [];
 	const checkouts = [
@@ -234,7 +234,7 @@ const executeSync = async (
 		...plan.retainedReports,
 	];
 	const hasErrors = checkouts.some((checkout) =>
-		checkout.findings.some((finding) => finding.severity === 'error')
+		checkout.findings.some((finding) => finding.severity === 'error'),
 	);
 	return createCommandReport({
 		checkouts,
@@ -245,7 +245,7 @@ const executeSync = async (
 					createFinding(
 						'warning',
 						'interrupted',
-						'Synchronization was interrupted; results are partial.'
+						'Synchronization was interrupted; results are partial.',
 					),
 				]
 			: [],
@@ -256,7 +256,7 @@ const executeSync = async (
 
 export const syncArchiveUnlocked = async (
 	options: SyncArchiveOptions,
-	held: HeldArchiveLock | null
+	held: HeldArchiveLock | null,
 ): Promise<CommandReport> => {
 	const context = validateSyncOptions(options);
 	if ('schemaVersion' in context) return context;
@@ -283,7 +283,7 @@ export const syncArchiveUnlocked = async (
 			context.targetPath,
 			'target-create-failed',
 			`Cannot create target directory: ${getErrorMessage(err)}`,
-			context.dryRun
+			context.dryRun,
 		);
 	}
 	const cleanupFindings = context.dryRun

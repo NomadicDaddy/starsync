@@ -16,7 +16,7 @@ const parseConcurrency = (value: string): number => {
 	const num = Number(value);
 	if (!Number.isInteger(num) || num < MIN_CONCURRENCY || num > MAX_CONCURRENCY) {
 		throw new Error(
-			`--concurrency must be an integer from ${MIN_CONCURRENCY} to ${MAX_CONCURRENCY}, got: ${value}`
+			`--concurrency must be an integer from ${MIN_CONCURRENCY} to ${MAX_CONCURRENCY}, got: ${value}`,
 		);
 	}
 	return num;
@@ -57,7 +57,7 @@ export const stripQuotes = (value: string): string => value.trim().replace(/^['"
 
 export const resolveTargetPath = (
 	positional: null | string,
-	envTarget: string | undefined
+	envTarget: string | undefined,
 ): string => {
 	if (positional) return path.resolve(positional);
 	const envValue = envTarget ? stripQuotes(envTarget) : '';

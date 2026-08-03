@@ -62,7 +62,7 @@ const renameCheckoutPath = (sourcePath: string, destinationPath: string): void =
 			throw new AggregateError(
 				[originalError, err],
 				`${errorMessage(originalError)} Case-only folder rollback also failed: ${errorMessage(err)}`,
-				{ cause: err }
+				{ cause: err },
 			);
 		}
 		throw originalError;
@@ -75,7 +75,7 @@ const failedReport = (checkout: CheckoutReport, err: unknown): CheckoutReport =>
 		createFinding(
 			'error',
 			'rename-apply-failed',
-			`Cannot apply checkout rename: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`
+			`Cannot apply checkout rename: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`,
 		),
 	],
 	lifecycle: 'blocked',
@@ -87,7 +87,7 @@ const failedReport = (checkout: CheckoutReport, err: unknown): CheckoutReport =>
 
 const selectApplicableRename = (
 	checkout: CheckoutReport,
-	entries: ArchiveEntry[]
+	entries: ArchiveEntry[],
 ): ApplicableRename | CheckoutRenameApplication => {
 	const rename = checkout.rename;
 	if (rename?.classification === 'current') return { applied: true, report: checkout };
@@ -136,7 +136,7 @@ const rollbackCheckoutMove = (moved: MovedCheckout): void => {
 	if (!moved.moved) return;
 	if (pathExistsExactly(moved.originalPath)) {
 		throw new Error(
-			'Cannot roll back checkout folder move because its original path is occupied.'
+			'Cannot roll back checkout folder move because its original path is occupied.',
 		);
 	}
 	renameCheckoutPath(moved.checkoutPath, moved.originalPath);
@@ -149,7 +149,7 @@ const rollbackAfterMetadataFailure = (moved: MovedCheckout, original: unknown): 
 		throw new AggregateError(
 			[original, err],
 			`${errorMessage(original)} Folder rollback also failed: ${errorMessage(err)}`,
-			{ cause: err }
+			{ cause: err },
 		);
 	}
 	throw original;
@@ -158,7 +158,7 @@ const rollbackAfterMetadataFailure = (moved: MovedCheckout, original: unknown): 
 const applyMetadataTransition = async (
 	application: ApplicableRename,
 	moved: MovedCheckout,
-	options: CheckoutRenameApplicationOptions
+	options: CheckoutRenameApplicationOptions,
 ): Promise<void> => {
 	try {
 		await transitionCheckoutState(
@@ -167,7 +167,7 @@ const applyMetadataTransition = async (
 				repositoryId: application.rename.repositoryId,
 				repositorySlug: application.rename.repositorySlug,
 			},
-			options.runGit
+			options.runGit,
 		);
 	} catch (err) {
 		rollbackAfterMetadataFailure(moved, err);
@@ -183,7 +183,7 @@ const appliedReport = (application: ApplicableRename, reportName: string): Check
 			createFinding(
 				'info',
 				'rename-applied',
-				`Checkout identity, origin, and folder are current${application.checkout.pendingRename ? ` after renaming ${application.checkout.name}` : ''}.`
+				`Checkout identity, origin, and folder are current${application.checkout.pendingRename ? ` after renaming ${application.checkout.name}` : ''}.`,
 			),
 		],
 		name: reportName,
@@ -197,7 +197,7 @@ export const applyCheckoutRename = async (
 	targetPath: string,
 	checkout: CheckoutReport,
 	entries: ArchiveEntry[],
-	options: CheckoutRenameApplicationOptions = {}
+	options: CheckoutRenameApplicationOptions = {},
 ): Promise<CheckoutRenameApplication> => {
 	const selected = selectApplicableRename(checkout, entries);
 	if ('applied' in selected) return selected;

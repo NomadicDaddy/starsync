@@ -28,7 +28,7 @@ const runGit = (args: string[], cwd: string): string => {
 	});
 	if (result.exitCode !== 0) {
 		throw new Error(
-			`git ${args.join(' ')} failed: ${result.stderr.toString() || result.stdout.toString()}`
+			`git ${args.join(' ')} failed: ${result.stderr.toString() || result.stdout.toString()}`,
 		);
 	}
 	return result.stdout.toString().trim();
@@ -81,13 +81,13 @@ const stageWithoutUnrepresentablePath = (
 	checkout: string,
 	origin: string,
 	root: string,
-	invalidPath: string
+	invalidPath: string,
 ): void => {
 	runGit(['clone', '--no-checkout', origin, checkout], root);
 	runGit(['-c', 'core.protectNTFS=false', 'read-tree', 'HEAD'], checkout);
 	runGit(
 		['-c', 'core.protectNTFS=false', 'update-index', '--force-remove', '--', invalidPath],
-		checkout
+		checkout,
 	);
 	runGit(['checkout-index', '--all'], checkout);
 };
@@ -107,7 +107,7 @@ const UNREPRESENTABLE_FIXTURES = [
 
 const withTemporaryRoot = async (
 	prefix: string,
-	body: (root: string) => Promise<void>
+	body: (root: string) => Promise<void>,
 ): Promise<void> => {
 	const root = mkdtempSync(path.join(tmpdir(), prefix));
 	try {
@@ -255,17 +255,17 @@ describe('sparse-checkout pattern escaping', () => {
 				expect(runGit(['status', '--porcelain'], checkout)).toBe('');
 				const sparsePath = runGit(
 					['rev-parse', '--git-path', 'info/sparse-checkout'],
-					checkout
+					checkout,
 				);
 				expect(readFileSync(path.resolve(checkout, sparsePath), 'utf8')).toContain(
-					`!/${sparsePattern}`
+					`!/${sparsePattern}`,
 				);
 				expect(runGit(['ls-tree', '-r', '-z', '--name-only', 'HEAD'], checkout)).toContain(
-					invalidPath
+					invalidPath,
 				);
 				// Trimmed because a host with core.autocrlf enabled writes CRLF here.
 				expect(readFileSync(path.join(checkout, 'README.md'), 'utf8').trim()).toBe(
-					'# initial'
+					'# initial',
 				);
 			});
 		});
@@ -287,10 +287,10 @@ describe('unrepresentable paths in read-only inspection', () => {
 			const dirty = await verifyCheckout(archiveEntry(checkout));
 
 			expect(clean.report.findings.map((finding) => finding.code)).not.toContain(
-				'checkout-blocked'
+				'checkout-blocked',
 			);
 			expect(dirty.report.findings.map((finding) => finding.code)).toContain(
-				'checkout-blocked'
+				'checkout-blocked',
 			);
 		});
 	});
@@ -306,18 +306,18 @@ describe('unrepresentable paths in read-only inspection', () => {
 
 			const clean = await resolveRenameEntry(
 				archiveEntry(checkout),
-				resolveFixtureRepository
+				resolveFixtureRepository,
 			);
 			writeFileSync(path.join(checkout, 'README.md'), '# edited locally\n');
 			const dirty = await resolveRenameEntry(
 				archiveEntry(checkout),
-				resolveFixtureRepository
+				resolveFixtureRepository,
 			);
 
 			expect(clean).toHaveProperty('blockedReason', null);
 			expect(dirty).toHaveProperty(
 				'blockedReason',
-				'Local changes prevent a safe folder rename.'
+				'Local changes prevent a safe folder rename.',
 			);
 		});
 	});
@@ -355,7 +355,7 @@ describe('default branch refresh resilience', () => {
 			expect(result.message).toContain('rolling');
 			expect(runGit(['rev-parse', 'rolling^{commit}'], checkout)).toBe(archivedTag);
 			expect(runGit(['rev-parse', 'HEAD'], checkout)).toBe(
-				runGit(['rev-parse', 'refs/remotes/origin/main'], checkout)
+				runGit(['rev-parse', 'refs/remotes/origin/main'], checkout),
 			);
 			expect(runGit(['status', '--porcelain'], checkout)).toBe('');
 		});
@@ -390,13 +390,13 @@ describe('default branch refresh resilience', () => {
 			expect(result.outcome).toBe('updated');
 			expect(runGit(['status', '--porcelain'], checkout)).toBe('');
 			expect(runGit(['rev-parse', 'HEAD'], checkout)).toBe(
-				runGit(['rev-parse', 'refs/remotes/origin/main'], checkout)
+				runGit(['rev-parse', 'refs/remotes/origin/main'], checkout),
 			);
 			expect(runGit(['ls-tree', '-r', '--name-only', 'HEAD'], checkout)).toContain(
-				invalidPath
+				invalidPath,
 			);
 			expect(runGit(['ls-files', '-v', '--', invalidPath], checkout)).toBe(
-				`S ${invalidPath}`
+				`S ${invalidPath}`,
 			);
 		});
 	});
@@ -417,7 +417,7 @@ describe('default branch refresh resilience', () => {
 			expect(result.outcome).toBe('updated');
 			expect(runGit(['status', '--porcelain'], checkout)).toBe('');
 			expect(runGit(['ls-files', '-v', '--', invalidPath], checkout)).toBe(
-				`S ${invalidPath}`
+				`S ${invalidPath}`,
 			);
 		});
 	});

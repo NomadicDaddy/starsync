@@ -48,7 +48,7 @@ export const skipsLfsContent = (recovery: GitRecovery): boolean =>
 const planRecovery = async (
 	checkoutPath: string,
 	current: GitRecovery,
-	err: unknown
+	err: unknown,
 ): Promise<GitRecovery | null> => {
 	if (isUnrepresentablePathFailure(err) && current.args.length === 0) {
 		if (!(await excludeUnrepresentablePaths(checkoutPath, current.env))) return null;
@@ -65,7 +65,7 @@ const planRecovery = async (
  */
 export const withGitRecovery = async <T>(
 	checkoutPath: string,
-	run: (recovery: GitRecovery) => Promise<T>
+	run: (recovery: GitRecovery) => Promise<T>,
 ): Promise<T> => {
 	let recovery = NO_RECOVERY;
 	for (let attempt = 0; attempt < MAX_RECOVERY_ATTEMPTS; attempt++) {

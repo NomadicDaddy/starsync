@@ -21,7 +21,7 @@ import {
 const readArchiveDateFailure = (
 	checkout: ManagedCheckout,
 	repoPath: string,
-	err: unknown
+	err: unknown,
 ): { report: CheckoutReport; row: DatesDisplayRow | null } => {
 	const message = err instanceof Error ? err.message : String(err);
 	let folderTime: Date | null = null;
@@ -36,7 +36,7 @@ const readArchiveDateFailure = (
 			'active',
 			'archive-date-read-failed',
 			`Cannot calculate the Archive Date: ${message}`,
-			canonicalCheckoutName(checkout.repositorySlug) !== checkout.name
+			canonicalCheckoutName(checkout.repositorySlug) !== checkout.name,
 		),
 		row:
 			folderTime === null
@@ -53,7 +53,7 @@ const readArchiveDateFailure = (
 const normalizeCheckout = async (
 	target: string,
 	checkout: ManagedCheckout,
-	dryRun: boolean
+	dryRun: boolean,
 ): Promise<{ report: CheckoutReport; row: DatesDisplayRow }> => {
 	const repoPath = path.join(target, checkout.name);
 	const pendingRename = canonicalCheckoutName(checkout.repositorySlug) !== checkout.name;
@@ -86,7 +86,7 @@ const normalizeCheckout = async (
 					'active',
 					'archive-date-update-failed',
 					`Cannot set the folder timestamp to its Archive Date: ${message}`,
-					pendingRename
+					pendingRename,
 				),
 				row: {
 					name: checkout.name,
@@ -102,7 +102,7 @@ const normalizeCheckout = async (
 
 export const runDatesCommand = async (
 	target: string,
-	options: DatesOptions
+	options: DatesOptions,
 ): Promise<DatesResult> => {
 	if (!fs.existsSync(target)) return createMissingTargetResult(target);
 	const discovery = await discoverDateCheckouts(target);
@@ -111,18 +111,18 @@ export const runDatesCommand = async (
 			discovery.checkouts,
 			discovery.displayRows,
 			[discovery.fatalFinding],
-			false
+			false,
 		);
 	}
 	for (const [index, checkout] of discovery.managedCheckouts.entries()) {
 		if (options.signal?.aborted) {
 			discovery.checkouts.push(
-				...createInterruptedDateReports(discovery.managedCheckouts.slice(index))
+				...createInterruptedDateReports(discovery.managedCheckouts.slice(index)),
 			);
 			break;
 		}
 		options.onProgress?.(
-			`Normalizing ${index + 1}/${discovery.managedCheckouts.length} — ${checkout.name}`
+			`Normalizing ${index + 1}/${discovery.managedCheckouts.length} — ${checkout.name}`,
 		);
 		const result = await normalizeCheckout(target, checkout, options.dryRun);
 		discovery.checkouts.push(result.report);
@@ -132,7 +132,7 @@ export const runDatesCommand = async (
 		discovery.checkouts,
 		discovery.displayRows,
 		[],
-		options.signal?.aborted ?? false
+		options.signal?.aborted ?? false,
 	);
 };
 

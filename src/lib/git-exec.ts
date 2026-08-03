@@ -44,7 +44,7 @@ const REJECTED_GIT_ENVIRONMENT_KEY = /token|password|passwd|secret|api[-_]?key|c
 
 const copyAllowedEnvironment = (
 	target: NodeJS.ProcessEnv,
-	source: Readonly<NodeJS.ProcessEnv>
+	source: Readonly<NodeJS.ProcessEnv>,
 ): void => {
 	for (const [key, value] of Object.entries(source)) {
 		if (
@@ -59,7 +59,7 @@ const copyAllowedEnvironment = (
 
 export const buildGitEnvironment = (
 	source: Readonly<NodeJS.ProcessEnv> = process.env,
-	overrides: Readonly<NodeJS.ProcessEnv> = {}
+	overrides: Readonly<NodeJS.ProcessEnv> = {},
 ): NodeJS.ProcessEnv => {
 	const environment: NodeJS.ProcessEnv = {};
 	copyAllowedEnvironment(environment, source);
@@ -91,7 +91,7 @@ const runGitRaw = (args: string[], options: GitExecOptions): Promise<string> =>
 				} else {
 					resolve(stdout);
 				}
-			}
+			},
 		);
 	});
 

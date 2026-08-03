@@ -72,7 +72,7 @@ const readArchiveEntries = (targetPath: string): ArchiveEntry[] =>
 		.filter(
 			(entry) =>
 				entry.name !== '.starsync' &&
-				!(entry.isDirectory() && isOwnedCheckoutArtifactName(entry.name))
+				!(entry.isDirectory() && isOwnedCheckoutArtifactName(entry.name)),
 		)
 		.sort((left, right) => left.name.localeCompare(right.name))
 		.map((entry) => readArchiveEntry(targetPath, entry));
@@ -81,7 +81,7 @@ const failure = (
 	kind: Exclude<ArchiveKind, 'current'>,
 	code: string,
 	message: string,
-	archiveFormat: null | number = null
+	archiveFormat: null | number = null,
 ): ArchiveInspection => ({
 	archiveFormat,
 	entries: [],
@@ -96,7 +96,7 @@ const currentArchiveContract = (): ArchiveInspection => ({
 		createFinding(
 			'info',
 			'archive-format-current',
-			`Archive format ${CURRENT_ARCHIVE_FORMAT} is current.`
+			`Archive format ${CURRENT_ARCHIVE_FORMAT} is current.`,
 		),
 	],
 	kind: 'current',
@@ -111,7 +111,7 @@ const readConfiguredArchiveContract = (targetPath: string): ArchiveInspection =>
 		return failure(
 			'invalid',
 			'invalid-archive-config',
-			`Cannot read archive config: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`
+			`Cannot read archive config: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`,
 		);
 	}
 	const archiveFormat =
@@ -123,7 +123,7 @@ const readConfiguredArchiveContract = (targetPath: string): ArchiveInspection =>
 			'unsupported',
 			'archive-format-unsupported',
 			`Archive format ${archiveFormat} is unsupported; StarSync requires format ${CURRENT_ARCHIVE_FORMAT}.`,
-			archiveFormat
+			archiveFormat,
 		);
 	}
 	try {
@@ -132,7 +132,7 @@ const readConfiguredArchiveContract = (targetPath: string): ArchiveInspection =>
 		return failure(
 			'invalid',
 			'invalid-archive-config',
-			`Cannot read archive config: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`
+			`Cannot read archive config: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`,
 		);
 	}
 	return currentArchiveContract();
@@ -148,7 +148,7 @@ const inspectArchiveContract = (targetPath: string): ArchiveInspection => {
 		: failure(
 				'uninitialized',
 				'archive-uninitialized',
-				'The target is not an initialized format-2 archive. Initialize an empty directory with starsync init; if this directory contains files, preserve or move it aside and rebuild the archive in a different empty directory.'
+				'The target is not an initialized format-2 archive. Initialize an empty directory with starsync init; if this directory contains files, preserve or move it aside and rebuild the archive in a different empty directory.',
 			);
 };
 
@@ -169,7 +169,7 @@ export const getArchiveModificationFinding = (targetPath: string): Finding | nul
 		return createFinding(
 			'error',
 			'archive-inspection-failed',
-			`Cannot inspect archive: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`
+			`Cannot inspect archive: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`,
 		);
 	}
 };
