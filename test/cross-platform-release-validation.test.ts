@@ -112,10 +112,28 @@ describe('cross-platform release validation', () => {
 		if (!(await guide.exists())) return;
 		const deployment = await guide.text();
 		expect(deployment).toContain('bun pm pkg get version');
-		expect(deployment).toContain('only published tag is `v1.4.1`');
-		expect(deployment).toContain('no `v2.0.0` tag');
+		expect(deployment).toContain('git ls-remote --tags origin');
 		expect(deployment).toContain('must not be used with a format-2 Managed Archive');
 		expect(deployment).toContain('verified 2.x commit or tag');
+
+		// The finding behind this test was a guide that stated the version and tag inventory
+		// inline and then went stale the moment either changed. Naming the commands is the
+		// durable half; these guard the half that rotted, so a snapshot cannot creep back.
+		expect(deployment).not.toMatch(/As of \d{4}-\d{2}-\d{2}/);
+		expect(deployment).not.toMatch(/only published tag is/);
+	});
+
+	test('documents the registry release path', async () => {
+		const guide = Bun.file(path.resolve('.aidd/deployment.md'));
+		if (!(await guide.exists())) return;
+		const deployment = await guide.text();
+
+		// Publishing is irreversible in a way compiling a local binary is not, so the guide has
+		// to carry the publish command, the reason npm publish is not it, and the recovery path
+		// for a bad version that is already public.
+		expect(deployment).toContain('bun publish');
+		expect(deployment).toContain('npm publish` is rejected by the prepare guard');
+		expect(deployment).toContain('npm deprecate');
 	});
 
 	test('bounds and supersedes the full three-platform release matrix', () => {
@@ -136,6 +154,20 @@ describe('cross-platform release validation', () => {
 		expect(workflow).toMatch(
 			/^ {12}matrix:\r?\n {16}os:\r?\n {20}- macos-latest\r?\n {20}- ubuntu-latest\r?\n {20}- windows-latest$/m
 		);
+	});
+
+	test('exercises the published bundles under node on every matrix platform', () => {
+		const workflow = readFileSync(
+			path.resolve('.github/workflows/release-validation.yml'),
+			'utf-8'
+		);
+
+		// bin and main resolve to these bundles, so this step is the only automated defense
+		// against a bun-only API reaching src and breaking `npx starsync` for node consumers.
+		// Without it pinned here, deleting the step is a silent loss of that coverage.
+		expect(workflow).toMatch(/^ {12}- name: Run bundled CLI and library under node$/m);
+		expect(workflow).toMatch(/^ {18}node dist\/cli\.js --help$/m);
+		expect(workflow).toMatch(/^ {18}node -e "import\('\.\/dist\/index\.js'\)/m);
 	});
 
 	test('pins every third-party action to a full commit with a release-tag comment', () => {
