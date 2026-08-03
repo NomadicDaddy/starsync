@@ -29,7 +29,7 @@ export interface StagedCheckoutRepository {
 	repositorySlug: string;
 }
 
-export type StagedCheckoutReplacement = StagedCheckoutRepository & { sourceFolderName: string };
+export type StagedCheckoutReplacement = { sourceFolderName: string } & StagedCheckoutRepository;
 export interface StagedCheckoutOptions {
 	archiveOwnerId: number;
 }

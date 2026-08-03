@@ -14,11 +14,11 @@ import { sanitizeMessage } from './secret-safety.ts';
 interface ApplicableRename {
 	checkout: CheckoutReport;
 	entry: ArchiveEntry;
-	rename: RenamePreview & {
+	rename: {
 		proposedName: string;
 		repositoryId: number;
 		repositorySlug: string;
-	};
+	} & RenamePreview;
 }
 
 export interface CheckoutRenameApplication {

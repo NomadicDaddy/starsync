@@ -1,6 +1,6 @@
 import type { ProcessRepositoryOptions, RefreshResult, RepoRecord } from './refresh.ts';
 
-import { isGitAuthError, sanitizeMessage, CREDENTIAL_GUIDANCE } from './secret-safety.ts';
+import { CREDENTIAL_GUIDANCE, isGitAuthError, sanitizeMessage } from './secret-safety.ts';
 import { createStagedCheckout } from './staged-checkout.ts';
 
 export const buildRefreshFailure = (name: string, err: unknown): RefreshResult => {

@@ -10,11 +10,11 @@ import { readStatusPaths, runGit } from './git-exec.ts';
 import { createFinding } from './reporting.ts';
 import { parseGitHubRepositorySlug } from './repository-resolution.ts';
 import {
+	CREDENTIAL_GUIDANCE,
 	hasEmbeddedCredentials,
 	isGitHubDotComUrl,
 	sanitizeMessage,
 	sanitizeUrl,
-	CREDENTIAL_GUIDANCE,
 } from './secret-safety.ts';
 import { areAllPathsUnrepresentable } from './windows-checkout.ts';
 

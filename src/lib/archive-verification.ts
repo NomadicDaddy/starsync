@@ -8,8 +8,8 @@ import { inspectArchive } from './archive-inspection.ts';
 import { verifyCheckout } from './archive-verification-checkout.ts';
 import { applyDuplicateIdentityFindings } from './archive-verification-duplicates.ts';
 import {
-	repairAnomalousCheckout,
 	type ArchiveVerificationRepairOptions,
+	repairAnomalousCheckout,
 } from './archive-verification-repair.ts';
 import {
 	createInspectionFailureResult,
