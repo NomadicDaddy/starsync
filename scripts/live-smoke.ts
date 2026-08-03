@@ -3,10 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 
 import {
+	type CommandReport,
 	normalizeArchiveDates,
 	syncArchive,
 	verifyArchive,
-	type CommandReport,
 } from '../src/index.ts';
 
 const usage = 'Usage: STARSYNC_LIVE_SMOKE=1 bun run smoke:live -- <temporary-managed-archive>';

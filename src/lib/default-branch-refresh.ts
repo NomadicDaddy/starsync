@@ -4,7 +4,7 @@ import type { RefreshResult } from './refresh.ts';
 import { readStatusPaths, runGit } from './git-exec.ts';
 import { withGitRecovery } from './git-recovery.ts';
 import { describeRetainedTags, fetchRemoteRefs } from './remote-fetch.ts';
-import { isGitAuthError, sanitizeMessage, CREDENTIAL_GUIDANCE } from './secret-safety.ts';
+import { CREDENTIAL_GUIDANCE, isGitAuthError, sanitizeMessage } from './secret-safety.ts';
 import { areAllPathsUnrepresentable, excludeUnrepresentablePaths } from './windows-checkout.ts';
 
 const blocked = (name: string, message: string): RefreshResult => ({

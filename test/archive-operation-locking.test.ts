@@ -12,9 +12,9 @@ import {
 } from '../src/index.ts';
 import {
 	acquireArchiveLock,
+	type ArchiveLockRuntime,
 	readArchiveLock,
 	releaseArchiveLock,
-	type ArchiveLockRuntime,
 } from '../src/lib/archive-lock.ts';
 import { unlockArchiveWithRuntime } from '../src/lib/archive-unlock.ts';
 

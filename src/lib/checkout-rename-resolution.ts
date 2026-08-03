@@ -4,7 +4,7 @@ import type { RepositoryResolver, ResolvedRepository } from './repository-resolu
 
 import { readCheckoutIdentity } from './checkout-identity.ts';
 import { readStatusPaths } from './git-exec.ts';
-import { createFinding, type CheckoutReport } from './reporting.ts';
+import { type CheckoutReport, createFinding } from './reporting.ts';
 import { parseGitHubRepositorySlug } from './repository-resolution.ts';
 import {
 	hasEmbeddedCredentials,

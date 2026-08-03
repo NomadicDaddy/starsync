@@ -29,12 +29,12 @@ import { parseArgs, resolveTargetPath, stripQuotes } from '../src/lib/cli-utils.
 import { SYNC_HELP_TEXT } from '../src/lib/help-text.ts';
 import { createCommandReport, createCommandReporter, createFinding } from '../src/lib/reporting.ts';
 import {
+	extractHost,
 	hasEmbeddedCredentials,
 	isGitAuthError,
 	isGitHubDotComUrl,
 	sanitizeMessage,
 	sanitizeUrl,
-	extractHost,
 } from '../src/lib/secret-safety.ts';
 import { dispatchSync } from '../src/lib/subcommands.ts';
 

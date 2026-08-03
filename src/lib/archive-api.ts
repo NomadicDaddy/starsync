@@ -10,7 +10,7 @@ import { normalizeArchiveDatesUnlocked } from './archive-api-dates.ts';
 import { renameArchiveUnlocked } from './archive-api-rename.ts';
 import { syncArchiveUnlocked } from './archive-api-sync.ts';
 import { verifyArchiveUnlocked } from './archive-api-verification.ts';
-import { initArchiveUnlocked, type InitArchiveOptions } from './archive-initialization.ts';
+import { type InitArchiveOptions, initArchiveUnlocked } from './archive-initialization.ts';
 import { withArchiveOperationLock } from './archive-operation-lock.ts';
 import { unlockArchive, type UnlockArchiveOptions } from './archive-unlock.ts';
 

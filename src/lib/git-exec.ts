@@ -20,11 +20,14 @@ const ALLOWED_GIT_ENVIRONMENT_KEYS = new Set([
 	'HOME',
 	'HOMEDRIVE',
 	'HOMEPATH',
+	'http_proxy',
 	'HTTP_PROXY',
+	'https_proxy',
 	'HTTPS_PROXY',
 	'LANG',
 	'LC_ALL',
 	'LC_CTYPE',
+	'no_proxy',
 	'NO_PROXY',
 	'PATH',
 	'PATHEXT',
@@ -35,9 +38,6 @@ const ALLOWED_GIT_ENVIRONMENT_KEYS = new Set([
 	'TMPDIR',
 	'USERPROFILE',
 	'WINDIR',
-	'http_proxy',
-	'https_proxy',
-	'no_proxy',
 ]);
 
 const REJECTED_GIT_ENVIRONMENT_KEY = /token|password|passwd|secret|api[-_]?key|credential/i;

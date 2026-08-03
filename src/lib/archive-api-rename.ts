@@ -10,7 +10,7 @@ import {
 	operationFailureReport,
 	resolveExplicitTarget,
 } from './archive-api-reporting.ts';
-import { readArchiveConfig, getAuthenticatedArchiveOwner } from './archive-config.ts';
+import { getAuthenticatedArchiveOwner, readArchiveConfig } from './archive-config.ts';
 import { getArchiveModificationFinding } from './archive-inspection.ts';
 import { applyArchiveRenames } from './archive-rename-apply.ts';
 import { previewArchiveRenames } from './archive-rename.ts';
