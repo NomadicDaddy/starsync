@@ -6,16 +6,48 @@ StarSync preserves every repository starred by one GitHub account in a managed l
 matches checkouts by stable GitHub repository ID, refreshes available history, and adds new stars
 under canonical `repository--owner` folders.
 
-StarSync 2 requires Bun 1.3.14 or newer, Git, and an initialized archive using format 2. Node.js is
-not a supported runtime. Windows, macOS, and Linux are supported.
+StarSync 2 requires Git, an initialized archive using format 2, and either Bun 1.3.14 or Node 24 or
+newer. Windows, macOS, and Linux are supported.
 
 ## Install
+
+Nothing to install — run the published CLI directly under either runtime:
+
+```sh
+npx starsync sync D:/archives/stars
+bunx starsync sync D:/archives/stars
+```
+
+Both resolve `bin` to `dist/cli.js`, a node-target bundle, so Bun isn't required to use StarSync.
+A first run on an empty directory still needs `init` and a `GITHUB_TOKEN`; see below.
+
+To install it as a command instead:
+
+```sh
+npm install -g starsync
+bun add -g starsync
+```
+
+### Working on StarSync
+
+Development requires Bun. Consuming StarSync doesn't.
 
 ```sh
 bun install
 ```
 
-The dependency-free `preinstall` guard rejects npm, yarn, and pnpm before installation.
+The dependency-free `prepare` guard rejects npm, yarn, and pnpm for a working copy. It runs on
+`prepare` rather than `preinstall` because the guard needs Bun to execute, and a `preinstall` guard
+also fires for anyone consuming the published package — which broke `npx starsync` before it ever
+reached the CLI. `prepare` never runs for an install from the registry.
+
+`prepare` then builds. `bin`, `main`, and `types` all resolve into the gitignored `dist/`, so
+without that step a clone has no entry points. Building here covers the two installs that read
+them from a checkout rather than a tarball — a working copy, and a Git dependency such as
+`bun add git+https://github.com/NomadicDaddy/starsync` — and costs about a second on top of
+`bun install`. Registry consumers get the built files from the published tarball instead.
+
+Publish with `bun publish`. The same guard rejects `npm publish`.
 
 ## Authentication
 
@@ -176,9 +208,13 @@ Git operations finish, and emits a partial result.
 
 ## Programmatic API
 
-The Bun package exports command-level operations that take explicit options and return the same
+The package exports command-level operations that take explicit options and return the same
 `CommandReport` shape. They do not read CLI arguments, write process output, or exit. Progress uses
 an optional callback and cancellation uses `AbortSignal`.
+
+`main` resolves to `dist/index.js`, a node-target ESM bundle, and `types` to declarations emitted
+from the same sources, so the API is available under Bun and under Node 24 or newer. Node can also
+reach it through `require`, which loads ESM natively on the supported versions.
 
 ```ts
 import { renameArchive, syncArchive } from 'starsync';
@@ -186,12 +222,12 @@ import { renameArchive, syncArchive } from 'starsync';
 const sync = await syncArchive({
 	dryRun: true,
 	targetPath: 'D:/archives/stars',
-	token: Bun.env.GITHUB_TOKEN ?? '',
+	token: process.env.GITHUB_TOKEN ?? '',
 });
 
 const renames = await renameArchive({
 	targetPath: 'D:/archives/stars',
-	token: Bun.env.GITHUB_TOKEN ?? '',
+	token: process.env.GITHUB_TOKEN ?? '',
 });
 ```
 

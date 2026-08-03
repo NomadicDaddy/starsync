@@ -2,6 +2,8 @@ export const ROOT_HELP_TEXT = `starsync - archive command suite for GitHub starr
 
 Usage:
   starsync <command> [options] [target-path]
+  npx starsync <command> [options] [target-path]
+  bunx starsync <command> [options] [target-path]
   bun src/cli.ts <command> [options] [target-path]
 
 Commands:
