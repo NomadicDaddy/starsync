@@ -254,14 +254,27 @@ bun run smoke:live -- <temporary-managed-archive>
 
 ## Scripts
 
-| Script                    | Purpose                                                        |
-| ------------------------- | -------------------------------------------------------------- |
-| `bun run sync`            | Run the explicit sync command                                  |
-| `bun run build`           | Bundle the CLI into `dist/`                                    |
-| `bun run compile`         | Compile the standalone executable into `dist/`                 |
-| `bun run smoke:qc`        | Run source-shape, type, lint, format, and test gates           |
-| `bun run smoke:live`      | Run the opt-in read-only smoke against an explicit archive copy |
-| `bun run format`          | Format source, scripts, and tests                              |
+| Script                    | Purpose                                                                     |
+| ------------------------- | --------------------------------------------------------------------------- |
+| `bun run sync`            | Run the explicit sync command                                               |
+| `bun run start`           | Run any subcommand from source                                              |
+| `bun run build`           | Run `build:bundle`, then `build:types`                                      |
+| `bun run build:bundle`    | Bundle `src/cli.ts` and `src/index.ts` into `dist/` for Node, deps external |
+| `bun run build:types`     | Emit declarations into `dist/types` through `tsconfig.types.json`           |
+| `bun run compile`         | Compile the standalone executable into `dist/`                              |
+| `bun run deploy`          | Alias for `compile`                                                         |
+| `bun run smoke:qc`        | Run source-shape, type, lint, format, and test gates                        |
+| `bun run smoke:live`      | Run the opt-in read-only smoke against an explicit archive copy             |
+| `bun run check:max-lines` | Enforce production file size and extracted-function shape limits            |
+| `bun run typecheck`       | `tsc --noEmit`                                                              |
+| `bun run lint`            | `eslint src scripts test eslint.config.js --max-warnings 0`                 |
+| `bun run lint:fix`        | The same scope with `--fix`                                                 |
+| `bun run test`            | Run the unit suite                                                          |
+| `bun run format`          | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
+| `bun run format:check`    | The same globs with `--check`                                               |
+
+`prepare` and `prepublishOnly` are lifecycle hooks rather than commands to run by hand. `prepare`
+runs the install guard and then the build; `prepublishOnly` runs `smoke:qc`.
 
 Schedule the explicit `sync` command with Task Scheduler, cron, launchd, or another periodic
 runner. A non-zero exit lets the scheduler surface failures.
