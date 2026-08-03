@@ -47,5 +47,17 @@ jobs:
             - name: Build bundled CLI
               run: bun run build
 
+            # The published bin and library entry are these bundles, and npx and npm consumers
+            # load them under node. Exercising both with the runner's own node is what keeps
+            # `npx starsync` and `import 'starsync'` from regressing whenever a bun-only API
+            # sneaks into src.
+            - name: Run bundled CLI and library under node
+              run: |
+                  node --version
+                  node dist/cli.js --help
+                  node dist/cli.js sync --help
+                  node dist/cli.js verify --help
+                  node -e "import('./dist/index.js').then((m) => { if (typeof m.syncArchive !== 'function') { throw new Error('library entry did not export syncArchive'); } })"
+
             - name: Compile platform executable
               run: bun run compile
