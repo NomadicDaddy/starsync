@@ -32,7 +32,7 @@ const assertArchiveLockHeld = (targetPath: string, held: HeldArchiveLock): void 
 	const expectedLockPath = path.join(
 		path.resolve(targetPath),
 		'.starsync',
-		'operation-lock.json'
+		'operation-lock.json',
 	);
 	if (path.resolve(held.lockPath) !== expectedLockPath) {
 		throw new Error('Refusing owned checkout cleanup without this archive operation lock.');
@@ -50,7 +50,7 @@ const assertArchiveLockHeld = (targetPath: string, held: HeldArchiveLock): void 
 export const cleanupOwnedCheckoutArtifacts = (
 	targetPath: string,
 	held: HeldArchiveLock | null,
-	onProgress?: (message: string) => void
+	onProgress?: (message: string) => void,
 ): Finding[] => {
 	if (held === null) {
 		throw new Error('Refusing owned checkout cleanup without an archive operation lock.');
@@ -68,8 +68,8 @@ export const cleanupOwnedCheckoutArtifacts = (
 				createFinding(
 					'info',
 					'owned-checkout-artifact-removed',
-					`Abandoned StarSync ${kind} ${entry.name} was permanently removed.`
-				)
+					`Abandoned StarSync ${kind} ${entry.name} was permanently removed.`,
+				),
 			);
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
@@ -77,8 +77,8 @@ export const cleanupOwnedCheckoutArtifacts = (
 				createFinding(
 					'warning',
 					'owned-checkout-artifact-remove-failed',
-					`Cannot remove abandoned StarSync ${kind} ${entry.name}: ${sanitizeMessage(message)}`
-				)
+					`Cannot remove abandoned StarSync ${kind} ${entry.name}: ${sanitizeMessage(message)}`,
+				),
 			);
 		}
 	}

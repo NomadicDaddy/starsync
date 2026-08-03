@@ -22,17 +22,17 @@ export const renameArchive = (options: RenameArchiveOptions): Promise<CommandRep
 		'rename',
 		options,
 		() => renameArchiveUnlocked(options),
-		!(options.apply ?? false)
+		!(options.apply ?? false),
 	);
 
 export const normalizeArchiveDates = (
-	options: NormalizeArchiveDatesOptions
+	options: NormalizeArchiveDatesOptions,
 ): Promise<CommandReport> =>
 	withArchiveOperationLock(
 		'dates',
 		options,
 		() => normalizeArchiveDatesUnlocked(options),
-		options.dryRun ?? false
+		options.dryRun ?? false,
 	);
 
 export const syncArchive = (options: SyncArchiveOptions): Promise<CommandReport> =>
@@ -40,7 +40,7 @@ export const syncArchive = (options: SyncArchiveOptions): Promise<CommandReport>
 		'sync',
 		options,
 		(held) => syncArchiveUnlocked(options, held),
-		options.dryRun ?? false
+		options.dryRun ?? false,
 	);
 
 export const verifyArchive = (options: VerifyArchiveOptions): Promise<CommandReport> =>

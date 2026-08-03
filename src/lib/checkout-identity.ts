@@ -26,7 +26,7 @@ const gitErrorDetails = (err: unknown): GitCommandError => {
 
 const readOptionalLocalConfig = async (
 	checkoutPath: string,
-	key: string
+	key: string,
 ): Promise<null | string> => {
 	try {
 		return await runGit(['config', '--local', '--get', key], { cwd: checkoutPath });
@@ -43,7 +43,7 @@ export const canonicalCheckoutName = (slug: string): null | string => {
 };
 
 export const readCheckoutIdentity = async (
-	checkoutPath: string
+	checkoutPath: string,
 ): Promise<CheckoutIdentity | null> => {
 	const [rawId, rawSlug] = await Promise.all([
 		readOptionalLocalConfig(checkoutPath, REPOSITORY_ID_KEY),
@@ -67,7 +67,7 @@ export const readCheckoutIdentity = async (
 
 export const writeCheckoutIdentity = async (
 	checkoutPath: string,
-	identity: CheckoutIdentity
+	identity: CheckoutIdentity,
 ): Promise<void> => {
 	if (
 		!Number.isSafeInteger(identity.repositoryId) ||

@@ -9,7 +9,7 @@ export interface InterruptControl {
 
 export const createInterruptControl = (
 	reporter: InterruptReporter,
-	firstMessage: string
+	firstMessage: string,
 ): InterruptControl => {
 	const controller = new AbortController();
 	let interruptionLevel = 0;

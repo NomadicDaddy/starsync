@@ -32,7 +32,7 @@ const run = (command: string, args: string[], cwd: string, env: NodeJS.ProcessEn
 	});
 	if (result.exitCode !== 0) {
 		throw new Error(
-			`${command} ${args.join(' ')} failed: ${result.stderr.toString() || result.stdout.toString()}`
+			`${command} ${args.join(' ')} failed: ${result.stderr.toString() || result.stdout.toString()}`,
 		);
 	}
 	return result.stdout.toString().trim();
@@ -55,7 +55,7 @@ const createRepositoryFixture = (
 	archive: string,
 	repository: string,
 	checkoutName: string,
-	id: number
+	id: number,
 ): RepositoryFixture => {
 	const seed = path.join(root, `${repository}-seed`);
 	const origin = path.join(root, `${repository}.git`);
@@ -80,7 +80,7 @@ const createRepositoryFixture = (
 	runGit(['remote', 'set-url', 'origin', cloneUrl], checkout);
 	runGit(
 		['config', '--local', `url.${pathToFileURL(origin).href}.insteadOf`, cloneUrl],
-		checkout
+		checkout,
 	);
 	runGit(['config', '--local', 'starsync.repository-id', String(id)], checkout);
 	runGit(['config', '--local', 'starsync.repository-slug', `owner/${repository}`], checkout);
@@ -139,27 +139,27 @@ describe('cross-platform release validation', () => {
 	test('bounds and supersedes the full three-platform release matrix', () => {
 		const workflow = readFileSync(
 			path.resolve('.github/workflows/release-validation.yml'),
-			'utf-8'
+			'utf-8',
 		);
 
 		expect(workflow).toMatch(
-			/^on:\r?\n {4}pull_request:\r?\n {4}push:\r?\n {8}branches:\r?\n {12}- main\r?\n {4}workflow_dispatch:$/m
+			/^on:\r?\n {4}pull_request:\r?\n {4}push:\r?\n {8}branches:\r?\n {12}- main\r?\n {4}workflow_dispatch:$/m,
 		);
 		expect(workflow).toMatch(
-			/^concurrency:\r?\n {4}group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.event\.pull_request\.number \|\| github\.ref \}\}\r?\n {4}cancel-in-progress: true$/m
+			/^concurrency:\r?\n {4}group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.event\.pull_request\.number \|\| github\.ref \}\}\r?\n {4}cancel-in-progress: true$/m,
 		);
 		expect(workflow).toMatch(
-			/^ {4}cross-platform:\r?\n {8}name: Bun 1\.3\.14 \/ \$\{\{ matrix\.os \}\}\r?\n {8}runs-on: \$\{\{ matrix\.os \}\}\r?\n {8}timeout-minutes: 20$/m
+			/^ {4}cross-platform:\r?\n {8}name: Bun 1\.3\.14 \/ \$\{\{ matrix\.os \}\}\r?\n {8}runs-on: \$\{\{ matrix\.os \}\}\r?\n {8}timeout-minutes: 20$/m,
 		);
 		expect(workflow).toMatch(
-			/^ {12}matrix:\r?\n {16}os:\r?\n {20}- macos-latest\r?\n {20}- ubuntu-latest\r?\n {20}- windows-latest$/m
+			/^ {12}matrix:\r?\n {16}os:\r?\n {20}- macos-latest\r?\n {20}- ubuntu-latest\r?\n {20}- windows-latest$/m,
 		);
 	});
 
 	test('exercises the published bundles under node on every matrix platform', () => {
 		const workflow = readFileSync(
 			path.resolve('.github/workflows/release-validation.yml'),
-			'utf-8'
+			'utf-8',
 		);
 
 		// bin and main resolve to these bundles, so this step is the only automated defense
@@ -173,7 +173,7 @@ describe('cross-platform release validation', () => {
 	test('pins every third-party action to a full commit with a release-tag comment', () => {
 		const workflow = readFileSync(
 			path.resolve('.github/workflows/release-validation.yml'),
-			'utf-8'
+			'utf-8',
 		);
 		const thirdPartyUsesLines = workflow
 			.split(/\r?\n/)
@@ -182,7 +182,7 @@ describe('cross-platform release validation', () => {
 		expect(thirdPartyUsesLines.length).toBeGreaterThan(0);
 		for (const line of thirdPartyUsesLines) {
 			expect(line).toMatch(
-				/^\s*uses:\s+[a-z0-9_.-]+\/[a-z0-9_.-]+@[0-9a-f]{40}\s+#\s+v\d+(?:\.\d+){0,2}\s*$/i
+				/^\s*uses:\s+[a-z0-9_.-]+\/[a-z0-9_.-]+@[0-9a-f]{40}\s+#\s+v\d+(?:\.\d+){0,2}\s*$/i,
 			);
 		}
 	});
@@ -195,7 +195,7 @@ describe('cross-platform release validation', () => {
 		mkdirSync(path.join(sourceArchive, '.starsync'));
 		writeFileSync(
 			path.join(sourceArchive, '.starsync', 'config.json'),
-			JSON.stringify({ archiveFormat: 2, owner: { id: 7, login: 'archive-owner' } })
+			JSON.stringify({ archiveFormat: 2, owner: { id: 7, login: 'archive-owner' } }),
 		);
 		const fixtures = [
 			createRepositoryFixture(root, sourceArchive, 'alpha', 'alpha--previous-owner', 101),
@@ -205,7 +205,7 @@ describe('cross-platform release validation', () => {
 
 		const resolveRepository: RepositoryResolver = async (owner, repository) => {
 			const fixture = fixtures.find(
-				(candidate) => owner === 'owner' && candidate.repository === repository
+				(candidate) => owner === 'owner' && candidate.repository === repository,
 			);
 			if (fixture === undefined)
 				throw new Error(`Unexpected repository: ${owner}/${repository}`);
@@ -244,7 +244,7 @@ describe('cross-platform release validation', () => {
 					processRepository(repository, copiedArchive, isInterruptionRequested, {
 						archiveOwnerId: 7,
 					}),
-				{ concurrency: 2, totalCount: repositories.length }
+				{ concurrency: 2, totalCount: repositories.length },
 			);
 			expect(synchronization.interrupted).toBe(false);
 			expect(synchronization.results.map((result) => result.outcome)).toEqual([
@@ -257,21 +257,21 @@ describe('cross-platform release validation', () => {
 			for (const fixture of fixtures) {
 				const checkout = path.join(copiedArchive, fixture.canonicalName);
 				expect(runGit(['log', '-1', '--pretty=%s'], checkout)).toBe(
-					'representative refresh'
+					'representative refresh',
 				);
 				expect(
-					runGit(['config', '--local', '--get', 'starsync.repository-id'], checkout)
+					runGit(['config', '--local', '--get', 'starsync.repository-id'], checkout),
 				).toBe(String(fixture.id));
 				expect(Math.trunc(statSync(checkout).mtimeMs / 1000)).toBe(
 					Math.trunc(
-						new Date(runGit(['log', '-1', '--format=%cI'], checkout)).getTime() / 1000
-					)
+						new Date(runGit(['log', '-1', '--format=%cI'], checkout)).getTime() / 1000,
+					),
 				);
 			}
 			expect(
 				JSON.parse(
-					readFileSync(path.join(copiedArchive, '.starsync', 'config.json'), 'utf-8')
-				)
+					readFileSync(path.join(copiedArchive, '.starsync', 'config.json'), 'utf-8'),
+				),
 			).toEqual({
 				archiveFormat: 2,
 				owner: { id: 7, login: 'archive-owner' },
@@ -322,7 +322,7 @@ describe('cross-platform release validation', () => {
 			});
 			expect(result.exitCode).toBe(2);
 			expect(result.stderr.toString()).toContain(
-				'Live smoke refuses to run against the configured archive.'
+				'Live smoke refuses to run against the configured archive.',
 			);
 		} finally {
 			rmSync(root, { force: true, recursive: true });

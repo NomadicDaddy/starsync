@@ -27,7 +27,7 @@ export interface StarredRepositoryClassification {
 export const blockedCheckoutReport = (
 	name: string,
 	code: string,
-	message: string
+	message: string,
 ): CheckoutReport => ({
 	findings: [createFinding('error', code, message)],
 	lifecycle: 'blocked',
@@ -45,7 +45,7 @@ const canonicalRepositoryName = (repository: StarredRepositoryRecord): null | st
 };
 
 export const buildStarredRepositoryCollisionIndexes = (
-	repositories: StarredRepositoryRecord[]
+	repositories: StarredRepositoryRecord[],
 ): StarredRepositoryCollisionIndexes => {
 	const idCounts = new Map<number, number>();
 	const nameCounts = new Map<string, number>();
@@ -64,37 +64,37 @@ const invalidRepositoryReport = (repository: StarredRepositoryRecord): CheckoutR
 	blockedCheckoutReport(
 		repository.name,
 		'invalid-repository-identity',
-		'Repository response must contain a positive stable ID and valid owner/repository slug.'
+		'Repository response must contain a positive stable ID and valid owner/repository slug.',
 	);
 
 const duplicateIdentityReport = (
 	repository: StarredRepositoryRecord,
 	existing: ManagedCheckout | undefined,
-	canonicalName: string
+	canonicalName: string,
 ): CheckoutReport =>
 	blockedCheckoutReport(
 		existing?.name ?? canonicalName,
 		'duplicate-identity',
-		`Repository identity ${repository.id} appears more than once in the starred repository response.`
+		`Repository identity ${repository.id} appears more than once in the starred repository response.`,
 	);
 
 const duplicateDestinationReport = (canonicalName: string): CheckoutReport =>
 	blockedCheckoutReport(
 		canonicalName,
 		'rename-name-collision',
-		`Canonical folder ${canonicalName} is requested by more than one repository.`
+		`Canonical folder ${canonicalName} is requested by more than one repository.`,
 	);
 
 const occupiedDestinationReport = (canonicalName: string): CheckoutReport =>
 	blockedCheckoutReport(
 		canonicalName,
 		'checkout-name-collision',
-		`Canonical folder ${canonicalName} is occupied by a different or unidentified archive entry.`
+		`Canonical folder ${canonicalName} is occupied by a different or unidentified archive entry.`,
 	);
 
 export const classifyStarredRepository = (
 	repository: StarredRepositoryRecord,
-	context: StarredRepositoryClassificationContext
+	context: StarredRepositoryClassificationContext,
 ): StarredRepositoryClassification => {
 	const canonicalName = canonicalRepositoryName(repository);
 	if (canonicalName === null)
@@ -130,7 +130,7 @@ export const retainedCheckoutReport = (checkout: ManagedCheckout): CheckoutRepor
 			createFinding(
 				'info',
 				'checkout-retained',
-				'Checkout is no longer starred and was retained.'
+				'Checkout is no longer starred and was retained.',
 			),
 		],
 		lifecycle: 'retained',

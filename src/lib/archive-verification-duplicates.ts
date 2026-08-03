@@ -17,8 +17,8 @@ export const applyDuplicateIdentityFindings = (verified: VerifiedCheckout[]): vo
 			createFinding(
 				'error',
 				'duplicate-identity',
-				`Repository identity ${checkout.repositoryId} is used by more than one checkout.`
-			)
+				`Repository identity ${checkout.repositoryId} is used by more than one checkout.`,
+			),
 		);
 		checkout.report.lifecycle = 'blocked';
 		checkout.report.outcome = 'failed';

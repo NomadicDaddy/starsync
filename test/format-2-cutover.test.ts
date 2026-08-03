@@ -36,7 +36,7 @@ describe('format-2 archive cutover', () => {
 				expect(inspection.findings[0]?.message).toContain(
 					populated
 						? 'rebuild the archive in a different empty directory'
-						: 'starsync init'
+						: 'starsync init',
 				);
 			} finally {
 				rmSync(target, { force: true, recursive: true });

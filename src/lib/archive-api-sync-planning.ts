@@ -16,13 +16,13 @@ import { isGitHubDotComUrl, sanitizeMessage, sanitizeUrl } from './secret-safety
 const plannedDateFinding = async (
 	targetPath: string,
 	repository: StarredRepository,
-	isCloned: boolean
+	isCloned: boolean,
 ) => {
 	if (!isCloned) {
 		return createFinding(
 			'info',
 			'date-update-planned',
-			'After cloning, the folder timestamp would be set to its Archive Date.'
+			'After cloning, the folder timestamp would be set to its Archive Date.',
 		);
 	}
 	try {
@@ -31,21 +31,21 @@ const plannedDateFinding = async (
 			? createFinding(
 					'info',
 					'date-update-planned',
-					`Folder timestamp would be set to Archive Date ${state.archiveDate.toISOString()}.`
+					`Folder timestamp would be set to Archive Date ${state.archiveDate.toISOString()}.`,
 				)
 			: null;
 	} catch (err) {
 		return createFinding(
 			'error',
 			'archive-date-read-failed',
-			`Cannot calculate the planned Archive Date: ${sanitizeMessage(getErrorMessage(err))}`
+			`Cannot calculate the planned Archive Date: ${sanitizeMessage(getErrorMessage(err))}`,
 		);
 	}
 };
 
 const createPlannedReport = async (
 	targetPath: string,
-	repository: StarredRepository
+	repository: StarredRepository,
 ): Promise<CheckoutReport> => {
 	const isCloned = checkoutExists(targetPath, repository.folderName);
 	const dateFinding = await plannedDateFinding(targetPath, repository, isCloned);
@@ -54,7 +54,7 @@ const createPlannedReport = async (
 			createFinding(
 				'info',
 				isCloned ? 'refresh-planned' : 'clone-planned',
-				isCloned ? 'Checkout would be refreshed.' : 'Repository would be added.'
+				isCloned ? 'Checkout would be refreshed.' : 'Repository would be added.',
 			),
 			...(dateFinding === null ? [] : [dateFinding]),
 		],
@@ -68,7 +68,7 @@ const createPlannedReport = async (
 
 const createUninspectedReports = (
 	targetPath: string,
-	repositories: StarredRepository[]
+	repositories: StarredRepository[],
 ): CheckoutReport[] =>
 	repositories.map((repository) =>
 		createInterruptedCheckout(
@@ -76,13 +76,13 @@ const createUninspectedReports = (
 			checkoutExists(targetPath, repository.folderName) ? 'active' : null,
 			'interrupted-before-inspection',
 			'Repository was not inspected because interruption was requested.',
-			repository.pendingRename
-		)
+			repository.pendingRename,
+		),
 	);
 
 export const partitionValidRepositories = (
 	targetPath: string,
-	repositories: StarredRepository[]
+	repositories: StarredRepository[],
 ): { invalid: CheckoutReport[]; valid: StarredRepository[] } => {
 	const invalid: CheckoutReport[] = [];
 	const valid: StarredRepository[] = [];
@@ -96,7 +96,7 @@ export const partitionValidRepositories = (
 				createFinding(
 					'error',
 					'invalid-origin',
-					`Repository origin is not GitHub.com: ${sanitizeUrl(repository.clone_url)}`
+					`Repository origin is not GitHub.com: ${sanitizeUrl(repository.clone_url)}`,
 				),
 			],
 			lifecycle: checkoutExists(targetPath, repository.folderName) ? 'active' : null,
@@ -111,24 +111,24 @@ export const partitionValidRepositories = (
 export const previewSync = async (
 	plan: ManagedSyncPlan,
 	context: SyncContext,
-	options: SyncArchiveOptions
+	options: SyncArchiveOptions,
 ): Promise<CommandReport> => {
 	options.onProgress?.('Dry run: querying stars and inspecting the archive without changes.');
 	const planned: CheckoutReport[] = [];
 	for (const [index, repository] of plan.repositories.entries()) {
 		if (options.signal?.aborted) {
 			planned.push(
-				...createUninspectedReports(context.targetPath, plan.repositories.slice(index))
+				...createUninspectedReports(context.targetPath, plan.repositories.slice(index)),
 			);
 			break;
 		}
 		const isCloned = checkoutExists(context.targetPath, repository.folderName);
 		options.onProgress?.(
-			`Syncing ${index + 1}/${plan.repositories.length} — ${repository.folderName} — would ${isCloned ? 'refresh' : 'clone'}`
+			`Syncing ${index + 1}/${plan.repositories.length} — ${repository.folderName} — would ${isCloned ? 'refresh' : 'clone'}`,
 		);
 		if (options.signal?.aborted) {
 			planned.push(
-				...createUninspectedReports(context.targetPath, plan.repositories.slice(index))
+				...createUninspectedReports(context.targetPath, plan.repositories.slice(index)),
 			);
 			break;
 		}
@@ -137,7 +137,7 @@ export const previewSync = async (
 	const interrupted = options.signal?.aborted ?? false;
 	const checkouts = [...planned, ...plan.blockedReports, ...plan.retainedReports];
 	const hasErrors = checkouts.some((checkout) =>
-		checkout.findings.some((finding) => finding.severity === 'error')
+		checkout.findings.some((finding) => finding.severity === 'error'),
 	);
 	return createCommandReport({
 		checkouts,
@@ -149,7 +149,7 @@ export const previewSync = async (
 					createFinding(
 						'warning',
 						'interrupted',
-						'Synchronization preview was interrupted; results are partial.'
+						'Synchronization preview was interrupted; results are partial.',
 					),
 				]
 			: [],

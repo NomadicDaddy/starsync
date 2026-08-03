@@ -43,7 +43,7 @@ const hasLocalState = async (repoPath: string): Promise<boolean> => {
 const resolveRemoteDefault = async (
 	repoPath: string,
 	name: string,
-	defaultBranch: string
+	defaultBranch: string,
 ): Promise<{ hash: string; ref: string } | RefreshResult> => {
 	const localRef = `refs/heads/${defaultBranch}`;
 	try {
@@ -52,7 +52,7 @@ const resolveRemoteDefault = async (
 	} catch {
 		return blocked(
 			name,
-			`Remote default branch ${defaultBranch} is invalid — checkout blocked.`
+			`Remote default branch ${defaultBranch} is invalid — checkout blocked.`,
 		);
 	}
 
@@ -65,14 +65,14 @@ const resolveRemoteDefault = async (
 	} catch {
 		return blocked(
 			name,
-			`Remote default branch origin/${defaultBranch} is unavailable — checkout blocked.`
+			`Remote default branch origin/${defaultBranch} is unavailable — checkout blocked.`,
 		);
 	}
 };
 
 const readLocalDefaultHash = async (
 	repoPath: string,
-	defaultBranch: string
+	defaultBranch: string,
 ): Promise<null | string> => {
 	const localRef = `refs/heads/${defaultBranch}`;
 	const branch = await runGit(['branch', '--list', '--format=%(refname)', '--', defaultBranch], {
@@ -85,19 +85,19 @@ const readLocalDefaultHash = async (
 const createTrackingBranch = (
 	repoPath: string,
 	defaultBranch: string,
-	remoteRef: string
+	remoteRef: string,
 ): Promise<unknown> =>
 	withGitRecovery(repoPath, (recovery: GitRecovery) =>
 		runGit([...recovery.args, 'switch', '--create', defaultBranch, '--track', remoteRef], {
 			cwd: repoPath,
 			env: recovery.env,
-		})
+		}),
 	);
 
 const fastForwardToRemote = (
 	repoPath: string,
 	defaultBranch: string,
-	remoteRef: null | string
+	remoteRef: null | string,
 ): Promise<unknown> =>
 	withGitRecovery(repoPath, async (recovery: GitRecovery) => {
 		await runGit([...recovery.args, 'switch', defaultBranch], {
@@ -114,7 +114,7 @@ const fastForwardToRemote = (
 const advanceToRemoteDefault = async (
 	repoPath: string,
 	name: string,
-	defaultBranch: string
+	defaultBranch: string,
 ): Promise<RefreshResult> => {
 	const remote = await resolveRemoteDefault(repoPath, name, defaultBranch);
 	if ('outcome' in remote) return remote;
@@ -143,7 +143,7 @@ const advanceToRemoteDefault = async (
 		} catch {
 			return blocked(
 				name,
-				'Local default branch and remote have diverged — checkout blocked to preserve local history.'
+				'Local default branch and remote have diverged — checkout blocked to preserve local history.',
 			);
 		}
 	}
@@ -172,7 +172,7 @@ const withRetainedTags = (result: RefreshResult, retainedTags: string[]): Refres
 export const refreshCheckoutOnDefaultBranch = async (
 	repoPath: string,
 	name: string,
-	defaultBranch: string
+	defaultBranch: string,
 ): Promise<RefreshResult> => {
 	let retainedTags: string[];
 	try {
@@ -185,7 +185,7 @@ export const refreshCheckoutOnDefaultBranch = async (
 		if (await hasLocalState(repoPath)) {
 			return blocked(
 				name,
-				'Local changes detected — checkout blocked to preserve uncommitted work.'
+				'Local changes detected — checkout blocked to preserve uncommitted work.',
 			);
 		}
 	} catch (err) {

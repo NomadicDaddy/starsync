@@ -19,7 +19,7 @@ export interface DatesDiscoveryResult {
 
 const discoverNonGitEntry = (
 	target: string,
-	entry: fs.Dirent
+	entry: fs.Dirent,
 ): { report: CheckoutReport; row: DatesDisplayRow | null } | null => {
 	const checkoutPath = path.join(target, entry.name);
 	if (fs.existsSync(path.join(checkoutPath, '.git'))) return null;
@@ -49,7 +49,7 @@ const discoverNonGitEntry = (
 				entry.name,
 				null,
 				'checkout-stat-failed',
-				`Cannot stat ${checkoutPath}: ${message}`
+				`Cannot stat ${checkoutPath}: ${message}`,
 			),
 			row: null,
 		};
@@ -70,7 +70,7 @@ const readNonGitEntries = (target: string): DatesDiscoveryResult => {
 			fatalFinding: createFinding(
 				'error',
 				'target-read-failed',
-				`Cannot read ${target}: ${message}`
+				`Cannot read ${target}: ${message}`,
 			),
 			managedCheckouts: [],
 		};
@@ -97,7 +97,7 @@ export const discoverDateCheckouts = async (target: string): Promise<DatesDiscov
 		result.fatalFinding = createFinding(
 			'error',
 			'managed-checkout-scan-failed',
-			`Cannot discover managed checkouts: ${message}`
+			`Cannot discover managed checkouts: ${message}`,
 		);
 	}
 	return result;

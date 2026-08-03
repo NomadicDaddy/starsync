@@ -28,7 +28,7 @@ const runCommand = (
 	command: string,
 	args: string[],
 	cwd: string,
-	env: NodeJS.ProcessEnv = {}
+	env: NodeJS.ProcessEnv = {},
 ): string => {
 	const result = Bun.spawnSync({
 		cmd: [command, ...args],
@@ -40,7 +40,7 @@ const runCommand = (
 	});
 	if (result.exitCode !== 0) {
 		throw new Error(
-			`${command} ${args.join(' ')} failed: ${result.stderr.toString() || result.stdout.toString()}`
+			`${command} ${args.join(' ')} failed: ${result.stderr.toString() || result.stdout.toString()}`,
 		);
 	}
 	return result.stdout.toString().trim();
@@ -55,7 +55,7 @@ const writeManagedArchiveConfig = (target: string, ownerId = 7): void => {
 		JSON.stringify({
 			archiveFormat: 2,
 			owner: { id: ownerId, login: 'archive-owner' },
-		})
+		}),
 	);
 };
 
@@ -76,7 +76,7 @@ const createLocalOrigin = (root: string, invalidWindowsPath?: string): string =>
 		runGit(['config', 'core.protectNTFS', 'false'], source);
 		runGit(
 			['update-index', '--add', '--cacheinfo', `100644,${blob},${invalidWindowsPath}`],
-			source
+			source,
 		);
 		runGit(['commit', '-m', 'add Windows-incompatible path'], source);
 	}
@@ -87,7 +87,7 @@ const createLocalOrigin = (root: string, invalidWindowsPath?: string): string =>
 const createLocalCloneEnvironment = (
 	root: string,
 	githubUrls: string | string[],
-	localOrigin: string
+	localOrigin: string,
 ): NodeJS.ProcessEnv => {
 	const gitHome = path.join(root, 'git-home');
 	mkdirSync(gitHome, { recursive: true });
@@ -102,7 +102,7 @@ const createLocalCloneEnvironment = (
 				`\tinsteadOf = ${githubUrl}`,
 			]),
 			'',
-		].join('\n')
+		].join('\n'),
 	);
 	return { HOME: gitHome, USERPROFILE: gitHome };
 };
@@ -111,7 +111,7 @@ const runStagedCheckout = (
 	repository: RepoRecord,
 	target: string,
 	archiveOwnerId = 7,
-	gitEnv: NodeJS.ProcessEnv = {}
+	gitEnv: NodeJS.ProcessEnv = {},
 ): RefreshResult => {
 	const helperPath = path.resolve('test/helpers/run-staged-checkout.ts');
 	const output = runCommand(process.execPath, [helperPath, target], target, {
@@ -132,7 +132,7 @@ const runForcedVerification = (
 	},
 	gitEnv: NodeJS.ProcessEnv,
 	repositoryAliases: string[] = [],
-	failDamagedCleanup = false
+	failDamagedCleanup = false,
 ): ArchiveVerificationResult => {
 	const helperPath = path.resolve('test/helpers/run-forced-verification.ts');
 	const output = runCommand(process.execPath, [helperPath, target], target, {
@@ -166,25 +166,25 @@ describe('staged checkout creation process boundary', () => {
 				},
 				target,
 				7,
-				createLocalCloneEnvironment(root, cloneUrl, origin)
+				createLocalCloneEnvironment(root, cloneUrl, origin),
 			);
 
 			expect(result).toEqual(
-				expect.objectContaining({ name: 'repository--example', outcome: 'added' })
+				expect.objectContaining({ name: 'repository--example', outcome: 'added' }),
 			);
 			expect(existsSync(path.join(destination, '.git'))).toBe(true);
 			expect(runGit(['config', '--local', '--get', 'remote.origin.url'], destination)).toBe(
-				cloneUrl
+				cloneUrl,
 			);
 			expect(
-				runGit(['config', '--local', '--get', 'starsync.repository-id'], destination)
+				runGit(['config', '--local', '--get', 'starsync.repository-id'], destination),
 			).toBe('321');
 			expect(
-				runGit(['config', '--local', '--get', 'starsync.repository-slug'], destination)
+				runGit(['config', '--local', '--get', 'starsync.repository-slug'], destination),
 			).toBe('example/repository');
 			expect(runGit(['fsck', '--full'], destination)).toBe('');
 			expect(
-				readdirSync(target).filter((name) => name.startsWith(STAGED_CHECKOUT_PREFIX))
+				readdirSync(target).filter((name) => name.startsWith(STAGED_CHECKOUT_PREFIX)),
 			).toEqual([]);
 		} finally {
 			rmSync(root, { force: true, recursive: true });
@@ -214,16 +214,16 @@ describe('staged checkout creation process boundary', () => {
 				},
 				target,
 				7,
-				createLocalCloneEnvironment(root, cloneUrl, origin)
+				createLocalCloneEnvironment(root, cloneUrl, origin),
 			);
 
 			expect(result).toEqual(expect.objectContaining({ outcome: 'added' }));
 			expect(runGit(['status', '--porcelain'], destination)).toBe('');
 			expect(runGit(['ls-tree', '-r', '--name-only', 'HEAD'], destination)).toContain(
-				invalidPath
+				invalidPath,
 			);
 			expect(runGit(['ls-files', '-v', '--', invalidPath], destination)).toBe(
-				`S ${invalidPath}`
+				`S ${invalidPath}`,
 			);
 			expect(existsSync(path.join(destination, invalidPath))).toBe(false);
 		} finally {
@@ -253,7 +253,7 @@ describe('staged checkout creation process boundary', () => {
 				},
 				target,
 				7,
-				gitEnv
+				gitEnv,
 			);
 			expect(added.outcome).toBe('added');
 			writeFileSync(path.join(destination, 'damaged-only.txt'), 'discard me');
@@ -267,26 +267,26 @@ describe('staged checkout creation process boundary', () => {
 					owner: 'example',
 					slug: 'example/repository',
 				},
-				gitEnv
+				gitEnv,
 			);
 			const checkout = result.checkouts[0];
 
 			expect(result.exitCode).toBe(0);
 			expect(checkout?.outcome).toBe('updated');
 			expect(checkout?.findings.some((finding) => finding.code === 'checkout-recloned')).toBe(
-				true
+				true,
 			);
 			expect(existsSync(path.join(destination, 'damaged-only.txt'))).toBe(false);
 			expect(
-				runGit(['config', '--local', '--get', 'starsync.repository-id'], destination)
+				runGit(['config', '--local', '--get', 'starsync.repository-id'], destination),
 			).toBe('321');
 			expect(runGit(['fsck', '--full'], destination)).toBe('');
 			expect(
 				readdirSync(target).filter(
 					(name) =>
 						name.startsWith(STAGED_CHECKOUT_PREFIX) ||
-						name.startsWith(DAMAGED_CHECKOUT_PREFIX)
-				)
+						name.startsWith(DAMAGED_CHECKOUT_PREFIX),
+				),
 			).toEqual([]);
 
 			const localChange = path.join(destination, 'local-change.txt');
@@ -299,15 +299,15 @@ describe('staged checkout creation process boundary', () => {
 					owner: 'example',
 					slug: 'example/repository',
 				},
-				gitEnv
+				gitEnv,
 			);
 
 			expect(dirtyResult.exitCode).toBe(0);
 			expect(dirtyResult.checkouts[0]?.outcome).toBe('updated');
 			expect(
 				dirtyResult.checkouts[0]?.findings.some(
-					(finding) => finding.code === 'checkout-recloned'
-				)
+					(finding) => finding.code === 'checkout-recloned',
+				),
 			).toBe(true);
 			expect(existsSync(localChange)).toBe(false);
 			expect(runGit(['status', '--porcelain'], destination)).toBe('');
@@ -354,7 +354,7 @@ describe('staged checkout creation process boundary', () => {
 			const gitEnv = createLocalCloneEnvironment(
 				root,
 				[oldCloneUrl, currentCloneUrl],
-				origin
+				origin,
 			);
 
 			try {
@@ -371,8 +371,8 @@ describe('staged checkout creation process boundary', () => {
 						},
 						target,
 						7,
-						gitEnv
-					).outcome
+						gitEnv,
+					).outcome,
 				).toBe('added');
 				writeFileSync(path.join(source, 'local-change.txt'), 'replace me');
 				const [owner, name] = scenario.currentSlug.split('/') as [string, string];
@@ -381,7 +381,7 @@ describe('staged checkout creation process boundary', () => {
 					target,
 					{ id: 321, name, owner, slug: scenario.currentSlug },
 					gitEnv,
-					[scenario.oldSlug]
+					[scenario.oldSlug],
 				);
 
 				expect(result.exitCode).toBe(0);
@@ -391,13 +391,13 @@ describe('staged checkout creation process boundary', () => {
 				expect(readdirSync(target)).not.toContain(scenario.oldFolder);
 				expect(existsSync(path.join(destination, 'local-change.txt'))).toBe(false);
 				expect(
-					runGit(['config', '--local', '--get', 'starsync.repository-id'], destination)
+					runGit(['config', '--local', '--get', 'starsync.repository-id'], destination),
 				).toBe('321');
 				expect(
-					runGit(['config', '--local', '--get', 'starsync.repository-slug'], destination)
+					runGit(['config', '--local', '--get', 'starsync.repository-slug'], destination),
 				).toBe(scenario.currentSlug);
 				expect(
-					runGit(['config', '--local', '--get', 'remote.origin.url'], destination)
+					runGit(['config', '--local', '--get', 'remote.origin.url'], destination),
 				).toBe(currentCloneUrl);
 			} finally {
 				rmSync(root, { force: true, recursive: true });
@@ -431,8 +431,8 @@ describe('staged checkout creation process boundary', () => {
 					},
 					target,
 					7,
-					gitEnv
-				).outcome
+					gitEnv,
+				).outcome,
 			).toBe('added');
 			writeFileSync(path.join(source, 'local-change.txt'), 'keep me');
 
@@ -440,14 +440,14 @@ describe('staged checkout creation process boundary', () => {
 				target,
 				{ id: 999, name: 'repository', owner: 'example', slug: currentSlug },
 				gitEnv,
-				[oldSlug]
+				[oldSlug],
 			);
 
 			expect(result.exitCode).toBe(1);
 			expect(
 				result.checkouts[0]?.findings.some(
-					(finding) => finding.code === 'checkout-reclone-failed'
-				)
+					(finding) => finding.code === 'checkout-reclone-failed',
+				),
 			).toBe(true);
 			expect(existsSync(path.join(source, 'local-change.txt'))).toBe(true);
 			expect(existsSync(path.join(target, 'repository--example'))).toBe(false);
@@ -481,8 +481,8 @@ describe('staged checkout creation process boundary', () => {
 						},
 						target,
 						7,
-						gitEnv
-					).outcome
+						gitEnv,
+					).outcome,
 				).toBe('added');
 			}
 			const dirtyPath = path.join(target, 'first--example', 'local-change.txt');
@@ -491,19 +491,19 @@ describe('staged checkout creation process boundary', () => {
 			const result = runForcedVerification(
 				target,
 				{ id: 321, name: 'first', owner: 'example', slug: 'example/first' },
-				gitEnv
+				gitEnv,
 			);
 
 			expect(result.exitCode).toBe(1);
 			expect(
 				result.checkouts.every((checkout) =>
-					checkout.findings.some((finding) => finding.code === 'duplicate-identity')
-				)
+					checkout.findings.some((finding) => finding.code === 'duplicate-identity'),
+				),
 			).toBe(true);
 			expect(
 				result.checkouts.some((checkout) =>
-					checkout.findings.some((finding) => finding.code === 'checkout-recloned')
-				)
+					checkout.findings.some((finding) => finding.code === 'checkout-recloned'),
+				),
 			).toBe(false);
 			expect(readFileSync(dirtyPath, 'utf8')).toBe('keep me');
 		} finally {
@@ -538,8 +538,8 @@ describe('staged checkout creation process boundary', () => {
 					},
 					target,
 					7,
-					gitEnv
-				).outcome
+					gitEnv,
+				).outcome,
 			).toBe('added');
 			writeFileSync(path.join(source, 'local-change.txt'), 'keep source');
 			mkdirSync(destination);
@@ -549,7 +549,7 @@ describe('staged checkout creation process boundary', () => {
 				target,
 				{ id: 321, name: 'repository', owner: 'example', slug: currentSlug },
 				gitEnv,
-				[oldSlug]
+				[oldSlug],
 			);
 
 			expect(result.exitCode).toBe(1);
@@ -559,12 +559,12 @@ describe('staged checkout creation process boundary', () => {
 					?.findings.some(
 						(finding) =>
 							finding.code === 'checkout-reclone-failed' &&
-							finding.message.includes('already occupied')
-					)
+							finding.message.includes('already occupied'),
+					),
 			).toBe(true);
 			expect(readFileSync(path.join(source, 'local-change.txt'), 'utf8')).toBe('keep source');
 			expect(readFileSync(path.join(destination, 'keep.txt'), 'utf8')).toBe(
-				'keep destination'
+				'keep destination',
 			);
 		} finally {
 			rmSync(root, { force: true, recursive: true });
@@ -594,8 +594,8 @@ describe('staged checkout creation process boundary', () => {
 					},
 					target,
 					7,
-					gitEnv
-				).outcome
+					gitEnv,
+				).outcome,
 			).toBe('added');
 			writeFileSync(path.join(destination, '.git', 'config'), '\0'.repeat(256));
 
@@ -609,17 +609,17 @@ describe('staged checkout creation process boundary', () => {
 				},
 				gitEnv,
 				[],
-				true
+				true,
 			);
 			const backups = readdirSync(target).filter((name) =>
-				name.startsWith(DAMAGED_CHECKOUT_PREFIX)
+				name.startsWith(DAMAGED_CHECKOUT_PREFIX),
 			);
 
 			expect(failedCleanup.exitCode).toBe(0);
 			expect(
 				failedCleanup.checkouts[0]?.findings.some(
-					(finding) => finding.code === 'damaged-checkout-cleanup-failed'
-				)
+					(finding) => finding.code === 'damaged-checkout-cleanup-failed',
+				),
 			).toBe(true);
 			expect(backups).toHaveLength(1);
 			expect(inspectArchive(target).entries.map((entry) => entry.name)).toEqual([
@@ -640,12 +640,12 @@ describe('staged checkout creation process boundary', () => {
 					owner: 'example',
 					slug: 'example/repository',
 				},
-				gitEnv
+				gitEnv,
 			);
 			expect(
 				recoveredCleanup.findings.some(
-					(finding) => finding.code === 'owned-checkout-artifact-removed'
-				)
+					(finding) => finding.code === 'owned-checkout-artifact-removed',
+				),
 			).toBe(true);
 			expect(backups.some((name) => existsSync(path.join(target, name)))).toBe(false);
 		} finally {
@@ -676,8 +676,8 @@ describe('staged checkout creation process boundary', () => {
 					},
 					target,
 					7,
-					gitEnv
-				).outcome
+					gitEnv,
+				).outcome,
 			).toBe('added');
 			runGit(['config', '--local', '--unset-all', 'starsync.repository-id'], destination);
 			runGit(['config', '--local', '--unset-all', 'starsync.repository-slug'], destination);
@@ -690,21 +690,21 @@ describe('staged checkout creation process boundary', () => {
 					owner: 'example',
 					slug: 'example/repository',
 				},
-				gitEnv
+				gitEnv,
 			);
 
 			expect(result.exitCode).toBe(0);
 			expect(result.checkouts[0]?.outcome).toBe('updated');
 			expect(
 				result.checkouts[0]?.findings.some(
-					(finding) => finding.code === 'checkout-recloned'
-				)
+					(finding) => finding.code === 'checkout-recloned',
+				),
 			).toBe(true);
 			expect(
-				runGit(['config', '--local', '--get', 'starsync.repository-id'], destination)
+				runGit(['config', '--local', '--get', 'starsync.repository-id'], destination),
 			).toBe('321');
 			expect(
-				runGit(['config', '--local', '--get', 'starsync.repository-slug'], destination)
+				runGit(['config', '--local', '--get', 'starsync.repository-slug'], destination),
 			).toBe('example/repository');
 			expect(runGit(['status', '--porcelain'], destination)).toBe('');
 		} finally {
@@ -734,22 +734,22 @@ describe('staged checkout creation process boundary', () => {
 				createLocalCloneEnvironment(
 					root,
 					'https://github.com/example/repository.git',
-					path.join(root, 'missing.git')
-				)
+					path.join(root, 'missing.git'),
+				),
 			);
 			const checkout = result.checkouts[0];
 
 			expect(result.exitCode).toBe(1);
 			expect(
-				checkout?.findings.some((finding) => finding.code === 'checkout-reclone-failed')
+				checkout?.findings.some((finding) => finding.code === 'checkout-reclone-failed'),
 			).toBe(true);
 			expect(readFileSync(marker, 'utf8')).toBe('keep');
 			expect(
 				readdirSync(target).filter(
 					(name) =>
 						name.startsWith(STAGED_CHECKOUT_PREFIX) ||
-						name.startsWith(DAMAGED_CHECKOUT_PREFIX)
-				)
+						name.startsWith(DAMAGED_CHECKOUT_PREFIX),
+				),
 			).toEqual([]);
 		} finally {
 			rmSync(root, { force: true, recursive: true });
@@ -773,15 +773,15 @@ describe('staged checkout creation process boundary', () => {
 					owner: 'example',
 					slug: 'example/repository',
 				},
-				{}
+				{},
 			);
 
 			expect(result.exitCode).toBe(0);
 			expect(result.checkouts).toEqual([]);
 			expect(
 				result.findings.some(
-					(finding) => finding.code === 'owned-checkout-artifact-removed'
-				)
+					(finding) => finding.code === 'owned-checkout-artifact-removed',
+				),
 			).toBe(true);
 			expect(existsSync(abandoned)).toBe(false);
 		} finally {
@@ -838,14 +838,14 @@ describe('staged checkout creation process boundary', () => {
 				},
 				target,
 				7,
-				createLocalCloneEnvironment(root, cloneUrl, path.join(root, 'missing.git'))
+				createLocalCloneEnvironment(root, cloneUrl, path.join(root, 'missing.git')),
 			);
 
 			expect(result.outcome).toBe('failed');
 			expect(readFileSync(marker, 'utf8')).toBe('keep');
 			expect(existsSync(path.join(target, 'missing--example'))).toBe(false);
 			expect(
-				readdirSync(target).filter((name) => name.startsWith(STAGED_CHECKOUT_PREFIX))
+				readdirSync(target).filter((name) => name.startsWith(STAGED_CHECKOUT_PREFIX)),
 			).toEqual([]);
 		} finally {
 			rmSync(root, { force: true, recursive: true });
@@ -876,7 +876,7 @@ describe('staged checkout creation process boundary', () => {
 					clone_url: 'https://github.com/other/repository.git',
 				},
 				target,
-				7
+				7,
 			);
 			expect(originMismatch.outcome).toBe('failed');
 			expect(originMismatch.message).toContain('matching GitHub.com origin');
@@ -891,7 +891,7 @@ describe('staged checkout creation process boundary', () => {
 			expect(destinationCollision.message).toContain('already occupied');
 			expect(readFileSync(marker, 'utf8')).toBe('keep');
 			expect(
-				readdirSync(target).filter((name) => name.startsWith(STAGED_CHECKOUT_PREFIX))
+				readdirSync(target).filter((name) => name.startsWith(STAGED_CHECKOUT_PREFIX)),
 			).toEqual([]);
 		} finally {
 			rmSync(root, { force: true, recursive: true });

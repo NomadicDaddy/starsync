@@ -10,7 +10,7 @@ import { buildRefreshFailure, cloneRepository } from './refresh-clone.ts';
 const finalizeExistingIdentity = async (
 	repo: RepoRecord,
 	repoPath: string,
-	result: RefreshResult
+	result: RefreshResult,
 ): Promise<RefreshResult> => {
 	if (
 		repo.id === undefined ||
@@ -31,7 +31,7 @@ export const processRepository = async (
 	repo: RepoRecord,
 	targetBase: string,
 	isInterruptionRequested: () => boolean,
-	options: ProcessRepositoryOptions
+	options: ProcessRepositoryOptions,
 ): Promise<RefreshResult> => {
 	const folderName = repo.folderName ?? repo.name;
 	const repoPath = path.join(targetBase, folderName);

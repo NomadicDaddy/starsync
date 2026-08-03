@@ -40,7 +40,7 @@ const originMatchesIdentity = (origin: string, repositorySlug: string): boolean 
 
 const inspectGitCheckout = async (
 	checkoutPath: string,
-	name: string
+	name: string,
 ): Promise<ManagedCheckoutInspection> => {
 	const identity = await readCheckoutIdentity(checkoutPath);
 	if (identity === null) {
@@ -49,7 +49,7 @@ const inspectGitCheckout = async (
 			report: blockedCheckoutReport(
 				name,
 				'missing-identity-metadata',
-				'Format-2 managed checkout has no stable repository identity. A canonical checkout can be safely rebuilt with verify --force.'
+				'Format-2 managed checkout has no stable repository identity. A canonical checkout can be safely rebuilt with verify --force.',
 			),
 		};
 	}
@@ -62,7 +62,7 @@ const inspectGitCheckout = async (
 			report: blockedCheckoutReport(
 				name,
 				'identity-origin-mismatch',
-				`Managed checkout identity does not match origin ${sanitizeUrl(origin)}.`
+				`Managed checkout identity does not match origin ${sanitizeUrl(origin)}.`,
 			),
 		};
 	}
@@ -71,7 +71,7 @@ const inspectGitCheckout = async (
 
 export const inspectManagedCheckoutEntry = async (
 	targetPath: string,
-	name: string
+	name: string,
 ): Promise<ManagedCheckoutInspection> => {
 	const checkoutPath = path.join(targetPath, name);
 	if (!fs.existsSync(path.join(checkoutPath, '.git'))) return emptyInspection();
@@ -84,15 +84,15 @@ export const inspectManagedCheckoutEntry = async (
 				name,
 				'invalid-identity-metadata',
 				`Cannot read managed checkout identity: ${sanitizeMessage(
-					err instanceof Error ? err.message : String(err)
-				)}`
+					err instanceof Error ? err.message : String(err),
+				)}`,
 			),
 		};
 	}
 };
 
 export const filterDuplicateCheckoutIdentities = (
-	checkouts: ManagedCheckout[]
+	checkouts: ManagedCheckout[],
 ): ManagedCheckoutScan => {
 	const counts = new Map<number, number>();
 	for (const checkout of checkouts) {
@@ -109,8 +109,8 @@ export const filterDuplicateCheckoutIdentities = (
 			blockedCheckoutReport(
 				checkout.name,
 				'duplicate-identity',
-				`Repository identity ${checkout.repositoryId} is used by more than one checkout.`
-			)
+				`Repository identity ${checkout.repositoryId} is used by more than one checkout.`,
+			),
 		);
 	}
 	return { checkouts: unique, reports };

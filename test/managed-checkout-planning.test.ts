@@ -37,7 +37,7 @@ const createManagedCheckout = (root: string, name: string, id: number, slug: str
 	const checkoutPath = createGitCheckout(root, name);
 	runGit(
 		['config', '--local', 'remote.origin.url', `https://github.com/${slug}.git`],
-		checkoutPath
+		checkoutPath,
 	);
 	runGit(['config', '--local', 'starsync.repository-id', String(id)], checkoutPath);
 	runGit(['config', '--local', 'starsync.repository-slug', slug], checkoutPath);

@@ -10,7 +10,7 @@ import { replaceAnomalousCheckout } from './staged-checkout.ts';
 type CheckoutReplacer = (
 	repository: StagedCheckoutReplacement,
 	targetBase: string,
-	options: { archiveOwnerId: number }
+	options: { archiveOwnerId: number },
 ) => Promise<ReplacedCheckout>;
 
 export interface ArchiveVerificationRepairOptions {
@@ -53,7 +53,7 @@ const candidateSlugs = (folderName: string): string[] => {
 
 const resolveCandidate = async (
 	slug: string,
-	resolveRepository: RepositoryResolver
+	resolveRepository: RepositoryResolver,
 ): Promise<null | ResolvedRepository> => {
 	const [owner, repository] = slug.split('/');
 	if (!owner || !repository) return null;
@@ -68,7 +68,7 @@ const resolveDamagedRepository = async (
 	entry: ArchiveEntry,
 	verified: VerifiedCheckout,
 	resolveRepository: RepositoryResolver,
-	claimedRepositoryIds: Set<number>
+	claimedRepositoryIds: Set<number>,
 ): Promise<ResolvedRepository> => {
 	const slugs = [
 		...(verified.repositorySlug === null ? [] : [verified.repositorySlug]),
@@ -90,19 +90,19 @@ const resolveDamagedRepository = async (
 	}
 	if (resolved.size === 0) {
 		throw new Error(
-			`Cannot resolve ${entry.name} to one canonical GitHub repository; the anomalous checkout was not removed.`
+			`Cannot resolve ${entry.name} to one canonical GitHub repository; the anomalous checkout was not removed.`,
 		);
 	}
 	if (resolved.size > 1) {
 		throw new Error(
-			`More than one GitHub repository matches ${entry.name}; the anomalous checkout was not removed.`
+			`More than one GitHub repository matches ${entry.name}; the anomalous checkout was not removed.`,
 		);
 	}
 	const repository = [...resolved.values()][0]!;
 	if (verified.repositoryId === null) {
 		if (claimedRepositoryIds.has(repository.id)) {
 			throw new Error(
-				`Repository identity ${repository.id} is already used by another checkout; ${entry.name} was not removed.`
+				`Repository identity ${repository.id} is already used by another checkout; ${entry.name} was not removed.`,
 			);
 		}
 		claimedRepositoryIds.add(repository.id);
@@ -114,14 +114,14 @@ export const repairAnomalousCheckout = async (
 	entry: ArchiveEntry,
 	verified: VerifiedCheckout,
 	options: ArchiveVerificationRepairOptions,
-	claimedRepositoryIds: Set<number>
+	claimedRepositoryIds: Set<number>,
 ): Promise<CheckoutRepairResult> => {
 	try {
 		const repository = await resolveDamagedRepository(
 			entry,
 			verified,
 			options.resolveRepository,
-			claimedRepositoryIds
+			claimedRepositoryIds,
 		);
 		const folderName = canonicalCheckoutName(repository.slug);
 		if (folderName === null)
@@ -135,7 +135,7 @@ export const repairAnomalousCheckout = async (
 				sourceFolderName: entry.name,
 			},
 			options.targetPath,
-			{ archiveOwnerId: options.archiveOwnerId }
+			{ archiveOwnerId: options.archiveOwnerId },
 		);
 		return {
 			cleanupWarning: replacement.cleanupWarning,

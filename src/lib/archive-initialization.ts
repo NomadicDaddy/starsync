@@ -60,7 +60,7 @@ const isInitializationTargetEmpty = (targetPath: string, held: HeldArchiveLock |
 
 export const initArchiveUnlocked = async (
 	options: InitArchiveOptions,
-	held: HeldArchiveLock | null
+	held: HeldArchiveLock | null,
 ): Promise<CommandReport> => {
 	const trimmedTarget = options.targetPath.trim();
 	if (!trimmedTarget) {
@@ -84,21 +84,21 @@ export const initArchiveUnlocked = async (
 			return initFailure(
 				targetPath,
 				'target-not-found',
-				`Initialization requires an existing empty directory: ${targetPath}`
+				`Initialization requires an existing empty directory: ${targetPath}`,
 			);
 		}
 		if (!isInitializationTargetEmpty(targetPath, held)) {
 			return initFailure(
 				targetPath,
 				'target-not-empty',
-				'Initialization requires an empty target directory.'
+				'Initialization requires an empty target directory.',
 			);
 		}
 	} catch (err) {
 		return initFailure(
 			targetPath,
 			'target-read-failed',
-			`Cannot inspect target directory: ${sanitizeMessage(getErrorMessage(err))}`
+			`Cannot inspect target directory: ${sanitizeMessage(getErrorMessage(err))}`,
 		);
 	}
 
@@ -110,7 +110,7 @@ export const initArchiveUnlocked = async (
 		return initFailure(
 			targetPath,
 			'github-authentication-failed',
-			`Cannot authenticate GitHub account: ${sanitizeMessage(getErrorMessage(err))}`
+			`Cannot authenticate GitHub account: ${sanitizeMessage(getErrorMessage(err))}`,
 		);
 	}
 	if (options.signal?.aborted) return interruptedReport(targetPath);
@@ -120,7 +120,7 @@ export const initArchiveUnlocked = async (
 			return initFailure(
 				targetPath,
 				'target-not-empty',
-				'The target directory changed during authentication and is no longer empty.'
+				'The target directory changed during authentication and is no longer empty.',
 			);
 		}
 		writeArchiveConfig(targetPath, owner, held?.lockPath);
@@ -128,7 +128,7 @@ export const initArchiveUnlocked = async (
 		return initFailure(
 			targetPath,
 			'archive-config-write-failed',
-			`Cannot initialize archive: ${sanitizeMessage(getErrorMessage(err))}`
+			`Cannot initialize archive: ${sanitizeMessage(getErrorMessage(err))}`,
 		);
 	}
 
@@ -140,7 +140,7 @@ export const initArchiveUnlocked = async (
 			createFinding(
 				'info',
 				'archive-initialized',
-				`Initialized archive format ${CURRENT_ARCHIVE_FORMAT} for GitHub account ${owner.login} (identity ${owner.id}).`
+				`Initialized archive format ${CURRENT_ARCHIVE_FORMAT} for GitHub account ${owner.login} (identity ${owner.id}).`,
 			),
 		],
 		targetPath,

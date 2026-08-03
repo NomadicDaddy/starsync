@@ -43,7 +43,7 @@ const createCheckout = (root: string): string => {
 	run(['git', 'commit', '-m', 'initial'], checkout);
 	run(
 		['git', 'remote', 'add', 'origin', 'https://github.com/old-owner/repository.git'],
-		checkout
+		checkout,
 	);
 	run(['git', 'config', '--local', 'starsync.repository-id', '42'], checkout);
 	run(['git', 'config', '--local', 'starsync.repository-slug', 'old-owner/repository'], checkout);
@@ -76,7 +76,7 @@ const failAfterMutation = (boundary: number, afterFailure?: () => void): Checkou
 
 const pendingRename = (
 	repositorySlug = 'new-owner/repository',
-	proposedName = 'repository--new-owner'
+	proposedName = 'repository--new-owner',
 ): CheckoutReport => ({
 	findings: [],
 	lifecycle: 'active',
@@ -110,8 +110,8 @@ describe('checkout state transitions', () => {
 					transitionCheckoutState(
 						checkout,
 						{ repositoryId: 42, repositorySlug: 'new-owner/repository' },
-						failAfterMutation(boundary)
-					)
+						failAfterMutation(boundary),
+					),
 				).rejects.toThrow(`injected failure after mutation ${boundary}`);
 				expect(readLabels(checkout)).toEqual({
 					id: '42',
@@ -145,10 +145,10 @@ describe('checkout state transitions', () => {
 				transitionCheckoutState(
 					checkout,
 					{ repositoryId: 42, repositorySlug: 'new-owner/repository' },
-					runner
-				)
+					runner,
+				),
 			).rejects.toThrow(
-				/injected original slug failure.*Rollback also failed.*rollback origin/
+				/injected original slug failure.*Rollback also failed.*rollback origin/,
 			);
 			expect(readLabels(checkout)).toEqual({
 				id: '42',
@@ -186,7 +186,7 @@ describe('checkout state transitions', () => {
 				transitionCheckoutState(checkout, {
 					repositoryId: 84,
 					repositorySlug: 'new-owner/repository',
-				})
+				}),
 			).rejects.toThrow('Cannot change a managed checkout stable repository identity.');
 			expect(readLabels(checkout)).toEqual({
 				id: '42',
@@ -210,12 +210,12 @@ describe('checkout folder compensation', () => {
 				[archiveEntry(checkout)],
 				{
 					runGit: failAfterMutation(1),
-				}
+				},
 			);
 
 			expect(result.applied).toBe(false);
 			expect(result.report.findings[0]?.message).toContain(
-				'injected failure after mutation 1'
+				'injected failure after mutation 1',
 			);
 			expect(existsSync(checkout)).toBe(true);
 			expect(existsSync(path.join(target, 'repository--new-owner'))).toBe(false);
@@ -233,12 +233,12 @@ describe('checkout folder compensation', () => {
 				target,
 				pendingRename('Old-Owner/repository', 'repository--Old-Owner'),
 				[archiveEntry(checkout)],
-				{ runGit: failAfterMutation(1) }
+				{ runGit: failAfterMutation(1) },
 			);
 
 			expect(result.applied).toBe(false);
 			expect(result.report.findings[0]?.message).toContain(
-				'injected failure after mutation 1'
+				'injected failure after mutation 1',
 			);
 			expect(readdirSync(target)).toEqual(['repository--old-owner']);
 			expect(readLabels(checkout).slug).toBe('old-owner/repository');
@@ -261,7 +261,7 @@ describe('checkout folder compensation', () => {
 						mkdirSync(checkout);
 						writeFileSync(marker, 'preserve');
 					}),
-				}
+				},
 			);
 			const movedCheckout = path.join(target, 'repository--new-owner');
 

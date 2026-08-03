@@ -25,7 +25,7 @@ const countCollisions = (entries: ResolvedRenameEntry[]): CollisionCounts => {
 const collisionReport = (
 	entry: ArchiveEntry,
 	preview: RenamePreview,
-	duplicateIdentity: boolean
+	duplicateIdentity: boolean,
 ): CheckoutReport => ({
 	findings: [
 		createFinding(
@@ -33,7 +33,7 @@ const collisionReport = (
 			duplicateIdentity ? 'duplicate-identity' : 'rename-name-collision',
 			duplicateIdentity
 				? `Repository identity ${preview.repositoryId} is resolved by more than one checkout.`
-				: `Proposed folder ${preview.proposedName} collides with another archive entry.`
+				: `Proposed folder ${preview.proposedName} collides with another archive entry.`,
 		),
 	],
 	lifecycle: 'blocked',
@@ -46,7 +46,7 @@ const collisionReport = (
 const blockedReport = (
 	entry: ArchiveEntry,
 	preview: RenamePreview,
-	blockedReason: string
+	blockedReason: string,
 ): CheckoutReport => ({
 	findings: [createFinding('error', 'rename-blocked', blockedReason)],
 	lifecycle: 'blocked',
@@ -66,12 +66,12 @@ const readyReport = (resolved: ResolvedRenameEntry): CheckoutReport => {
 				? createFinding(
 						'warning',
 						'rename-pending',
-						`Checkout would become ${preview.proposedName}.`
+						`Checkout would become ${preview.proposedName}.`,
 					)
 				: createFinding(
 						'info',
 						'rename-current',
-						'Checkout identity, origin, and folder are current.'
+						'Checkout identity, origin, and folder are current.',
 					),
 		],
 		lifecycle: 'active',
@@ -86,7 +86,7 @@ const readyReport = (resolved: ResolvedRenameEntry): CheckoutReport => {
 const classifyEntry = (
 	resolved: ResolvedRenameEntry,
 	counts: CollisionCounts,
-	allEntryNames: Set<string>
+	allEntryNames: Set<string>,
 ): CheckoutReport => {
 	const { blockedReason, entry, preview } = resolved;
 	const repositoryId = preview.repositoryId!;
@@ -103,7 +103,7 @@ const classifyEntry = (
 
 export const classifyResolvedRenames = (
 	resolvedEntries: ResolvedRenameEntry[],
-	allEntries: ArchiveEntry[]
+	allEntries: ArchiveEntry[],
 ): CheckoutReport[] => {
 	const counts = countCollisions(resolvedEntries);
 	const names = new Set(allEntries.map((entry) => normalizeFolderName(entry.name)));

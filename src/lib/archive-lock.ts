@@ -88,7 +88,7 @@ const isSoleArchiveLock = (targetPath: string): boolean => {
 const createLockFile = (
 	lockPath: string,
 	command: Subcommand,
-	runtime: ArchiveLockRuntime
+	runtime: ArchiveLockRuntime,
 ): { metadata: ArchiveLockMetadata; raw: string } => {
 	const metadata: ArchiveLockMetadata = {
 		command,
@@ -118,7 +118,7 @@ const createLockFile = (
 export const removeArchiveLock = (
 	targetPath: string,
 	expectedRaw: string,
-	cleanupMetadataDirectory: boolean
+	cleanupMetadataDirectory: boolean,
 ): ArchiveLockRemoval => {
 	const lockPath = getArchiveLockPath(targetPath);
 	let currentRaw: string;
@@ -159,7 +159,7 @@ export const removeArchiveLock = (
 export const acquireArchiveLock = (
 	targetPath: string,
 	command: Subcommand,
-	runtime: ArchiveLockRuntime = createArchiveLockRuntime()
+	runtime: ArchiveLockRuntime = createArchiveLockRuntime(),
 ): ArchiveLockAcquisition => {
 	const resolvedTarget = path.resolve(targetPath);
 	const metadataDirectory = path.join(resolvedTarget, '.starsync');
@@ -282,7 +282,7 @@ export const releaseArchiveLock = (held: HeldArchiveLock): ArchiveLockRemoval =>
 	removeArchiveLock(
 		path.dirname(path.dirname(held.lockPath)),
 		held.raw,
-		held.cleanupMetadataDirectory
+		held.cleanupMetadataDirectory,
 	);
 
 export { createArchiveLockRuntime, describeArchiveLock } from './archive-lock-metadata.ts';

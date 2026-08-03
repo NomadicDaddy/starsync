@@ -20,7 +20,7 @@ const interruptedReports = (remaining: CheckoutReport[]): CheckoutReport[] =>
 			createFinding(
 				'warning',
 				'interrupted-before-apply',
-				'Checkout rename was not applied because interruption was requested.'
+				'Checkout rename was not applied because interruption was requested.',
 			),
 		],
 		outcome: 'skipped',
@@ -30,7 +30,7 @@ const applyPreview = async (
 	targetPath: string,
 	preview: RenameResult,
 	entries: ReturnType<typeof inspectArchive>['entries'],
-	options: RenameOptions
+	options: RenameOptions,
 ): Promise<AppliedPreview> => {
 	const reports: CheckoutReport[] = [];
 	let complete = true;
@@ -40,7 +40,7 @@ const applyPreview = async (
 			return { complete: false, interrupted: true, reports };
 		}
 		options.onProgress?.(
-			`Applying ${index + 1}/${preview.checkouts.length} — ${checkout.name}`
+			`Applying ${index + 1}/${preview.checkouts.length} — ${checkout.name}`,
 		);
 		const applied = await applyCheckoutRename(targetPath, checkout, entries);
 		reports.push(applied.report);
@@ -54,7 +54,7 @@ const completionFinding = (applied: AppliedPreview): Finding => {
 		return createFinding(
 			'warning',
 			'interrupted',
-			'Rename was interrupted; completed checkout updates were preserved.'
+			'Rename was interrupted; completed checkout updates were preserved.',
 		);
 	}
 	return applied.complete
@@ -62,7 +62,7 @@ const completionFinding = (applied: AppliedPreview): Finding => {
 		: createFinding(
 				'error',
 				'rename-partial',
-				'Rename is incomplete; successful checkout updates were preserved.'
+				'Rename is incomplete; successful checkout updates were preserved.',
 			);
 };
 
@@ -76,7 +76,7 @@ const createResult = (preview: RenameResult, applied: AppliedPreview): RenameRes
 export const applyArchiveRenames = async (
 	targetPath: string,
 	resolver: RepositoryResolver,
-	options: RenameOptions = {}
+	options: RenameOptions = {},
 ): Promise<RenameResult> => {
 	const inspection = inspectArchive(targetPath);
 	const preview = await previewArchiveRenames(targetPath, resolver, options, inspection);

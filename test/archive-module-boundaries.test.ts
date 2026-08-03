@@ -16,7 +16,7 @@ const archiveApiImplementationFiles = readdirSync(new URL('../src/lib/', import.
 		(fileName) =>
 			fileName.startsWith('archive-api-') &&
 			fileName.endsWith('.ts') &&
-			fileName !== 'archive-api-contract.ts'
+			fileName !== 'archive-api-contract.ts',
 	)
 	.map((fileName) => `src/lib/${fileName}`);
 const internalDeclarations = {
@@ -81,7 +81,7 @@ describe('archive module facades', () => {
 			const source = readSource(relativePath);
 			for (const symbol of symbols) {
 				expect(source).not.toMatch(
-					new RegExp(`\\bexport\\s+(?:const|type)\\s+${symbol}\\b`)
+					new RegExp(`\\bexport\\s+(?:const|type)\\s+${symbol}\\b`),
 				);
 			}
 		}
@@ -110,14 +110,14 @@ describe('archive module facades', () => {
 	if (value > 8) result++;
 	if (value > 9) result++;
 	return result;
-};\n`
+};\n`,
 			);
 
 			const result = runSourceShapeGate(root);
 			const stderr = result.stderr?.toString() ?? '';
 			expect(result.exitCode).toBe(1);
 			expect(stderr).toContain(
-				'src/lib/previously-unlisted.ts: overLimit at line 1 has complexity 11 (maximum 10)'
+				'src/lib/previously-unlisted.ts: overLimit at line 1 has complexity 11 (maximum 10)',
 			);
 		} finally {
 			rmSync(root, { force: true, recursive: true });

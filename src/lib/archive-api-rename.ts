@@ -33,7 +33,7 @@ const prepareContext = (options: RenameArchiveOptions): CommandReport | RenameCo
 			'rename',
 			targetPath,
 			'GITHUB_TOKEN is required to resolve repositories.',
-			!apply
+			!apply,
 		);
 	}
 	return { apply, targetPath };
@@ -41,7 +41,7 @@ const prepareContext = (options: RenameArchiveOptions): CommandReport | RenameCo
 
 const verifyApplyOwner = async (
 	targetPath: string,
-	token: string
+	token: string,
 ): Promise<CommandReport | null> => {
 	const configured = readArchiveConfig(targetPath).owner;
 	const authenticated = await getAuthenticatedArchiveOwner(token);
@@ -51,13 +51,13 @@ const verifyApplyOwner = async (
 				'rename',
 				targetPath,
 				'archive-owner-mismatch',
-				`Archive belongs to GitHub account ${configured.login} (identity ${configured.id}), but the authenticated account is ${authenticated.login} (identity ${authenticated.id}).`
+				`Archive belongs to GitHub account ${configured.login} (identity ${configured.id}), but the authenticated account is ${authenticated.login} (identity ${authenticated.id}).`,
 			);
 };
 
 const validateApplication = async (
 	context: RenameContext,
-	token: string
+	token: string,
 ): Promise<CommandReport | null> => {
 	if (!context.apply) return null;
 	const finding = getArchiveModificationFinding(context.targetPath);
@@ -74,7 +74,7 @@ const validateApplication = async (
 
 const executeRename = async (
 	options: RenameArchiveOptions,
-	context: RenameContext
+	context: RenameContext,
 ): Promise<CommandReport> => {
 	const renameOptions: RenameOptions = {
 		isInterruptionRequested: () => options.signal?.aborted ?? false,
@@ -101,11 +101,11 @@ const failureReport = (context: RenameContext, err: unknown): CommandReport =>
 		context.targetPath,
 		context.apply ? 'rename-apply-failed' : 'rename-preview-failed',
 		`Rename ${context.apply ? 'application' : 'preview'} failed: ${sanitizeMessage(getErrorMessage(err))}`,
-		!context.apply
+		!context.apply,
 	);
 
 export const renameArchiveUnlocked = async (
-	options: RenameArchiveOptions
+	options: RenameArchiveOptions,
 ): Promise<CommandReport> => {
 	const context = prepareContext(options);
 	if ('command' in context) return context;
@@ -113,7 +113,7 @@ export const renameArchiveUnlocked = async (
 	options.onProgress?.(
 		context.apply
 			? 'Applying canonical checkout renames.'
-			: 'Rename preview is read-only; no archive data will be changed.'
+			: 'Rename preview is read-only; no archive data will be changed.',
 	);
 	try {
 		const validation = await validateApplication(context, options.token);

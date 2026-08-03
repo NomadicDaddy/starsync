@@ -33,7 +33,7 @@ const runClone = async (
 	stagingName: string,
 	targetBase: string,
 	recovery: GitRecovery,
-	excludeUnrepresentable: boolean
+	excludeUnrepresentable: boolean,
 ): Promise<void> => {
 	if (!excludeUnrepresentable) {
 		await runGit(['clone', cloneUrl, stagingName], { cwd: targetBase, env: recovery.env });
@@ -59,7 +59,7 @@ const runClone = async (
 export const cloneManagedCheckout = async (
 	cloneUrl: string,
 	stagingName: string,
-	targetBase: string
+	targetBase: string,
 ): Promise<void> => {
 	let recovery = NO_RECOVERY;
 	let excludeUnrepresentable = false;

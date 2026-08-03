@@ -37,27 +37,27 @@ const failedCheckout = (entry: ArchiveEntry, code: string, message: string): Che
 });
 
 const parseResolvableOrigin = (
-	entry: ArchiveEntry
+	entry: ArchiveEntry,
 ): { owner: string; repository: string } | CheckoutReport => {
 	if (!entry.isGitCheckout) {
 		return failedCheckout(
 			entry,
 			'unrelated-archive-entry',
-			'Archive entry is not a Git checkout.'
+			'Archive entry is not a Git checkout.',
 		);
 	}
 	if (entry.gitError || !entry.origin) {
 		return failedCheckout(
 			entry,
 			'origin-unverifiable',
-			`Cannot read remote.origin.url${entry.gitError ? `: ${entry.gitError}` : '.'}`
+			`Cannot read remote.origin.url${entry.gitError ? `: ${entry.gitError}` : '.'}`,
 		);
 	}
 	if (hasEmbeddedCredentials(entry.origin)) {
 		return failedCheckout(
 			entry,
 			'credential-bearing-origin',
-			`Remote origin contains embedded credentials: ${sanitizeUrl(entry.origin)}`
+			`Remote origin contains embedded credentials: ${sanitizeUrl(entry.origin)}`,
 		);
 	}
 	const slug = isGitHubDotComUrl(entry.origin) ? parseGitHubRepositorySlug(entry.origin) : null;
@@ -68,7 +68,7 @@ const parseResolvableOrigin = (
 			'invalid-origin',
 			isGitHubDotComUrl(entry.origin)
 				? `Cannot parse a GitHub repository slug from ${sanitizeUrl(entry.origin)}`
-				: `Remote origin is not GitHub.com: ${sanitizeUrl(entry.origin)}`
+				: `Remote origin is not GitHub.com: ${sanitizeUrl(entry.origin)}`,
 		)
 	);
 };
@@ -86,7 +86,7 @@ const isValidRepository = (repository: ResolvedRepository): boolean =>
 const resolveRepository = async (
 	entry: ArchiveEntry,
 	slug: { owner: string; repository: string },
-	resolver: RepositoryResolver
+	resolver: RepositoryResolver,
 ): Promise<CheckoutReport | ResolvedRepository> => {
 	try {
 		const repository = await resolver(slug.owner, slug.repository);
@@ -95,19 +95,19 @@ const resolveRepository = async (
 			: failedCheckout(
 					entry,
 					'invalid-repository-identity',
-					'Repository identity response contains invalid or inconsistent fields.'
+					'Repository identity response contains invalid or inconsistent fields.',
 				);
 	} catch (err) {
 		return failedCheckout(
 			entry,
 			'identity-resolution-failed',
-			`Cannot resolve repository identity: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`
+			`Cannot resolve repository identity: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`,
 		);
 	}
 };
 
 const readIdentity = async (
-	entry: ArchiveEntry
+	entry: ArchiveEntry,
 ): Promise<CheckoutReport | NonNullable<Awaited<ReturnType<typeof readCheckoutIdentity>>>> => {
 	try {
 		const identity = await readCheckoutIdentity(entry.path);
@@ -116,14 +116,14 @@ const readIdentity = async (
 			failedCheckout(
 				entry,
 				'missing-identity-metadata',
-				'Format-2 checkouts must already contain stable repository identity metadata.'
+				'Format-2 checkouts must already contain stable repository identity metadata.',
 			)
 		);
 	} catch (err) {
 		return failedCheckout(
 			entry,
 			'invalid-identity-metadata',
-			`Cannot read managed checkout identity: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`
+			`Cannot read managed checkout identity: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`,
 		);
 	}
 };
@@ -144,7 +144,7 @@ const inspectBlockedReason = async (entry: ArchiveEntry): Promise<null | string>
 
 export const resolveRenameEntry = async (
 	entry: ArchiveEntry,
-	resolver: RepositoryResolver
+	resolver: RepositoryResolver,
 ): Promise<CheckoutReport | ResolvedRenameEntry> => {
 	const originSlug = parseResolvableOrigin(entry);
 	if ('outcome' in originSlug) return originSlug;
@@ -156,7 +156,7 @@ export const resolveRenameEntry = async (
 		return failedCheckout(
 			entry,
 			'repository-identity-mismatch',
-			`Stored repository identity ${identity.repositoryId} does not match resolved identity ${repository.id}.`
+			`Stored repository identity ${identity.repositoryId} does not match resolved identity ${repository.id}.`,
 		);
 	}
 	const proposedName = `${repository.name}--${repository.owner}`;

@@ -32,7 +32,7 @@ export const invalidTargetReport = (command: CommandReport['command']): CommandR
 export const interruptedReport = (
 	command: CommandReport['command'],
 	targetPath: string,
-	dryRun = false
+	dryRun = false,
 ): CommandReport =>
 	createCommandReport({
 		command,
@@ -49,7 +49,7 @@ export const missingTokenReport = (
 	command: 'rename' | 'sync' | 'verify',
 	targetPath: string,
 	message: string,
-	dryRun = false
+	dryRun = false,
 ): CommandReport =>
 	createCommandReport({
 		command,
@@ -64,7 +64,7 @@ export const operationFailureReport = (
 	targetPath: string,
 	code: string,
 	message: string,
-	dryRun = false
+	dryRun = false,
 ): CommandReport =>
 	createCommandReport({
 		command,
@@ -101,7 +101,7 @@ const refreshFinding = (result: RefreshResult): Finding[] => {
 			return refreshIssue(
 				'error',
 				'checkout-blocked',
-				withDefault(result.message, 'Local state would be overwritten.')
+				withDefault(result.message, 'Local state would be overwritten.'),
 			);
 		case 'current':
 			return [
@@ -112,19 +112,19 @@ const refreshFinding = (result: RefreshResult): Finding[] => {
 			return refreshIssue(
 				'error',
 				'git-operation-failed',
-				withDefault(result.message, 'Unknown Git error.')
+				withDefault(result.message, 'Unknown Git error.'),
 			);
 		case 'retained':
 			return refreshIssue(
 				'info',
 				'checkout-retained',
-				'Checkout is no longer starred and was retained.'
+				'Checkout is no longer starred and was retained.',
 			);
 		case 'skipped':
 			return refreshIssue(
 				'warning',
 				'operation-skipped',
-				withDefault(result.message, 'Operation was skipped.')
+				withDefault(result.message, 'Operation was skipped.'),
 			);
 	}
 };
@@ -156,7 +156,7 @@ export const reportRefreshResult = (result: RefreshResult, targetBase: string): 
 
 export const maintainCheckoutArchiveDate = async (
 	report: CheckoutReport,
-	targetPath: string
+	targetPath: string,
 ): Promise<CheckoutReport> => {
 	if (!['added', 'current', 'updated'].includes(report.outcome)) return report;
 	try {
@@ -171,7 +171,7 @@ export const maintainCheckoutArchiveDate = async (
 				createFinding(
 					'info',
 					'archive-date-updated',
-					`Folder timestamp was set to Archive Date ${state.archiveDate.toISOString()}.`
+					`Folder timestamp was set to Archive Date ${state.archiveDate.toISOString()}.`,
 				),
 			],
 		};
@@ -183,7 +183,7 @@ export const maintainCheckoutArchiveDate = async (
 				createFinding(
 					'error',
 					'archive-date-update-failed',
-					`Git operation succeeded, but the folder timestamp could not be aligned with its Archive Date: ${sanitizeMessage(getErrorMessage(err))}`
+					`Git operation succeeded, but the folder timestamp could not be aligned with its Archive Date: ${sanitizeMessage(getErrorMessage(err))}`,
 				),
 			],
 		};
@@ -195,7 +195,7 @@ export const createInterruptedCheckout = (
 	lifecycle: CheckoutReport['lifecycle'],
 	code: string,
 	message: string,
-	pendingRename: boolean
+	pendingRename: boolean,
 ): CheckoutReport => ({
 	findings: [createFinding('warning', code, message)],
 	lifecycle,

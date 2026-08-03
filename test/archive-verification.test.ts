@@ -28,7 +28,7 @@ const createRepository = (
 	root: string,
 	name: string,
 	origin: string,
-	identity?: { id: number; slug: string }
+	identity?: { id: number; slug: string },
 ): string => {
 	const checkout = path.join(root, name);
 	mkdirSync(checkout);
@@ -50,13 +50,13 @@ const writeArchiveConfig = (root: string, owner: unknown): void => {
 	mkdirSync(path.join(root, '.starsync'));
 	writeFileSync(
 		path.join(root, '.starsync', 'config.json'),
-		JSON.stringify({ archiveFormat: 2, owner })
+		JSON.stringify({ archiveFormat: 2, owner }),
 	);
 };
 
 const verify = (
 	target: string,
-	options: { force?: boolean } = {}
+	options: { force?: boolean } = {},
 ): { report: CommandReport; status: number; stderr: string } => {
 	const result = Bun.spawnSync({
 		cmd: [
@@ -87,7 +87,7 @@ describe('archive verification process boundary', () => {
 				target,
 				'repo--owner',
 				'https://github.com/owner/repo.git',
-				{ id: 123, slug: 'owner/repo' }
+				{ id: 123, slug: 'owner/repo' },
 			);
 			writeArchiveConfig(target, { id: 7, login: 'archive-owner' });
 			const namesBefore = readdirSync(target).sort();
@@ -100,7 +100,7 @@ describe('archive verification process boundary', () => {
 			expect(result.report.exitCode).toBe(0);
 			expect(result.report.checkouts[0]?.outcome).toBe('current');
 			expect(
-				result.report.findings.some((finding) => finding.code === 'archive-owner-bound')
+				result.report.findings.some((finding) => finding.code === 'archive-owner-bound'),
 			).toBe(true);
 			expect(readdirSync(target).sort()).toEqual(namesBefore);
 			expect(readFileSync(path.join(checkout, '.git', 'config'), 'utf-8')).toBe(configBefore);
@@ -133,7 +133,7 @@ describe('archive verification process boundary', () => {
 					expect.objectContaining({
 						code: 'pending-rename',
 						message: `Checkout folder should be named ${identity.canonicalName}.`,
-					})
+					}),
 				);
 			} finally {
 				rmSync(target, { force: true, recursive: true });
@@ -148,7 +148,7 @@ describe('archive verification process boundary', () => {
 				target,
 				'repo--owner',
 				'https://github.com/owner/repo.git',
-				{ id: 123, slug: 'owner/repo' }
+				{ id: 123, slug: 'owner/repo' },
 			);
 			writeArchiveConfig(target, { id: 7, login: 'archive-owner' });
 			const configBefore = readFileSync(path.join(checkout, '.git', 'config'));
@@ -177,8 +177,9 @@ describe('archive verification process boundary', () => {
 			expect(
 				checkout?.findings.some(
 					(finding) =>
-						finding.code === 'missing-identity-metadata' && finding.severity === 'error'
-				)
+						finding.code === 'missing-identity-metadata' &&
+						finding.severity === 'error',
+				),
 			).toBe(true);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
@@ -192,13 +193,13 @@ describe('archive verification process boundary', () => {
 				target,
 				'first--owner',
 				'https://github.com/owner/first.git',
-				{ id: 42, slug: 'owner/first' }
+				{ id: 42, slug: 'owner/first' },
 			);
 			createRepository(
 				target,
 				'second--owner',
 				'https://user:secret@github.com/owner/second.git',
-				{ id: 42, slug: 'owner/second' }
+				{ id: 42, slug: 'owner/second' },
 			);
 			createRepository(target, 'third--owner', 'https://github.com/owner/third/issues', {
 				id: 43,
@@ -209,7 +210,7 @@ describe('archive verification process boundary', () => {
 
 			const result = verify(target);
 			const findingCodes = result.report.checkouts.flatMap((checkout) =>
-				checkout.findings.map((finding) => finding.code)
+				checkout.findings.map((finding) => finding.code),
 			);
 
 			expect(result.status).toBe(1);
@@ -230,12 +231,12 @@ describe('archive verification process boundary', () => {
 				target,
 				'repo--owner',
 				'https://github.com/owner/repo.git',
-				{ id: 123, slug: 'owner/repo' }
+				{ id: 123, slug: 'owner/repo' },
 			);
 			writeArchiveConfig(target, { id: 7, login: 'archive-owner' });
 			const objectFile = run(['git', 'rev-parse', '--git-path', 'objects'], checkout);
 			const objectDirectories = readdirSync(path.join(checkout, objectFile)).filter(
-				(name) => name.length === 2 && name !== 'info' && name !== 'pack'
+				(name) => name.length === 2 && name !== 'info' && name !== 'pack',
 			);
 			const objectDirectory = path.join(checkout, objectFile, objectDirectories[0]!);
 			const objectName = readdirSync(objectDirectory)[0]!;
@@ -246,8 +247,8 @@ describe('archive verification process boundary', () => {
 			expect(result.status).toBe(1);
 			expect(
 				result.report.checkouts[0]?.findings.some(
-					(finding) => finding.code === 'git-integrity-failed'
-				)
+					(finding) => finding.code === 'git-integrity-failed',
+				),
 			).toBe(true);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
@@ -260,7 +261,7 @@ describe('archive verification process boundary', () => {
 			createRepository(target, 'repo', 'https://github.com/owner/repo.git');
 			writeArchiveConfig(target, { id: 7, login: 'archive-owner' });
 			const moduleUrl = pathToFileURL(
-				path.join(projectRoot, 'src', 'lib', 'archive-verification.ts')
+				path.join(projectRoot, 'src', 'lib', 'archive-verification.ts'),
 			).href;
 			const script =
 				`import { verifyArchive } from ${JSON.stringify(moduleUrl)};` +

@@ -32,7 +32,7 @@ const createTarget = (name: string): string => {
 const createRuntime = (
 	hostname: string,
 	pid: number,
-	processState: ArchiveLockRuntime['getProcessState']
+	processState: ArchiveLockRuntime['getProcessState'],
 ): ArchiveLockRuntime => ({
 	createLockId: () => `${hostname}-${pid}`,
 	getProcessState: processState,
@@ -66,7 +66,7 @@ describe('archive operation locking', () => {
 		const contender = acquireArchiveLock(
 			target,
 			'verify',
-			createRuntime('PORTABLE-HOST', 202, () => 'alive')
+			createRuntime('PORTABLE-HOST', 202, () => 'alive'),
 		);
 		expect(contender.ok).toBe(false);
 		if (contender.ok) throw new Error('Expected the live lock to block acquisition.');
@@ -85,7 +85,7 @@ describe('archive operation locking', () => {
 			const stale = acquireArchiveLock(
 				target,
 				'dates',
-				createRuntime(hostname, 303, () => 'alive')
+				createRuntime(hostname, 303, () => 'alive'),
 			);
 			expect(stale.ok).toBe(true);
 			if (!stale.ok) throw new Error(stale.message);
@@ -93,7 +93,7 @@ describe('archive operation locking', () => {
 			const liveContender = acquireArchiveLock(
 				target,
 				'verify',
-				createRuntime(hostname, 404, () => 'alive')
+				createRuntime(hostname, 404, () => 'alive'),
 			);
 			expect(liveContender.ok).toBe(false);
 			if (liveContender.ok) throw new Error('Expected the live lock to block acquisition.');
@@ -102,7 +102,7 @@ describe('archive operation locking', () => {
 			const replacement = acquireArchiveLock(
 				target,
 				'verify',
-				createRuntime(hostname, 404, () => 'dead')
+				createRuntime(hostname, 404, () => 'dead'),
 			);
 			expect(replacement.ok).toBe(true);
 			if (!replacement.ok) throw new Error(replacement.message);
@@ -120,7 +120,7 @@ describe('archive operation locking', () => {
 			const remote = acquireArchiveLock(
 				target,
 				'rename',
-				createRuntime('remote-host', 505, () => 'alive')
+				createRuntime('remote-host', 505, () => 'alive'),
 			);
 			expect(remote.ok).toBe(true);
 			if (!remote.ok) throw new Error(remote.message);
@@ -138,7 +138,7 @@ describe('archive operation locking', () => {
 					onProgress: (message) => progress.push(message),
 					targetPath: target,
 				},
-				localRuntime
+				localRuntime,
 			);
 			expect(progress[0]).toContain('WARNING: Lock owner is remote');
 			expect(forced.exitCode).toBe(0);
@@ -176,7 +176,8 @@ describe('archive operation locking', () => {
 		expect(contender.code).toBe('archive-lock-force-required');
 		expect(unlockArchiveWithRuntime({ targetPath: target }, uncertainRuntime).exitCode).toBe(1);
 		expect(
-			unlockArchiveWithRuntime({ force: true, targetPath: target }, uncertainRuntime).exitCode
+			unlockArchiveWithRuntime({ force: true, targetPath: target }, uncertainRuntime)
+				.exitCode,
 		).toBe(0);
 	});
 
@@ -195,7 +196,7 @@ describe('archive operation locking', () => {
 		const acquisition = acquireArchiveLock(
 			target,
 			'verify',
-			createRuntime(os.hostname(), process.pid, () => 'alive')
+			createRuntime(os.hostname(), process.pid, () => 'alive'),
 		);
 		expect(acquisition.ok).toBe(true);
 		if (!acquisition.ok) throw new Error(acquisition.message);

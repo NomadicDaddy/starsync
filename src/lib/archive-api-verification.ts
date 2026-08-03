@@ -36,7 +36,7 @@ const prepareVerifyContext = (options: VerifyArchiveOptions): CommandReport | Ve
 		return missingTokenReport(
 			'verify',
 			targetPath,
-			'GITHUB_TOKEN is required to resolve and re-clone damaged repositories.'
+			'GITHUB_TOKEN is required to resolve and re-clone damaged repositories.',
 		);
 	}
 	return { force, targetPath, token };
@@ -44,7 +44,7 @@ const prepareVerifyContext = (options: VerifyArchiveOptions): CommandReport | Ve
 
 const prepareForcedRepair = async (
 	targetPath: string,
-	token: string
+	token: string,
 ): Promise<ArchiveVerificationRepairOptions | CommandReport> => {
 	const modificationFinding = getArchiveModificationFinding(targetPath);
 	if (modificationFinding !== null) {
@@ -62,7 +62,7 @@ const prepareForcedRepair = async (
 			'verify',
 			targetPath,
 			'archive-owner-mismatch',
-			`Archive belongs to GitHub account ${configuredOwner.login} (identity ${configuredOwner.id}), but the authenticated account is ${authenticatedOwner.login} (identity ${authenticatedOwner.id}).`
+			`Archive belongs to GitHub account ${configuredOwner.login} (identity ${configuredOwner.id}), but the authenticated account is ${authenticatedOwner.login} (identity ${authenticatedOwner.id}).`,
 		);
 	}
 	return {
@@ -75,7 +75,7 @@ const prepareForcedRepair = async (
 const runVerification = async (
 	options: VerifyArchiveOptions,
 	context: VerifyContext,
-	held: HeldArchiveLock | null
+	held: HeldArchiveLock | null,
 ): Promise<CommandReport> => {
 	const repair = context.force
 		? await prepareForcedRepair(context.targetPath, context.token)
@@ -103,7 +103,7 @@ const runVerification = async (
 
 export const verifyArchiveUnlocked = async (
 	options: VerifyArchiveOptions,
-	held: HeldArchiveLock | null
+	held: HeldArchiveLock | null,
 ): Promise<CommandReport> => {
 	const context = prepareVerifyContext(options);
 	if ('command' in context) return context;
@@ -111,7 +111,7 @@ export const verifyArchiveUnlocked = async (
 	options.onProgress?.(
 		context.force
 			? 'Forced recovery is enabled; damaged or locally modified checkouts will be replaced with validated fresh clones.'
-			: 'Verification is read-only; no archive data will be changed.'
+			: 'Verification is read-only; no archive data will be changed.',
 	);
 	try {
 		return await runVerification(options, context, held);
@@ -120,7 +120,7 @@ export const verifyArchiveUnlocked = async (
 			'verify',
 			context.targetPath,
 			'archive-verification-failed',
-			`Archive verification failed: ${sanitizeMessage(getErrorMessage(err))}`
+			`Archive verification failed: ${sanitizeMessage(getErrorMessage(err))}`,
 		);
 	}
 };

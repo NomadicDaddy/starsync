@@ -34,7 +34,7 @@ const invalidInspectionResult = (inspection: ArchiveInspection): RenameResult =>
 const resolveEntries = async (
 	inspection: ArchiveInspection,
 	resolver: RepositoryResolver,
-	options: RenameOptions
+	options: RenameOptions,
 ): Promise<EntryResult[]> => {
 	const results: EntryResult[] = new Array(inspection.entries.length);
 	let nextIndex = 0;
@@ -44,7 +44,7 @@ const resolveEntries = async (
 			if (index >= inspection.entries.length) return;
 			const entry = inspection.entries[index]!;
 			options.onProgress?.(
-				`Inspecting ${index + 1}/${inspection.entries.length} — ${entry.name}`
+				`Inspecting ${index + 1}/${inspection.entries.length} — ${entry.name}`,
 			);
 			results[index] = await resolveRenameEntry(entry, resolver);
 		}
@@ -59,7 +59,7 @@ const interruptedReport = (entry: ArchiveEntry): CheckoutReport => ({
 		createFinding(
 			'warning',
 			'interrupted-before-inspection',
-			'Checkout was not inspected because interruption was requested.'
+			'Checkout was not inspected because interruption was requested.',
 		),
 	],
 	lifecycle: entry.isGitCheckout ? 'active' : null,
@@ -70,16 +70,16 @@ const interruptedReport = (entry: ArchiveEntry): CheckoutReport => ({
 
 const createRenameResult = (
 	inspection: ArchiveInspection,
-	results: EntryResult[]
+	results: EntryResult[],
 ): RenameResult => {
 	const immediate = results.filter(
-		(result): result is CheckoutReport => result !== undefined && !('preview' in result)
+		(result): result is CheckoutReport => result !== undefined && !('preview' in result),
 	);
 	const resolved = results.filter(
-		(result): result is ResolvedRenameEntry => result !== undefined && 'preview' in result
+		(result): result is ResolvedRenameEntry => result !== undefined && 'preview' in result,
 	);
 	const interrupted = inspection.entries.flatMap((entry, index) =>
-		results[index] === undefined ? [interruptedReport(entry)] : []
+		results[index] === undefined ? [interruptedReport(entry)] : [],
 	);
 	const checkouts = [
 		...classifyResolvedRenames(resolved, inspection.entries),
@@ -88,7 +88,7 @@ const createRenameResult = (
 	].sort((left, right) => left.name.localeCompare(right.name));
 	const wasInterrupted = interrupted.length > 0;
 	const hasErrors = checkouts.some((checkout) =>
-		checkout.findings.some((finding) => finding.severity === 'error')
+		checkout.findings.some((finding) => finding.severity === 'error'),
 	);
 	const findings = wasInterrupted
 		? [
@@ -96,7 +96,7 @@ const createRenameResult = (
 				createFinding(
 					'warning',
 					'interrupted',
-					'Rename preview was interrupted; results are partial.'
+					'Rename preview was interrupted; results are partial.',
 				),
 			]
 		: inspection.findings;
@@ -112,7 +112,7 @@ export const previewArchiveRenames = async (
 	targetPath: string,
 	resolver: RepositoryResolver,
 	options: RenameOptions = {},
-	inspection: ArchiveInspection = inspectArchive(targetPath)
+	inspection: ArchiveInspection = inspectArchive(targetPath),
 ): Promise<RenameResult> => {
 	if (inspection.kind !== 'current') return invalidInspectionResult(inspection);
 	return createRenameResult(inspection, await resolveEntries(inspection, resolver, options));

@@ -94,13 +94,13 @@ const verifyGitIntegrity = async (entry: ArchiveEntry, state: VerificationState)
 	try {
 		await runReadOnlyGit(entry.path, ['fsck', '--full', '--no-dangling']);
 		state.findings.push(
-			createFinding('info', 'git-integrity-valid', 'Git object integrity is valid.')
+			createFinding('info', 'git-integrity-valid', 'Git object integrity is valid.'),
 		);
 	} catch (err) {
 		addBlockedFinding(
 			state,
 			'git-integrity-failed',
-			`Git object integrity check failed: ${gitErrorMessage(err)}`
+			`Git object integrity check failed: ${gitErrorMessage(err)}`,
 		);
 	}
 };
@@ -110,7 +110,7 @@ const verifyOrigin = (entry: ArchiveEntry, state: VerificationState): void => {
 		addBlockedFinding(
 			state,
 			'origin-unverifiable',
-			`Cannot read remote.origin.url${entry.gitError ? `: ${entry.gitError}` : '.'}`
+			`Cannot read remote.origin.url${entry.gitError ? `: ${entry.gitError}` : '.'}`,
 		);
 		return;
 	}
@@ -118,7 +118,7 @@ const verifyOrigin = (entry: ArchiveEntry, state: VerificationState): void => {
 		addBlockedFinding(
 			state,
 			'credential-bearing-origin',
-			`Remote origin contains embedded credentials: ${sanitizeUrl(entry.origin)}. ${CREDENTIAL_GUIDANCE}`
+			`Remote origin contains embedded credentials: ${sanitizeUrl(entry.origin)}. ${CREDENTIAL_GUIDANCE}`,
 		);
 		return;
 	}
@@ -126,7 +126,7 @@ const verifyOrigin = (entry: ArchiveEntry, state: VerificationState): void => {
 		addBlockedFinding(
 			state,
 			'invalid-origin',
-			`Remote origin is not GitHub.com: ${sanitizeUrl(entry.origin)}`
+			`Remote origin is not GitHub.com: ${sanitizeUrl(entry.origin)}`,
 		);
 		return;
 	}
@@ -135,14 +135,14 @@ const verifyOrigin = (entry: ArchiveEntry, state: VerificationState): void => {
 		addBlockedFinding(
 			state,
 			'invalid-origin',
-			`Cannot parse a GitHub repository slug from ${sanitizeUrl(entry.origin)}`
+			`Cannot parse a GitHub repository slug from ${sanitizeUrl(entry.origin)}`,
 		);
 	}
 };
 
 const verifyCheckoutState = async (
 	entry: ArchiveEntry,
-	state: VerificationState
+	state: VerificationState,
 ): Promise<void> => {
 	try {
 		const paths = await readStatusPaths(['-c', 'core.askPass='], {
@@ -153,21 +153,21 @@ const verifyCheckoutState = async (
 			addBlockedFinding(
 				state,
 				'checkout-blocked',
-				'Local changes make this a blocked checkout.'
+				'Local changes make this a blocked checkout.',
 			);
 		}
 	} catch (err) {
 		addBlockedFinding(
 			state,
 			'checkout-state-unverifiable',
-			`Cannot verify checkout state: ${gitErrorMessage(err)}`
+			`Cannot verify checkout state: ${gitErrorMessage(err)}`,
 		);
 	}
 };
 
 const readIdentity = async (
 	entry: ArchiveEntry,
-	state: VerificationState
+	state: VerificationState,
 ): Promise<[null | string, null | string] | null> => {
 	try {
 		return await Promise.all([
@@ -178,7 +178,7 @@ const readIdentity = async (
 		addBlockedFinding(
 			state,
 			'identity-metadata-unverifiable',
-			`Cannot read checkout identity metadata: ${gitErrorMessage(err)}`
+			`Cannot read checkout identity metadata: ${gitErrorMessage(err)}`,
 		);
 		return null;
 	}
@@ -194,7 +194,7 @@ const recordIdentity = (rawId: string, rawSlug: string, state: VerificationState
 		addBlockedFinding(
 			state,
 			'invalid-identity-metadata',
-			'Checkout identity must contain a positive integer repository ID and an owner/repository slug.'
+			'Checkout identity must contain a positive integer repository ID and an owner/repository slug.',
 		);
 		return;
 	}
@@ -208,7 +208,7 @@ const recordIdentity = (rawId: string, rawSlug: string, state: VerificationState
 		addBlockedFinding(
 			state,
 			'identity-origin-mismatch',
-			`Identity slug ${rawSlug} does not match origin ${originSlug.owner}/${originSlug.repository}.`
+			`Identity slug ${rawSlug} does not match origin ${originSlug.owner}/${originSlug.repository}.`,
 		);
 	}
 };
@@ -223,8 +223,8 @@ const verifyIdentity = async (entry: ArchiveEntry, state: VerificationState): Pr
 			createFinding(
 				'error',
 				'missing-identity-metadata',
-				`Checkout must define ${REPOSITORY_ID_KEY} and ${REPOSITORY_SLUG_KEY} in local Git config.`
-			)
+				`Checkout must define ${REPOSITORY_ID_KEY} and ${REPOSITORY_SLUG_KEY} in local Git config.`,
+			),
 		);
 		return;
 	}
@@ -245,8 +245,8 @@ const getPendingRename = (entry: ArchiveEntry, state: VerificationState): boolea
 			createFinding(
 				'warning',
 				'pending-rename',
-				`Checkout folder should be named ${proposedName}.`
-			)
+				`Checkout folder should be named ${proposedName}.`,
+			),
 		);
 	}
 	return pendingRename;
