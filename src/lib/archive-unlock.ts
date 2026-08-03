@@ -21,7 +21,7 @@ export interface UnlockArchiveOptions {
 const unlockReport = (
 	targetPath: null | string,
 	exitCode: CommandReport['exitCode'],
-	finding: Finding
+	finding: Finding,
 ): CommandReport =>
 	createCommandReport({
 		command: 'unlock',
@@ -37,20 +37,20 @@ const forceRequiredReport = (targetPath: string, message: string): CommandReport
 		createFinding(
 			'error',
 			'archive-lock-force-required',
-			`${message} Use unlock --force only after confirming no operation still uses the archive.`
-		)
+			`${message} Use unlock --force only after confirming no operation still uses the archive.`,
+		),
 	);
 
 export const unlockArchiveWithRuntime = (
 	options: UnlockArchiveOptions,
-	runtime: ArchiveLockRuntime
+	runtime: ArchiveLockRuntime,
 ): CommandReport => {
 	const trimmedTarget = options.targetPath.trim();
 	if (!trimmedTarget) {
 		return unlockReport(
 			null,
 			2,
-			createFinding('error', 'invalid-target', 'targetPath must be a non-empty string.')
+			createFinding('error', 'invalid-target', 'targetPath must be a non-empty string.'),
 		);
 	}
 	const targetPath = path.resolve(trimmedTarget);
@@ -60,7 +60,11 @@ export const unlockArchiveWithRuntime = (
 		return unlockReport(
 			targetPath,
 			1,
-			createFinding('error', 'target-not-found', `Archive path does not exist: ${targetPath}`)
+			createFinding(
+				'error',
+				'target-not-found',
+				`Archive path does not exist: ${targetPath}`,
+			),
 		);
 	}
 
@@ -75,15 +79,15 @@ export const unlockArchiveWithRuntime = (
 			createFinding(
 				'error',
 				'archive-lock-read-failed',
-				`Cannot read archive lock: ${message}`
-			)
+				`Cannot read archive lock: ${message}`,
+			),
 		);
 	}
 	if (snapshot === null) {
 		return unlockReport(
 			targetPath,
 			0,
-			createFinding('info', 'archive-not-locked', 'Archive has no operation lock.')
+			createFinding('info', 'archive-not-locked', 'Archive has no operation lock.'),
 		);
 	}
 
@@ -92,7 +96,7 @@ export const unlockArchiveWithRuntime = (
 		if (!options.force) {
 			return forceRequiredReport(
 				targetPath,
-				'Archive lock metadata is invalid or incomplete.'
+				'Archive lock metadata is invalid or incomplete.',
 			);
 		}
 		forcedMessage = 'Archive lock ownership is unknown because its metadata is invalid.';
@@ -109,8 +113,8 @@ export const unlockArchiveWithRuntime = (
 					createFinding(
 						'error',
 						'archive-lock-active',
-						`Refusing to unlock live operation ${describeArchiveLock(owner)}.`
-					)
+						`Refusing to unlock live operation ${describeArchiveLock(owner)}.`,
+					),
 				);
 			}
 			if (processState === 'dead') {
@@ -119,7 +123,7 @@ export const unlockArchiveWithRuntime = (
 					return unlockReport(
 						targetPath,
 						1,
-						createFinding('error', removal.code, removal.message)
+						createFinding('error', removal.code, removal.message),
 					);
 				}
 				return unlockReport(
@@ -128,14 +132,14 @@ export const unlockArchiveWithRuntime = (
 					createFinding(
 						'info',
 						'stale-archive-lock-removed',
-						`Removed stale lock from ${describeArchiveLock(owner)}.`
-					)
+						`Removed stale lock from ${describeArchiveLock(owner)}.`,
+					),
 				);
 			}
 			if (!options.force) {
 				return forceRequiredReport(
 					targetPath,
-					`Process liveness is uncertain for ${describeArchiveLock(owner)}.`
+					`Process liveness is uncertain for ${describeArchiveLock(owner)}.`,
 				);
 			}
 			forcedMessage = `Process liveness is uncertain for ${describeArchiveLock(owner)}.`;
@@ -143,7 +147,7 @@ export const unlockArchiveWithRuntime = (
 			if (!options.force) {
 				return forceRequiredReport(
 					targetPath,
-					`Lock owner is remote: ${describeArchiveLock(owner)}.`
+					`Lock owner is remote: ${describeArchiveLock(owner)}.`,
 				);
 			}
 			forcedMessage = `Lock owner is remote: ${describeArchiveLock(owner)}.`;
@@ -159,7 +163,7 @@ export const unlockArchiveWithRuntime = (
 	return unlockReport(
 		targetPath,
 		0,
-		createFinding('warning', 'archive-lock-force-removed', riskMessage)
+		createFinding('warning', 'archive-lock-force-removed', riskMessage),
 	);
 };
 

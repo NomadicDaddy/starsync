@@ -24,7 +24,7 @@ const errorMessage = (err: unknown): string => (err instanceof Error ? err.messa
 
 const readCheckoutState = async (
 	checkoutPath: string,
-	runner: CheckoutStateRunner
+	runner: CheckoutStateRunner,
 ): Promise<CheckoutState> => {
 	const [origin, rawId, repositorySlug] = await Promise.all([
 		runner(['config', '--local', '--get', 'remote.origin.url'], { cwd: checkoutPath }),
@@ -65,7 +65,7 @@ const mutationsForState = (state: CheckoutState): StateMutation[] => [
 const writeCheckoutState = async (
 	checkoutPath: string,
 	state: CheckoutState,
-	runner: CheckoutStateRunner
+	runner: CheckoutStateRunner,
 ): Promise<void> => {
 	for (const mutation of mutationsForState(state)) {
 		await runner(mutation.args, { cwd: checkoutPath });
@@ -75,7 +75,7 @@ const writeCheckoutState = async (
 const restoreCheckoutState = async (
 	checkoutPath: string,
 	snapshot: CheckoutState,
-	runner: CheckoutStateRunner
+	runner: CheckoutStateRunner,
 ): Promise<string[]> => {
 	const failures: string[] = [];
 	for (const mutation of mutationsForState(snapshot)) {
@@ -111,7 +111,7 @@ const desiredCheckoutState = (identity: CheckoutIdentity): CheckoutState => {
 export const transitionCheckoutState = async (
 	checkoutPath: string,
 	identity: CheckoutIdentity,
-	runner: CheckoutStateRunner = runGit
+	runner: CheckoutStateRunner = runGit,
 ): Promise<void> => {
 	const desired = desiredCheckoutState(identity);
 	const snapshot = await readCheckoutState(checkoutPath, runner);
@@ -129,7 +129,7 @@ export const transitionCheckoutState = async (
 		if (rollbackFailures.length > 0) {
 			throw new Error(
 				`${errorMessage(err)} Rollback also failed: ${rollbackFailures.join('; ')}.`,
-				{ cause: err }
+				{ cause: err },
 			);
 		}
 		throw err;
@@ -138,14 +138,14 @@ export const transitionCheckoutState = async (
 
 export const finalizeCheckoutIdentity = async (
 	checkoutPath: string,
-	identity: CheckoutIdentity
+	identity: CheckoutIdentity,
 ): Promise<Error | null> => {
 	try {
 		await transitionCheckoutState(checkoutPath, identity);
 		return null;
 	} catch (err) {
 		return new Error(
-			`Repository refreshed, but managed checkout metadata could not be finalized: ${errorMessage(err)}`
+			`Repository refreshed, but managed checkout metadata could not be finalized: ${errorMessage(err)}`,
 		);
 	}
 };

@@ -34,7 +34,7 @@ type SubcommandArgumentOptions = Partial<
 
 const parseSubcommandArgs = (
 	argv: string[],
-	options: SubcommandArgumentOptions = {}
+	options: SubcommandArgumentOptions = {},
 ): ParsedSubcommandArgs => {
 	const parsed: ParsedSubcommandArgs = {
 		apply: false,
@@ -69,7 +69,7 @@ const parseSubcommandArgs = (
 
 const emitHelp = (command: Subcommand, json: boolean, helpText: string): number => {
 	createCommandReporter(json).emit(
-		createCommandReport({ command, exitCode: 0, helpText, targetPath: null })
+		createCommandReport({ command, exitCode: 0, helpText, targetPath: null }),
 	);
 	return 0;
 };
@@ -78,7 +78,7 @@ const emitUsageError = (
 	command: Subcommand,
 	argv: string[],
 	helpText: string,
-	err: unknown
+	err: unknown,
 ): number => {
 	const message = err instanceof Error ? err.message : String(err);
 	createCommandReporter(argv.includes('--json')).emit(
@@ -89,7 +89,7 @@ const emitUsageError = (
 			findings: [createFinding('error', 'invalid-usage', message)],
 			helpText,
 			targetPath: null,
-		})
+		}),
 	);
 	return 2;
 };
@@ -98,7 +98,7 @@ const resolveRequiredTarget = (
 	command: Subcommand,
 	argv: string[],
 	helpText: string,
-	positional: null | string
+	positional: null | string,
 ): null | string => {
 	// An explicitly supplied but empty or quoted-empty positional is invalid input, not an
 	// omitted one: it must never fall back to TARGET_PATH or an implicit archive path.
@@ -109,7 +109,7 @@ const resolveRequiredTarget = (
 			command,
 			argv,
 			helpText,
-			new Error('A target path or TARGET_PATH is required.')
+			new Error('A target path or TARGET_PATH is required.'),
 		);
 		return null;
 	}
@@ -130,7 +130,7 @@ export const dispatchSync = async (argv: string[]): Promise<number> => {
 	if (targetPath === null) return 2;
 	const interrupt = createInterruptControl(
 		reporter,
-		'Interrupt received — finishing in-flight operations and reporting partial results.'
+		'Interrupt received — finishing in-flight operations and reporting partial results.',
 	);
 	let report: CommandReport;
 	try {
@@ -163,7 +163,7 @@ export const dispatchVerify = async (argv: string[]): Promise<number> => {
 	const reporter = createCommandReporter(args.json);
 	const interrupt = createInterruptControl(
 		reporter,
-		'Interrupt received — finishing in-flight checks and reporting partial results.'
+		'Interrupt received — finishing in-flight checks and reporting partial results.',
 	);
 	let report: CommandReport;
 	try {
@@ -194,7 +194,7 @@ export const dispatchRename = async (argv: string[]): Promise<number> => {
 	const reporter = createCommandReporter(args.json);
 	const interrupt = createInterruptControl(
 		reporter,
-		'Interrupt received — finishing the current checkout and reporting partial results.'
+		'Interrupt received — finishing the current checkout and reporting partial results.',
 	);
 	let report: CommandReport;
 	try {
@@ -226,7 +226,7 @@ export const dispatchDates = async (argv: string[]): Promise<number> => {
 	const reporter = createCommandReporter(args.json);
 	const interrupt = createInterruptControl(
 		reporter,
-		'Interrupt received — finishing the current checkout and reporting partial results.'
+		'Interrupt received — finishing the current checkout and reporting partial results.',
 	);
 	let report: CommandReport;
 	try {
@@ -256,7 +256,7 @@ export const dispatchInit = async (argv: string[]): Promise<number> => {
 	const reporter = createCommandReporter(args.json);
 	const interrupt = createInterruptControl(
 		reporter,
-		'Interrupt received — stopping archive initialization before metadata is written.'
+		'Interrupt received — stopping archive initialization before metadata is written.',
 	);
 	let report: CommandReport;
 	try {

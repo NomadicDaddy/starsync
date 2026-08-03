@@ -113,7 +113,7 @@ const countTokenLines = (node: FunctionNode, sourceFile: ts.SourceFile): number 
 		ts.ScriptTarget.ES2022,
 		true,
 		ts.LanguageVariant.Standard,
-		node.getText(sourceFile)
+		node.getText(sourceFile),
 	);
 	const lines = new Set<number>();
 	while (scanner.scan() !== ts.SyntaxKind.EndOfFileToken) {

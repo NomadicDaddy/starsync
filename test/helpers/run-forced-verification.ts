@@ -24,7 +24,7 @@ if (!Array.isArray(parsedAliases) || !parsedAliases.every((value) => typeof valu
 	throw new Error('TEST_REPOSITORY_ALIASES must be a JSON array of strings.');
 }
 const acceptedSlugs = new Set(
-	[repository.slug, ...parsedAliases].map((slug) => slug.toLowerCase())
+	[repository.slug, ...parsedAliases].map((slug) => slug.toLowerCase()),
 );
 
 const actualRemove = fs.rmSync;

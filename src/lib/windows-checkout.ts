@@ -88,7 +88,7 @@ const writeSparseExclusions = async (checkoutPath: string, paths: string[]): Pro
  */
 export const excludeUnrepresentablePaths = async (
 	checkoutPath: string,
-	env: NodeJS.ProcessEnv = {}
+	env: NodeJS.ProcessEnv = {},
 ): Promise<boolean> => {
 	const unrepresentable = await listUnrepresentablePaths(checkoutPath);
 	if (unrepresentable.length === 0) return false;
@@ -112,7 +112,7 @@ export const isUnrepresentablePathFailure = (err: unknown): boolean => {
 /** Populates the index and working tree of a checkout cloned with --no-checkout. */
 export const materializeExcludedCheckout = async (
 	checkoutPath: string,
-	env: NodeJS.ProcessEnv = {}
+	env: NodeJS.ProcessEnv = {},
 ): Promise<void> => {
 	if (await excludeUnrepresentablePaths(checkoutPath, env)) return;
 	await runGit([...PROTECT_NTFS_OVERRIDE, 'read-tree', '-mu', 'HEAD'], {

@@ -14,7 +14,7 @@ export const buildRefreshFailure = (name: string, err: unknown): RefreshResult =
 export const cloneRepository = async (
 	repo: RepoRecord,
 	targetBase: string,
-	options: ProcessRepositoryOptions
+	options: ProcessRepositoryOptions,
 ): Promise<RefreshResult> => {
 	const folderName = repo.folderName ?? repo.name;
 	try {
@@ -29,7 +29,7 @@ export const cloneRepository = async (
 				repositorySlug: repo.slug,
 			},
 			targetBase,
-			options
+			options,
 		);
 		return { name: folderName, outcome: 'added' };
 	} catch (err) {

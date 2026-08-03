@@ -36,7 +36,7 @@ export interface DatesResult {
 
 const formatTable = <T extends Record<string, string>>(
 	rows: T[],
-	columns: (keyof T & string)[]
+	columns: (keyof T & string)[],
 ): string[] => {
 	if (rows.length === 0) return [];
 	const widths = columns.map((column) => ({
@@ -47,7 +47,7 @@ const formatTable = <T extends Record<string, string>>(
 		widths.map((column) => column.name.padEnd(column.width)).join(' | '),
 		widths.map((column) => '-'.repeat(column.width)).join('-+-'),
 		...rows.map((row) =>
-			widths.map((column) => String(row[column.name] ?? '').padEnd(column.width)).join(' | ')
+			widths.map((column) => String(row[column.name] ?? '').padEnd(column.width)).join(' | '),
 		),
 	];
 };
@@ -55,14 +55,14 @@ const formatTable = <T extends Record<string, string>>(
 export const createCurrentDateResult = (
 	name: string,
 	pendingRename: boolean,
-	state: ArchiveDateState
+	state: ArchiveDateState,
 ): { report: CheckoutReport; row: DatesDisplayRow } => ({
 	report: {
 		findings: [
 			createFinding(
 				'info',
 				'archive-date-current',
-				'Folder timestamp already matches the Archive Date.'
+				'Folder timestamp already matches the Archive Date.',
 			),
 		],
 		lifecycle: 'active',
@@ -78,7 +78,7 @@ export const createDateFailure = (
 	lifecycle: CheckoutReport['lifecycle'],
 	code: string,
 	message: string,
-	pendingRename = false
+	pendingRename = false,
 ): CheckoutReport => ({
 	findings: [createFinding('error', code, message)],
 	lifecycle,
@@ -93,7 +93,7 @@ export const createInterruptedDateReports = (checkouts: ManagedCheckout[]): Chec
 			createFinding(
 				'warning',
 				'interrupted-before-date-normalization',
-				'Checkout was not processed because interruption was requested.'
+				'Checkout was not processed because interruption was requested.',
 			),
 		],
 		lifecycle: 'active',
@@ -114,7 +114,7 @@ export const createUpdatedDateResult = (
 	name: string,
 	pendingRename: boolean,
 	state: ArchiveDateState,
-	dryRun: boolean
+	dryRun: boolean,
 ): { report: CheckoutReport; row: DatesDisplayRow } => ({
 	report: {
 		findings: [
@@ -123,7 +123,7 @@ export const createUpdatedDateResult = (
 				dryRun ? 'date-update-planned' : 'archive-date-updated',
 				dryRun
 					? `Folder timestamp would be set to Archive Date ${state.archiveDate.toISOString()}.`
-					: `Folder timestamp was set to Archive Date ${state.archiveDate.toISOString()}.`
+					: `Folder timestamp was set to Archive Date ${state.archiveDate.toISOString()}.`,
 			),
 		],
 		lifecycle: 'active',
@@ -144,19 +144,19 @@ export const finalizeDatesResult = (
 	checkouts: CheckoutReport[],
 	displayRows: DatesDisplayRow[],
 	findings: Finding[],
-	interrupted: boolean
+	interrupted: boolean,
 ): DatesResult => {
 	const hasErrors =
 		findings.some((finding) => finding.severity === 'error') ||
 		checkouts.some((checkout) =>
-			checkout.findings.some((finding) => finding.severity === 'error')
+			checkout.findings.some((finding) => finding.severity === 'error'),
 		);
 	const interruptionFinding = interrupted
 		? [
 				createFinding(
 					'warning',
 					'interrupted',
-					'Date normalization was interrupted; results are partial.'
+					'Date normalization was interrupted; results are partial.',
 				),
 			]
 		: [];
@@ -192,7 +192,7 @@ export const formatDatesTables = (rows: DatesDisplayRow[]): string[] => {
 			...formatTable(oldest, ['Name', 'NewTime', 'OldTime']),
 			'',
 			'Newest folder timestamps:',
-			...formatTable(newest, ['Name', 'NewTime', 'OldTime'])
+			...formatTable(newest, ['Name', 'NewTime', 'OldTime']),
 		);
 	}
 	if (skipped.length > 0) {

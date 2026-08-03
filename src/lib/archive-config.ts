@@ -40,7 +40,7 @@ const parseOwner = (value: unknown): ArchiveOwner => {
 		!/^(?!.*--)[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(value.login)
 	) {
 		throw new Error(
-			'Archive config owner must contain a positive integer id and valid GitHub login.'
+			'Archive config owner must contain a positive integer id and valid GitHub login.',
 		);
 	}
 	return { id: value.id, login: value.login };
@@ -55,7 +55,7 @@ export const parseArchiveConfig = (value: unknown): ArchiveConfig => {
 	}
 	if (value.archiveFormat !== CURRENT_ARCHIVE_FORMAT) {
 		throw new Error(
-			`Archive format ${value.archiveFormat} is unsupported; StarSync requires format ${CURRENT_ARCHIVE_FORMAT}.`
+			`Archive format ${value.archiveFormat} is unsupported; StarSync requires format ${CURRENT_ARCHIVE_FORMAT}.`,
 		);
 	}
 	return {
@@ -72,7 +72,7 @@ export const readArchiveConfig = (targetPath: string): ArchiveConfig => {
 export const writeArchiveConfig = (
 	targetPath: string,
 	owner: ArchiveOwner,
-	operationLockPath?: string
+	operationLockPath?: string,
 ): void => {
 	const metadataPath = path.join(targetPath, ARCHIVE_CONFIG_DIRECTORY);
 	const configPath = path.join(metadataPath, ARCHIVE_CONFIG_FILE);
@@ -104,7 +104,7 @@ export const writeArchiveConfig = (
 			fs.writeFileSync(
 				descriptor,
 				`${JSON.stringify({ archiveFormat: CURRENT_ARCHIVE_FORMAT, owner }, null, '\t')}\n`,
-				'utf-8'
+				'utf-8',
 			);
 			fs.fsyncSync(descriptor);
 		} finally {

@@ -74,14 +74,14 @@ const assertRepositoryRequest = (repository: StagedCheckoutRepository): void => 
 			repository.repositorySlug.toLowerCase()
 	) {
 		throw new Error(
-			'New managed checkout requires a positive Repository Identity, matching GitHub.com origin, and its canonical repository--owner folder.'
+			'New managed checkout requires a positive Repository Identity, matching GitHub.com origin, and its canonical repository--owner folder.',
 		);
 	}
 	if (hasEmbeddedCredentials(repository.cloneUrl) || !isGitHubDotComUrl(repository.cloneUrl)) {
 		throw new Error(
 			`Repository origin is not a credential-free GitHub.com URL: ${sanitizeUrl(
-				repository.cloneUrl
-			)}`
+				repository.cloneUrl,
+			)}`,
 		);
 	}
 };
@@ -90,7 +90,7 @@ const assertArchiveOwner = (targetBase: string, archiveOwnerId: number): void =>
 	const configuredOwner = readArchiveConfig(targetBase).owner;
 	if (configuredOwner.id !== archiveOwnerId) {
 		throw new Error(
-			`Archive owner identity changed before checkout publication (expected ${archiveOwnerId}, found ${configuredOwner.id}).`
+			`Archive owner identity changed before checkout publication (expected ${archiveOwnerId}, found ${configuredOwner.id}).`,
 		);
 	}
 };
@@ -121,7 +121,7 @@ const assertReplacementSource = (sourcePath: string, sourceFolderName: string): 
 const assertReplacementDestinationAvailable = (
 	sourcePath: string,
 	destinationPath: string,
-	folderName: string
+	folderName: string,
 ): void => {
 	if (fs.existsSync(destinationPath) && !pathsReferToSameEntry(sourcePath, destinationPath)) {
 		throw new Error(`Canonical checkout folder ${folderName} is already occupied.`);
@@ -151,7 +151,7 @@ const tryRemoveOwnedStagingDirectory = (targetBase: string, stagingPath: string)
 
 const validateStagedCheckout = async (
 	stagingPath: string,
-	repository: StagedCheckoutRepository
+	repository: StagedCheckoutRepository,
 ): Promise<void> => {
 	if (!fs.existsSync(path.join(stagingPath, '.git'))) {
 		throw new Error('Clone completed without creating a usable Git checkout.');
@@ -167,8 +167,8 @@ const validateStagedCheckout = async (
 	) {
 		throw new Error(
 			`Staged checkout origin does not match the expected credential-free GitHub.com repository: ${sanitizeUrl(
-				origin
-			)}`
+				origin,
+			)}`,
 		);
 	}
 
@@ -191,7 +191,7 @@ const validateStagedCheckout = async (
 const cloneValidatedCheckout = async (
 	repository: StagedCheckoutRepository,
 	targetBase: string,
-	options: StagedCheckoutOptions
+	options: StagedCheckoutOptions,
 ): Promise<string> => {
 	for (let attempt = 0; attempt < 2; attempt++) {
 		assertArchiveOwner(targetBase, options.archiveOwnerId);
@@ -207,9 +207,9 @@ const cloneValidatedCheckout = async (
 			if (cleanupError !== null) {
 				throw new Error(
 					`${sanitizedFailure} StarSync could not remove its staging directory: ${sanitizeMessage(
-						errorMessage(cleanupError)
+						errorMessage(cleanupError),
 					)}`,
-					{ cause: err }
+					{ cause: err },
 				);
 			}
 			if (attempt === 0 && isTransientGitError(sanitizedFailure)) {
@@ -225,7 +225,7 @@ const cloneValidatedCheckout = async (
 export const createStagedCheckout = async (
 	repository: StagedCheckoutRepository,
 	targetBase: string,
-	options: StagedCheckoutOptions
+	options: StagedCheckoutOptions,
 ): Promise<void> => {
 	assertRepositoryRequest(repository);
 	const destinationPath = path.join(targetBase, repository.folderName);
@@ -241,9 +241,9 @@ export const createStagedCheckout = async (
 		if (cleanupError !== null) {
 			throw new Error(
 				`${sanitizeMessage(errorMessage(err))} StarSync could not remove its staging directory: ${sanitizeMessage(
-					errorMessage(cleanupError)
+					errorMessage(cleanupError),
 				)}`,
-				{ cause: err }
+				{ cause: err },
 			);
 		}
 		throw err;
@@ -253,7 +253,7 @@ export const createStagedCheckout = async (
 export const replaceAnomalousCheckout = async (
 	repository: StagedCheckoutReplacement,
 	targetBase: string,
-	options: StagedCheckoutOptions
+	options: StagedCheckoutOptions,
 ): Promise<ReplacedCheckout> => {
 	assertRepositoryRequest(repository);
 	const sourcePath = path.join(targetBase, repository.sourceFolderName);
@@ -280,7 +280,7 @@ export const replaceAnomalousCheckout = async (
 			cleanupError === null
 				? ''
 				: ` StarSync could not remove its staging directory: ${sanitizeMessage(
-						errorMessage(cleanupError)
+						errorMessage(cleanupError),
 					)}`;
 		throw new Error(`${sanitizeMessage(errorMessage(err))}${cleanupMessage}`, { cause: err });
 	}
@@ -291,7 +291,7 @@ export const replaceAnomalousCheckout = async (
 	} catch (err) {
 		return {
 			cleanupWarning: `Fresh checkout was published, but the replaced directory remains at ${path.basename(
-				backupPath
+				backupPath,
 			)}: ${sanitizeMessage(errorMessage(err))}`,
 		};
 	}

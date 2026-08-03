@@ -98,7 +98,7 @@ const countValues = <T extends string>(values: T[], keys: readonly T[]): Record<
 export const createFinding = (
 	severity: FindingSeverity,
 	code: string,
-	message: string
+	message: string,
 ): Finding => ({ code, message, severity });
 
 export const createCommandReport = (options: CreateCommandReportOptions): CommandReport => {
@@ -111,11 +111,11 @@ export const createCommandReport = (options: CreateCommandReportOptions): Comman
 	const lifecycleCounts = countValues(lifecycleValues, ['active', 'blocked', 'retained']);
 	const findingCounts = countValues(
 		allFindings.map((finding) => finding.severity),
-		['error', 'info', 'warning']
+		['error', 'info', 'warning'],
 	);
 	const outcomeCounts = countValues(
 		checkouts.map((checkout) => checkout.outcome),
-		['added', 'current', 'failed', 'skipped', 'updated']
+		['added', 'current', 'failed', 'skipped', 'updated'],
 	);
 
 	return {
@@ -173,7 +173,7 @@ const renderHumanReport = (report: CommandReport): void => {
 				`proposed ${checkout.rename.proposedName ?? 'unresolved'})`
 			: '';
 		console.log(
-			`- ${checkout.name}: ${lifecycle}, ${checkout.outcome}${planned}${pendingRename}${rename}`
+			`- ${checkout.name}: ${lifecycle}, ${checkout.outcome}${planned}${pendingRename}${rename}`,
 		);
 		for (const finding of checkout.findings) writeFinding(finding);
 	}
@@ -183,11 +183,11 @@ const renderHumanReport = (report: CommandReport): void => {
 		const { outcomes } = report.summary;
 		console.log(
 			`${report.command} complete. Added: ${outcomes.added}. Updated: ${outcomes.updated}. ` +
-				`Current: ${outcomes.current}. Skipped: ${outcomes.skipped}. Failed: ${outcomes.failed}.`
+				`Current: ${outcomes.current}. Skipped: ${outcomes.skipped}. Failed: ${outcomes.failed}.`,
 		);
 		console.log(
 			`Checkout lifecycle. Active: ${checkouts.active}. Retained: ${checkouts.retained}. ` +
-				`Blocked: ${checkouts.blocked}. Pending rename: ${checkouts.pendingRename}.`
+				`Blocked: ${checkouts.blocked}. Pending rename: ${checkouts.pendingRename}.`,
 		);
 		if (report.command === 'sync') {
 			const succeeded = outcomes.added + outcomes.updated + outcomes.current;
@@ -204,7 +204,7 @@ const writeJsonDiagnostics = (report: CommandReport): void => {
 	for (const finding of findings) {
 		if (finding.severity !== 'info') {
 			console.error(
-				`${finding.severity.toUpperCase()} [${finding.code}]: ${finding.message}`
+				`${finding.severity.toUpperCase()} [${finding.code}]: ${finding.message}`,
 			);
 		}
 	}
@@ -215,7 +215,7 @@ const sanitizeOutputValue = (value: unknown): unknown => {
 	if (Array.isArray(value)) return value.map(sanitizeOutputValue);
 	if (value === null || typeof value !== 'object') return value;
 	return Object.fromEntries(
-		Object.entries(value).map(([key, nestedValue]) => [key, sanitizeOutputValue(nestedValue)])
+		Object.entries(value).map(([key, nestedValue]) => [key, sanitizeOutputValue(nestedValue)]),
 	);
 };
 

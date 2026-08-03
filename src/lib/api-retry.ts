@@ -104,7 +104,7 @@ export interface RetryOptions {
  */
 export const withApiRetry = async <T>(
 	fn: (attempt: number) => Promise<T>,
-	options: RetryOptions
+	options: RetryOptions,
 ): Promise<T> => {
 	let lastError: unknown;
 

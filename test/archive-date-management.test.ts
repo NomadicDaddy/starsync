@@ -21,7 +21,7 @@ const newestCommitTime = new Date('2026-07-20T16:30:00Z');
 const run = (
 	command: string[],
 	cwd = projectRoot,
-	env: NodeJS.ProcessEnv = process.env
+	env: NodeJS.ProcessEnv = process.env,
 ): string => {
 	const result = Bun.spawnSync({
 		cmd: command,
@@ -48,7 +48,7 @@ const commit = (checkout: string, message: string, timestamp: string): void => {
 const createCheckout = (
 	root: string,
 	name: string,
-	identity: { id: number; slug: string } | null
+	identity: { id: number; slug: string } | null,
 ): string => {
 	const checkout = path.join(root, name);
 	mkdirSync(checkout);
@@ -80,7 +80,7 @@ const writeArchiveConfig = (root: string): void => {
 		JSON.stringify({
 			archiveFormat: 2,
 			owner: { id: 7, login: 'archive-owner' },
-		})
+		}),
 	);
 };
 
@@ -115,10 +115,10 @@ describe('managed Archive Dates process boundary', () => {
 			utimesSync(checkout, driftedTime, driftedTime);
 
 			expect(run(['git', 'log', '-1', '--format=%cI'], checkout)).toContain(
-				'2026-07-10T09:00:00'
+				'2026-07-10T09:00:00',
 			);
 			expect(run(['git', 'log', '--all', '-1', '--format=%cI'], checkout)).toContain(
-				'2026-07-15T12:00:00'
+				'2026-07-15T12:00:00',
 			);
 
 			const preview = await normalizeArchiveDates({ dryRun: true, targetPath: target });
@@ -129,10 +129,10 @@ describe('managed Archive Dates process boundary', () => {
 					name: 'repo--owner',
 					outcome: 'skipped',
 					plannedOutcome: 'updated',
-				})
+				}),
 			);
 			expect(preview.checkouts[0]?.findings).toContainEqual(
-				expect.objectContaining({ code: 'date-update-planned' })
+				expect.objectContaining({ code: 'date-update-planned' }),
 			);
 			expect(statSync(checkout).mtimeMs).toBe(driftedTime.getTime());
 
@@ -142,7 +142,7 @@ describe('managed Archive Dates process boundary', () => {
 			expect(applied.report.exitCode).toBe(0);
 			expect(applied.report.checkouts[0]?.outcome).toBe('updated');
 			expect(Math.abs(statSync(checkout).mtimeMs - newestCommitTime.getTime())).toBeLessThan(
-				1_000
+				1_000,
 			);
 			expect(applied.stderr).not.toContain('GITHUB_TOKEN');
 
@@ -173,35 +173,35 @@ describe('managed Archive Dates process boundary', () => {
 			utimesSync(unrelated, driftedTime, driftedTime);
 			const unidentifiedConfig = readFileSync(
 				path.join(unidentified, '.git', 'config'),
-				'utf-8'
+				'utf-8',
 			);
 
 			const report = await normalizeArchiveDates({ targetPath: target });
 
 			expect(report).toMatchObject({ exitCode: 1 });
 			expect(Math.abs(statSync(managed).mtimeMs - newestCommitTime.getTime())).toBeLessThan(
-				1_000
+				1_000,
 			);
 			expect(statSync(unidentified).mtimeMs).toBe(driftedTime.getTime());
 			expect(statSync(unrelated).mtimeMs).toBe(driftedTime.getTime());
 			expect(readFileSync(path.join(unidentified, '.git', 'config'), 'utf-8')).toBe(
-				unidentifiedConfig
+				unidentifiedConfig,
 			);
 			expect(
 				report.checkouts.some(
 					(checkout) =>
 						checkout.name === 'unidentified' &&
 						checkout.findings.some(
-							(finding) => finding.code === 'missing-identity-metadata'
-						)
-				)
+							(finding) => finding.code === 'missing-identity-metadata',
+						),
+				),
 			).toBe(true);
 			expect(
 				report.checkouts.some(
 					(checkout) =>
 						checkout.name === 'notes' &&
-						checkout.findings.some((finding) => finding.code === 'not-git-checkout')
-				)
+						checkout.findings.some((finding) => finding.code === 'not-git-checkout'),
+				),
 			).toBe(true);
 		} finally {
 			rmSync(target, { force: true, recursive: true });

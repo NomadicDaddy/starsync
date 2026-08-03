@@ -20,7 +20,7 @@ const parseArchiveOwner = (targetPath: string): ArchiveConfig | Finding => {
 		return createFinding(
 			'error',
 			'invalid-archive-owner',
-			`Cannot verify archive owner binding: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`
+			`Cannot verify archive owner binding: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`,
 		);
 	}
 	try {
@@ -29,14 +29,14 @@ const parseArchiveOwner = (targetPath: string): ArchiveConfig | Finding => {
 		return createFinding(
 			'error',
 			'invalid-archive-owner',
-			`Archive owner binding is invalid: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`
+			`Archive owner binding is invalid: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`,
 		);
 	}
 };
 
 export const validateArchiveOwner = (
 	targetPath: string,
-	inspection: ArchiveInspection
+	inspection: ArchiveInspection,
 ): Finding[] => {
 	if (inspection.kind !== 'current') return [];
 	const config = parseArchiveOwner(targetPath);
@@ -45,7 +45,7 @@ export const validateArchiveOwner = (
 		createFinding(
 			'info',
 			'archive-owner-bound',
-			`Archive is bound to GitHub account ${config.owner.login} (identity ${config.owner.id}).`
+			`Archive is bound to GitHub account ${config.owner.login} (identity ${config.owner.id}).`,
 		),
 	];
 };
@@ -57,7 +57,7 @@ export const createInspectionFailureResult = (err: unknown): ArchiveVerification
 		createFinding(
 			'error',
 			'archive-inspection-failed',
-			`Cannot inspect archive: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`
+			`Cannot inspect archive: ${sanitizeMessage(err instanceof Error ? err.message : String(err))}`,
 		),
 	],
 	interrupted: false,
@@ -65,7 +65,7 @@ export const createInspectionFailureResult = (err: unknown): ArchiveVerification
 
 const createInterruptedReports = (
 	inspection: ArchiveInspection,
-	results: (undefined | VerifiedCheckout)[]
+	results: (undefined | VerifiedCheckout)[],
 ): CheckoutReport[] =>
 	inspection.entries.flatMap((entry, index) =>
 		results[index] === undefined
@@ -75,7 +75,7 @@ const createInterruptedReports = (
 							createFinding(
 								'warning',
 								'interrupted-before-verification',
-								'Checkout was not verified because interruption was requested.'
+								'Checkout was not verified because interruption was requested.',
 							),
 						],
 						lifecycle: entry.isGitCheckout ? 'active' : null,
@@ -84,7 +84,7 @@ const createInterruptedReports = (
 						pendingRename: false,
 					},
 				]
-			: []
+			: [],
 	);
 
 const addSuccessFindings = (verified: VerifiedCheckout[]): void => {
@@ -94,7 +94,7 @@ const addSuccessFindings = (verified: VerifiedCheckout[]): void => {
 			checkout.report.findings.every((finding) => finding.severity !== 'error')
 		) {
 			checkout.report.findings.push(
-				createFinding('info', 'checkout-verified', 'Checkout verification passed.')
+				createFinding('info', 'checkout-verified', 'Checkout verification passed.'),
 			);
 		}
 	}
@@ -104,7 +104,7 @@ export const finalizeVerificationResult = (
 	inspection: ArchiveInspection,
 	findings: Finding[],
 	results: (undefined | VerifiedCheckout)[],
-	verified: VerifiedCheckout[]
+	verified: VerifiedCheckout[],
 ): ArchiveVerificationResult => {
 	addSuccessFindings(verified);
 	const interruptedReports = createInterruptedReports(inspection, results);
@@ -114,17 +114,17 @@ export const finalizeVerificationResult = (
 			createFinding(
 				'warning',
 				'interrupted',
-				'Archive verification was interrupted; results are partial.'
-			)
+				'Archive verification was interrupted; results are partial.',
+			),
 		);
 	}
 	const checkouts = [...verified.map(({ report }) => report), ...interruptedReports].sort(
-		(left, right) => left.name.localeCompare(right.name)
+		(left, right) => left.name.localeCompare(right.name),
 	);
 	const hasErrors =
 		findings.some((finding) => finding.severity === 'error') ||
 		checkouts.some((checkout) =>
-			checkout.findings.some((finding) => finding.severity === 'error')
+			checkout.findings.some((finding) => finding.severity === 'error'),
 		);
 	return {
 		checkouts,

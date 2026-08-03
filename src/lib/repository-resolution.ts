@@ -13,7 +13,7 @@ export interface ResolvedRepository {
 export type RepositoryResolver = (owner: string, repository: string) => Promise<ResolvedRepository>;
 
 export const parseGitHubRepositorySlug = (
-	origin: string
+	origin: string,
 ): { owner: string; repository: string } | null => {
 	if (hasEmbeddedCredentials(origin)) return null;
 	const sanitized = sanitizeUrl(origin);
@@ -47,7 +47,7 @@ export const createGitHubRepositoryResolver = (token: string): RepositoryResolve
 	return async (owner, repository) => {
 		const response = await withApiRetry(
 			() => octokit.rest.repos.get({ owner, repo: repository }),
-			{ maxRetries: 2 }
+			{ maxRetries: 2 },
 		);
 		return {
 			id: response.data.id,
