@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-08-03
+
+### Changed
+
+- `bun run smoke:qc:fast` lints through a new `lint:fast` that passes ESLint's `--cache`, while the
+  full `smoke:qc` keeps running the uncached `lint`. That cache keys on each file's own content,
+  which the type-aware rules outlive: a type change in one file can create a violation in another
+  the cache then treats as unchanged and skips. The inner loop takes that trade for speed, and the
+  authoritative gate does not. `smoke:qc` also names its own static steps now rather than delegating
+  the first four to `smoke:qc:fast`, which would have handed it the cached lint.
+- The ESLint rule set matches the aidd and Spernakit repositories. Seven perfectionist sort rules
+  that were missing here are enabled, every perfectionist rule and `consistent-type-imports` reports
+  at error rather than warn, and the lint scripts pass `--report-unused-disable-directives`. A file
+  shared between the three repositories can no longer pass lint in one and fail it in another. The
+  reorders this produced cover import specifiers and one intersection type, with no behavior change.
+
+### Fixed
+
+- The shared license core writes its skipped `node_modules` entries in sorted order, so the copy
+  StarSync carries lints clean in the repository it is maintained in.
+
 ## [2.2.0] - 2026-08-03
 
 ### Added
