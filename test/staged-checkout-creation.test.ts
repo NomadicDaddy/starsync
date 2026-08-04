@@ -403,7 +403,9 @@ describe('staged checkout creation process boundary', () => {
 				rmSync(root, { force: true, recursive: true });
 			}
 		}
-	});
+		// Three full clone-and-reclone scenarios in one body. On Windows runners that lands just
+		// either side of the 5s default, so the budget is stated rather than left to chance.
+	}, 20_000);
 
 	test('preserves a renamed source when its stable ID does not match GitHub', () => {
 		const root = mkdtempSync(path.join(tmpdir(), 'starsync-force-id-mismatch-'));
