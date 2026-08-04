@@ -24,7 +24,6 @@ const FUNCTION_LIMIT_BASELINES: Readonly<Record<string, Readonly<FunctionLimitBa
 	'src/lib/default-branch-refresh.ts#advanceToRemoteDefault': { lines: 41 },
 	'src/lib/reporting.ts#renderHumanReport': { complexity: 15 },
 	'src/lib/repository-resolution.ts#parseGitHubRepositorySlug': { complexity: 12 },
-	'src/lib/subcommands.ts#parseSubcommandArgs': { complexity: 13, nesting: 8 },
 };
 
 const EXCLUDED_PATHS = [

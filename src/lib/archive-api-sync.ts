@@ -1,5 +1,4 @@
 import { Octokit } from '@octokit/rest';
-import fs from 'node:fs';
 
 import type { SyncArchiveOptions, SyncContext } from './archive-api-contract.ts';
 import type { ArchiveOwner } from './archive-config.ts';
@@ -8,30 +7,23 @@ import type { ManagedSyncPlan, StarredRepositoryRecord } from './managed-checkou
 import type { CommandReport } from './reporting.ts';
 
 import { withApiRetry } from './api-retry.ts';
-import { DEFAULT_ARCHIVE_CONCURRENCY } from './archive-api-contract.ts';
 import {
 	checkoutExists,
 	createInterruptedCheckout,
 	getErrorMessage,
 	interruptedReport,
-	invalidTargetReport,
 	maintainCheckoutArchiveDate,
-	missingTokenReport,
 	operationFailureReport,
 	reportRefreshResult,
-	resolveExplicitTarget,
 } from './archive-api-reporting.ts';
 import { partitionValidRepositories, previewSync } from './archive-api-sync-planning.ts';
+import { prepareSyncTarget, validateSyncOptions } from './archive-api-sync-preflight.ts';
 import { getAuthenticatedArchiveOwner, readArchiveConfig } from './archive-config.ts';
 import { getArchiveModificationFinding } from './archive-inspection.ts';
 import { planManagedSync } from './managed-checkout-planning.ts';
-import { cleanupOwnedCheckoutArtifacts } from './owned-checkout-artifacts.ts';
 import { processRepository, runSyncPool } from './refresh.ts';
 import { createCommandReport, createFinding } from './reporting.ts';
 import { sanitizeMessage } from './secret-safety.ts';
-
-const MAX_ARCHIVE_CONCURRENCY = 8;
-const MIN_ARCHIVE_CONCURRENCY = 1;
 
 type OwnerResult = { owner: ArchiveOwner } | { report: CommandReport };
 
@@ -40,37 +32,6 @@ const appendFindings = (
 	findings: CommandReport['findings'],
 ): CommandReport =>
 	findings.length === 0 ? report : { ...report, findings: [...report.findings, ...findings] };
-
-const validateSyncOptions = (options: SyncArchiveOptions): CommandReport | SyncContext => {
-	const targetPath = resolveExplicitTarget(options.targetPath);
-	if (targetPath === null) return invalidTargetReport('sync');
-	const dryRun = options.dryRun ?? false;
-	if (options.signal?.aborted) return interruptedReport('sync', targetPath, dryRun);
-	if (!options.token.trim()) {
-		return missingTokenReport('sync', targetPath, 'GITHUB_TOKEN is not set.', dryRun);
-	}
-	const concurrency = options.concurrency ?? DEFAULT_ARCHIVE_CONCURRENCY;
-	if (
-		!Number.isInteger(concurrency) ||
-		concurrency < MIN_ARCHIVE_CONCURRENCY ||
-		concurrency > MAX_ARCHIVE_CONCURRENCY
-	) {
-		return createCommandReport({
-			command: 'sync',
-			dryRun,
-			exitCode: 2,
-			findings: [
-				createFinding(
-					'error',
-					'invalid-concurrency',
-					`concurrency must be an integer from ${MIN_ARCHIVE_CONCURRENCY} to ${MAX_ARCHIVE_CONCURRENCY}.`,
-				),
-			],
-			targetPath,
-		});
-	}
-	return { concurrency, dryRun, targetPath };
-};
 
 const authenticateOwner = async (
 	targetPath: string,
@@ -275,24 +236,12 @@ export const syncArchiveUnlocked = async (
 	if (options.signal?.aborted) {
 		return interruptedReport('sync', context.targetPath, context.dryRun);
 	}
-	try {
-		if (!context.dryRun) fs.mkdirSync(context.targetPath, { recursive: true });
-	} catch (err) {
-		return operationFailureReport(
-			'sync',
-			context.targetPath,
-			'target-create-failed',
-			`Cannot create target directory: ${getErrorMessage(err)}`,
-			context.dryRun,
-		);
-	}
-	const cleanupFindings = context.dryRun
-		? []
-		: cleanupOwnedCheckoutArtifacts(context.targetPath, held, options.onProgress);
+	const prepared = prepareSyncTarget(context, held, options.onProgress);
+	if ('schemaVersion' in prepared) return prepared;
 	const plan = await fetchSyncPlan(options, context);
-	if ('schemaVersion' in plan) return appendFindings(plan, cleanupFindings);
+	if ('schemaVersion' in plan) return appendFindings(plan, prepared);
 	const report = context.dryRun
 		? await previewSync(plan, context, options)
 		: await executeSync(plan, context, owner.owner, options);
-	return appendFindings(report, cleanupFindings);
+	return appendFindings(report, prepared);
 };

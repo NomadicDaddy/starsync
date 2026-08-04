@@ -115,8 +115,8 @@ with exit code 2. Root `--help` and command-specific help remain available.
 
 ```sh
 bun src/cli.ts init [--json] [target-path]
-bun src/cli.ts sync [--dry-run] [--json] [--concurrency=N] [target-path]
-bun src/cli.ts verify [--force] [--json] [target-path]
+bun src/cli.ts sync [--dry-run] [--json] [--concurrency=N] [--min-free-space=SIZE] [target-path]
+bun src/cli.ts verify [--force] [--json] [--min-free-space=SIZE] [target-path]
 bun src/cli.ts rename [--apply] [--json] [target-path]
 bun src/cli.ts dates [--dry-run] [--json] [target-path]
 bun src/cli.ts unlock [--force] [--json] [target-path]
@@ -147,6 +147,20 @@ On platforms that cannot represent a repository path, StarSync preserves the pat
 and the index while excluding its working-tree copy through sparse checkout. Such paths do not
 count as local work; genuine staged, unstaged, untracked, or conflicted changes still block.
 
+`sync` takes the archive lock, removes abandoned StarSync-owned staging and damaged-backup
+directories, and then measures the free space on the filesystem holding the target. Below the
+minimum it refuses before querying stars or processing any repository. The default minimum is 1GB.
+`--min-free-space=SIZE` sets another one, as a byte count or with a `B`, `KB`, `MB`, `GB`, or `TB`
+suffix, each a binary multiple (`KiB`, `MiB`, `GiB`, `TiB` are accepted as the same multiples);
+`--min-free-space=0` turns the check off. A dry run reports a shortfall as a warning and still
+previews the work.
+
+This is one measurement at startup, not a running budget. StarSync does not estimate how large the
+repositories it is about to clone are, does not reserve capacity for them, and does not measure
+again while they are processed, so a run that starts above the minimum can still exhaust the disk
+and fail per repository. The reserve keeps a run from starting on a disk that is already too full
+to finish anything useful.
+
 Use `--dry-run` for a read-only preview and `--concurrency=N` for 1-8 concurrent repository jobs.
 
 ### verify
@@ -162,6 +176,12 @@ without identity can be resolved only when its folder already has the canonical
 identity validation before publication. Failed recovery leaves the original checkout in place;
 successful recovery permanently removes it. The same mode removes abandoned
 `.starsync-checkout-*` staging directories while holding the archive lock.
+
+Because forced recovery clones, it takes the same startup reserve as `sync`: after that cleanup and
+before any checkout is replaced, StarSync measures the free space on the filesystem holding the
+target and refuses below the minimum. The default is 1GB, `--min-free-space=SIZE` sets another one
+with the same size grammar `sync` accepts, and `--min-free-space=0` turns the check off. Read-only
+`verify` writes nothing and never measures.
 
 ### rename
 
@@ -238,8 +258,8 @@ Supported operations are `initArchive`, `syncArchive`, `verifyArchive`, `renameA
 
 A release candidate requires all of the following:
 
-1. The Windows, macOS, and Linux release matrix installs from `bun.lock`, runs `smoke:qc`, builds
-   the bundle, and compiles the platform executable with archive credentials unset.
+1. The Windows, macOS, and Linux release matrix installs from `bun.lock`, runs `smoke:qc`, and
+   builds the bundle with archive credentials unset.
 2. The reviewed live archive passes read-only `verify --json` and a complete `rename --json`
    preview. Evidence is stored outside the archive and refreshed if the archive changes.
 3. The offline copied-format-2 journey runs rename, verification, synchronization, and Archive
@@ -261,8 +281,6 @@ bun run smoke:live -- <temporary-managed-archive>
 | `bun run build`              | Run `build:bundle`, then `build:types`                                      |
 | `bun run build:bundle`       | Bundle `src/cli.ts` and `src/index.ts` into `dist/` for Node, deps external |
 | `bun run build:types`        | Emit declarations into `dist/types` through `tsconfig.types.json`           |
-| `bun run compile`            | Compile the standalone executable into `dist/`                              |
-| `bun run deploy`             | Alias for `compile`                                                         |
 | `bun run smoke:qc`           | Run `smoke:qc:fast`, the leak-guard and license checks, then tests          |
 | `bun run smoke:qc:fast`      | Static gate only: source shape, types, lint, format. No tests               |
 | `bun run smoke:live`         | Run the opt-in read-only smoke against an explicit archive copy             |
@@ -300,5 +318,6 @@ obligations were known.
 
 Neither document ships in the tarball: a consumer's own resolver decides which versions it
 installs, so a copy pinned to this repository's lockfile would describe versions they may not
-have. Both matter to anyone distributing the `bun run compile` executable, which does embed the
-whole closure — see the scope sections in `THIRD_PARTY_LICENSES.md`.
+have. They are retained as this project's own record of the dependency closure an install
+resolves, for compliance review — see the Scope section in
+[`THIRD_PARTY_LICENSES.md`](./THIRD_PARTY_LICENSES.md).
