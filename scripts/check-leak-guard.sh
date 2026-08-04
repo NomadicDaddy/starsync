@@ -24,18 +24,27 @@ fail() {
 synthetic="$tmp/patterns"
 printf '%s\n' '# synthetic private patterns for the self-test' '' '\bzzz-synthetic-app\b' >"$synthetic"
 
-mkdir -p "$tmp/repo/.githooks"
-git -C "$tmp/repo" init -q
-git -C "$tmp/repo" -c user.email=t@test -c user.name=t commit -q --allow-empty -m init
-cp "$hook" "$tmp/repo/.githooks/leak-guard.sh"
+# Scratch repo names are load-bearing for cases 9 and 10: the guard drops tier-2 patterns that
+# match the repository's own directory name, so the two repos differ only in what they are called.
+make_repo() {
+	mkdir -p "$tmp/$1/.githooks"
+	git -C "$tmp/$1" init -q
+	git -C "$tmp/$1" -c user.email=t@test -c user.name=t commit -q --allow-empty -m init
+	cp "$hook" "$tmp/$1/.githooks/leak-guard.sh"
+}
+make_repo repo
+make_repo zzz-synthetic-app
+
+# The repo the next run_guard call runs in. Cases 1-8 use the neutrally named one.
+guard_repo="$tmp/repo"
 
 # Stages $2 as file content and runs the guard with pattern file $1.
 # Prints the guard's exit code; guard stderr lands in $tmp/stderr.
 run_guard() {
-	printf '%s\n' "$2" >"$tmp/repo/staged.txt"
-	git -C "$tmp/repo" add staged.txt
+	printf '%s\n' "$2" >"$guard_repo/staged.txt"
+	git -C "$guard_repo" add staged.txt
 	local code=0
-	(cd "$tmp/repo" && LEAK_GUARD_PATTERNS="$1" bash .githooks/leak-guard.sh) 2>"$tmp/stderr" || code=$?
+	(cd "$guard_repo" && LEAK_GUARD_PATTERNS="$1" bash .githooks/leak-guard.sh) 2>"$tmp/stderr" || code=$?
 	echo "$code"
 }
 
@@ -68,6 +77,19 @@ win_path="C:${bs}Users${bs}someone${bs}project"
 # 8. Missing pattern file: warns on stderr but passes clean content.
 [ "$(run_guard "$tmp/does-not-exist" 'plain harmless content')" = 0 ] || fail 'missing pattern file blocked a clean commit'
 grep -q 'no local pattern file' "$tmp/stderr" || fail 'missing pattern file did not warn'
+
+# 9. A repository may write its own name. The pattern file is per-machine and names every private
+# sibling, so in the repo that IS zzz-synthetic-app the pattern for it must be dropped - otherwise
+# the guard blocks ordinary prose and the only workable answer is not installing it at all.
+guard_repo="$tmp/zzz-synthetic-app"
+[ "$(run_guard "$synthetic" 'mentions zzz-synthetic-app somewhere')" = 0 ] || fail 'repo was blocked by a pattern matching its own name'
+
+# 10. Dropping the self-pattern must not disarm the rest: a sibling's name is still blocked in the
+# same repo, which is the whole reason tier 2 exists.
+printf '%s\n' '\bzzz-synthetic-app\b' '\bzzz-sibling-app\b' >"$tmp/patterns-pair"
+[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 1 ] || fail 'sibling pattern was dropped along with the self pattern'
+[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-synthetic-app somewhere')" = 0 ] || fail 'self pattern survived alongside a sibling pattern'
+guard_repo="$tmp/repo"
 
 if [ "$failures" -gt 0 ]; then
 	echo "check-leak-guard: $failures failure(s)" >&2
