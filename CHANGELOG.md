@@ -2,7 +2,54 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.3.0] - 2026-08-04
+
+### Added
+
+- A startup free-space reserve for `sync`. After taking the archive lock and clearing abandoned owned
+  artifacts, `sync` measures the filesystem holding the archive and refuses to go on when less than
+  1GB is available, before it fetches stars or processes any repository. This is one measurement at
+  startup: it does not size the pending clones, reserve capacity, or measure again during the run, so
+  it stops a run that begins on a too-full disk rather than guaranteeing one that begins above the
+  minimum will finish. `--min-free-space=SIZE` sets another minimum, as a byte count or with a `B`,
+  `KB`, `MB`, `GB`, or `TB` suffix, each a binary multiple, and `--min-free-space=0` disables the
+  check. The programmatic API takes the same value as `minFreeSpace` in bytes. A dry run reports a
+  shortfall as a warning and still previews the work, since a preview writes nothing. A filesystem
+  StarSync cannot measure produces a warning rather than a refusal.
+- The same reserve for `verify --force`, which clones replacements and so needs the room `sync`
+  does. It is measured after the abandoned owned artifacts are cleared and before any checkout is
+  replaced, and a shortfall refuses with exit 1. `--min-free-space=SIZE` and the `minFreeSpace`
+  option take the same values and the same 1GB default as on `sync`. Read-only `verify` writes
+  nothing and never measures.
+
+### Fixed
+
+- The reserve is measured at the target's nearest existing ancestor when the target itself does not
+  exist, since both share one filesystem. No command reaches that case today, because the archive
+  guard rejects a missing target first; the fallback keeps a future caller from reading an absent
+  path as an unmeasurable filesystem.
+- Git subprocesses now request hidden Windows process windows on every path. The async `execFile`
+  and sync `execFileSync` Git launches ran without `windowsHide`, and the visibility guard could
+  not detect `execFile(Sync)` call sites, so it passed while the production Git paths violated the
+  invariant it claimed to enforce.
+- A clone or fetch that fails because another process is holding a file open is retried, the same
+  way a dropped connection already was. Only network transport counted as transient before, so
+  filesystem contention was the one class of transient failure with no retry at all. On Windows an
+  indexer, a scanner, or a Git child that has not fully exited denies the unlink or the rename
+  outright, which failed work that would have succeeded moments later. An SSH `Permission denied
+  (publickey)` is still a hard authentication failure, because authentication is classified first.
+- `bun run check:leak-guard` and the `prepare` hook resolve the `bash` that ships beside the running
+  Git rather than the first one on `PATH`. On Windows `C:\Windows\System32\bash.exe` is the WSL
+  launcher, and it shadows Git's bash in every PowerShell and cmd session; with no distro installed
+  it exits on a relay error naming neither the script nor the shell it wanted. This reached a
+  release rather than a developer: `prepublishOnly` runs `smoke:qc`, `smoke:qc` runs the leak-guard
+  self-test, and the 2.2.1 publish died there.
+
+### Removed
+
+- Dropped the `compile` and `deploy` scripts, the standalone-binary build and its release-matrix
+  step, and the license scope section that described it. StarSync ships through the npm registry
+  only; the compiled executable was never published, so `bun run build` is the whole build.
 
 ## [2.2.1] - 2026-08-03
 
