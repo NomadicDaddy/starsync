@@ -19,7 +19,7 @@ import { argv, env, exit, platform } from 'node:process';
 
 // .../Git/mingw64/libexec/git-core -> .../Git/bin/bash.exe
 function bashBesideGit(): string | undefined {
-	const located = spawnSync('git', ['--exec-path'], { encoding: 'utf8' });
+	const located = spawnSync('git', ['--exec-path'], { encoding: 'utf8', windowsHide: true });
 	if (located.status !== 0) return undefined;
 
 	let directory = path.resolve(located.stdout.trim());
