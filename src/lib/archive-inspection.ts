@@ -33,6 +33,7 @@ const readGit = (checkoutPath: string, args: string[]): string =>
 		encoding: 'utf-8',
 		env: buildGitEnvironment(process.env, { GIT_OPTIONAL_LOCKS: '0' }),
 		stdio: ['ignore', 'pipe', 'pipe'],
+		windowsHide: true,
 	}).trim();
 
 const readArchiveEntry = (targetPath: string, entry: fs.Dirent): ArchiveEntry => {
