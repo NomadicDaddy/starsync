@@ -153,6 +153,22 @@ const TRANSIENT_GIT_PATTERNS: RegExp[] = [
 	/connection was reset/i,
 	/network is unreachable/i,
 	/transient/i,
+	// Filesystem contention, which is as transient as a dropped connection and was previously
+	// the one class of transient failure with no retry at all. An indexer, an antivirus scanner,
+	// or a git child process that has not fully exited can hold a handle to a file in a tree
+	// being cloned into, renamed, or removed; the operation fails with a sharing violation and
+	// succeeds moments later. Windows is where this bites, because it denies the unlink or the
+	// rename outright rather than deferring it the way POSIX does.
+	//
+	// The parenthesized SSH form, `Permission denied (publickey).`, is an authentication failure
+	// rather than contention. It stays non-transient because isGitAuthError is consulted first
+	// and its pattern requires those parentheses.
+	/permission denied/i,
+	/access is denied/i,
+	/being used by another process/i,
+	/resource busy or locked/i,
+	/operation not permitted/i,
+	/\b(?:eacces|ebusy|eperm)\b/i,
 ];
 
 /**
