@@ -84,6 +84,7 @@ const runGitRaw = (args: string[], options: GitExecOptions): Promise<string> =>
 				encoding: 'utf-8',
 				env: buildGitEnvironment(process.env, options.env),
 				maxBuffer: options.maxBuffer ?? 10 * 1024 * 1024,
+				windowsHide: true,
 			},
 			(err: ExecFileException | null, stdout: string) => {
 				if (err) {
