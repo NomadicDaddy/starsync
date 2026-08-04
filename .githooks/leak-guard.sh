@@ -31,10 +31,23 @@ secret_hits="$(printf '%s\n' "$added" | grep -nEi -e "$secret_pattern" || true)"
 path_hits="$(printf '%s\n' "$added" | grep -nE -e "$path_pattern" || true)"
 
 # Tier 2: private literals from the user-level pattern file.
+#
+# The pattern file is per-machine, not per-repo, so it names every private sibling — including
+# whichever one is being committed to right now. A repository cannot leak its own identity to
+# itself: the name is already its directory, its remote URL, and its package name, and it says it
+# constantly in its own prose. Drop the patterns that fire on this repo's own name and keep the
+# rest, so a private app still guards its siblings' names while being free to write its own.
+# Without this the guard is unusable in a private app, which is why it was confined to the public
+# repos before. A pattern that grep cannot compile is kept rather than dropped: fail closed.
 patterns_file="${LEAK_GUARD_PATTERNS:-$HOME/.config/leak-guard/patterns}"
+self_name="$(basename "$(git rev-parse --show-toplevel)")"
 local_hits=''
 if [ -f "$patterns_file" ]; then
 	active="$(grep -vE '^[[:space:]]*(#|$)' "$patterns_file" || true)"
+	active="$(printf '%s\n' "$active" | while IFS= read -r pattern; do
+		[ -z "$pattern" ] && continue
+		printf '%s\n' "$self_name" | grep -qEi -e "$pattern" 2>/dev/null || printf '%s\n' "$pattern"
+	done)"
 	if [ -n "$active" ]; then
 		local_hits="$(printf '%s\n' "$added" | grep -nEi -f <(printf '%s\n' "$active") || true)"
 	fi
