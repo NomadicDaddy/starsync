@@ -69,6 +69,23 @@ describe('package distribution', () => {
 		expect(scripts['prepublishOnly']).toContain('smoke:qc');
 	});
 
+	test('reaches shell scripts through the bash resolver rather than PATH', () => {
+		const scripts = section('package.json', 'scripts');
+
+		// C:\Windows\System32\bash.exe is the WSL launcher, and it shadows Git's bash for every
+		// process whose PATH does not prepend Git's usr/bin. A bare `bash` therefore passes from
+		// Git Bash and fails from PowerShell on the same machine, which reached a release as
+		// prepublishOnly -> smoke:qc -> check:leak-guard dying on execvpe(/bin/bash). Shell
+		// scripts are invoked through scripts/run-bash.ts, which resolves Git's own bash.
+		const bareBash = Object.entries(scripts).filter(([, command]) =>
+			/(?:^|\s|\()bash\s/.test(String(command)),
+		);
+
+		expect(bareBash).toEqual([]);
+		expect(scripts['check:leak-guard']).toContain('scripts/run-bash.ts');
+		expect(scripts['prepare']).toContain('scripts/run-bash.ts');
+	});
+
 	test('builds both entry points for node with dependencies left external', () => {
 		const scripts = section('package.json', 'scripts');
 		const bundle = String(scripts['build:bundle']);

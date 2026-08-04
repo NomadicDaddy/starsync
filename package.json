@@ -28,7 +28,7 @@
 		"build": "bun run build:bundle && bun run build:types",
 		"build:bundle": "bun build ./src/cli.ts ./src/index.ts --target=node --outdir=dist --packages=external",
 		"build:types": "tsc -p tsconfig.types.json",
-		"check:leak-guard": "bash scripts/check-leak-guard.sh",
+		"check:leak-guard": "bun ./scripts/run-bash.ts scripts/check-leak-guard.sh",
 		"check:license-core": "bun scripts/check-license-core.ts",
 		"check:licenses": "bun run check:license-core && bun scripts/generate-third-party-licenses.ts --check",
 		"check:max-lines": "bun ./scripts/check-max-lines.ts",
@@ -47,7 +47,7 @@
 		"sync": "bun ./src/cli.ts sync",
 		"test": "bun ./scripts/test.ts",
 		"typecheck": "tsc --noEmit",
-		"prepare": "bun ./scripts/require-bun.ts && (git config core.hooksPath .githooks && bash .githooks/leak-guard-setup.sh || true) && bun run build",
+		"prepare": "bun ./scripts/require-bun.ts && (git config core.hooksPath .githooks && bun ./scripts/run-bash.ts .githooks/leak-guard-setup.sh || true) && bun run build",
 		"prepublishOnly": "bun run smoke:qc"
 	},
 	"type": "module",
