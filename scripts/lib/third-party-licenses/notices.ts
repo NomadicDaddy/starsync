@@ -172,7 +172,7 @@ export const NOTICES: Record<string, Notice> = {
  * recorded how its obligations are met, and a version bump re-triggers the review by design.
  *
  * Empty today: StarSync's closure is entirely permissive. If one appears, record here how its
- * obligations are met given that StarSync distributes no third-party code in its own tarball but
- * does embed the closure in the `bun run compile` executable.
+ * obligations are met given that StarSync distributes no third-party code in its own tarball; the
+ * consumer's resolver installs the closure.
  */
 export const FLAGGED_ANALYSIS: Record<string, string> = {};

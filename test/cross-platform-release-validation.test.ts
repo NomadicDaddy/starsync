@@ -128,9 +128,8 @@ describe('cross-platform release validation', () => {
 		if (!(await guide.exists())) return;
 		const deployment = await guide.text();
 
-		// Publishing is irreversible in a way compiling a local binary is not, so the guide has
-		// to carry the publish command, the reason npm publish is not it, and the recovery path
-		// for a bad version that is already public.
+		// Publishing is irreversible, so the guide has to carry the publish command, the reason
+		// npm publish is not it, and the recovery path for a bad version that is already public.
 		expect(deployment).toContain('bun publish');
 		expect(deployment).toContain('npm publish` is rejected by the prepare guard');
 		expect(deployment).toContain('npm deprecate');

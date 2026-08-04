@@ -34,8 +34,7 @@ describe('package distribution', () => {
 		expect(manifest['types']).toBe('./dist/types/index.d.ts');
 
 		// Naming src/ here is what kept the package Bun-only: a consumer under Node received
-		// TypeScript it could not execute. The tarball carries built output and nothing else,
-		// which also keeps the ~100MB compiled executable in dist/ out of it.
+		// TypeScript it could not execute. The tarball carries built output and nothing else.
 		expect(manifest['files']).toEqual([
 			'dist/cli.js',
 			'dist/index.js',
