@@ -34,9 +34,9 @@ export interface RenderOptions {
 	graph: GraphSummary;
 	intro: string;
 	/**
-	 * Sections describing what this inventory does NOT cover (the tarball's own contents, the
-	 * runtime embedded in a compiled binary, development tooling). Stating the gaps is the point:
-	 * a notice file that silently implies completeness is worse than one that names its own limits.
+	 * Sections describing what this inventory does NOT cover (the tarball's own contents,
+	 * development tooling). Stating the gaps is the point: a notice file that silently implies
+	 * completeness is worse than one that names its own limits.
 	 */
 	scopeSections: { body: string; heading: string }[];
 	title: string;

@@ -58,20 +58,6 @@ function flaggedNoteFor(flagged: { license: string; name: string }[]): string {
 	return flagged.map((entry) => FLAGGED_ANALYSIS[entry.name]).join('\n\n');
 }
 
-/**
- * The Bun version this repository pins, read from package.json rather than hardcoded: a stale
- * runtime version in an LGPL notice is the same class of bug as the stale package versions this
- * generator exists to prevent.
- */
-function pinnedBunVersion(manifest: { packageManager?: string }): string {
-	const pinned = manifest.packageManager?.match(/^bun@(.+)$/)?.[1];
-	if (!pinned) {
-		console.error('Cannot determine the pinned Bun version from package.json packageManager.');
-		exit(1);
-	}
-	return pinned;
-}
-
 function reportUnresolved(label: string, unresolved: string[]): void {
 	if (unresolved.length === 0) return;
 	// A package we cannot locate is a package whose license we never read. That is a hole in the
@@ -125,7 +111,7 @@ export async function generate(root: string): Promise<GeneratedDocuments> {
 		flaggedNote: flaggedNoteFor(graph.flagged),
 		graph,
 		intro: intro(appName, appLicense),
-		scopeSections: scopeSections(pinnedBunVersion(identity), appName, appLicense),
+		scopeSections,
 		title: 'Third-Party Licenses',
 	});
 

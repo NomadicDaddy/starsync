@@ -5,8 +5,8 @@
  * The direct-dependency table answers "what did we choose"; this answers "what does an install of
  * StarSync actually put on disk". The published bundle is built with `--packages=external`, so the
  * consumer's package manager installs this whole closure rather than receiving it inside the
- * tarball, and `bun run compile` embeds it into a single-file executable. Either way the
- * obligations reach the transitive graph, not only the package named in package.json.
+ * tarball. The obligations therefore reach the transitive graph, not only the package named in
+ * package.json.
  *
  * Membership comes from the lockfile alone; the installed tree only supplies each resolved
  * package's own LICENSE/NOTICE text, and a lockfile-resolved package that is not installed fails

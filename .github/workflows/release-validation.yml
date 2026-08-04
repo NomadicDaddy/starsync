@@ -58,6 +58,3 @@ jobs:
                   node dist/cli.js sync --help
                   node dist/cli.js verify --help
                   node -e "import('./dist/index.js').then((m) => { if (typeof m.syncArchive !== 'function') { throw new Error('library entry did not export syncArchive'); } })"
-
-            - name: Compile platform executable
-              run: bun run compile
