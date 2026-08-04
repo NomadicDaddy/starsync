@@ -316,38 +316,24 @@ describe('staged checkout creation process boundary', () => {
 		}
 	});
 
-	test('recovers dirty valid-ID checkouts after owner, name, and casing renames', () => {
-		const scenarios = [
-			{
-				currentFolder: 'repository--example',
-				currentSlug: 'example/repository',
-				label: 'owner',
-				oldFolder: 'repository--previous',
-				oldSlug: 'previous/repository',
-			},
-			{
-				currentFolder: 'repository--example',
-				currentSlug: 'example/repository',
-				label: 'name',
-				oldFolder: 'previous--example',
-				oldSlug: 'example/previous',
-			},
-			{
-				currentFolder: 'repository--example',
-				currentSlug: 'example/repository',
-				label: 'casing',
-				oldFolder: 'Repository--Example',
-				oldSlug: 'Example/Repository',
-			},
-		];
+	// Each rename reaches the same current identity from a different previous one, so the current
+	// folder and slug are fixed and only the old pair varies per case.
+	const currentFolder = 'repository--example';
+	const currentSlug = 'example/repository';
 
-		for (const scenario of scenarios) {
-			const root = mkdtempSync(path.join(tmpdir(), `starsync-force-${scenario.label}-`));
+	test.each([
+		['owner', 'repository--previous', 'previous/repository'],
+		['name', 'previous--example', 'example/previous'],
+		['casing', 'Repository--Example', 'Example/Repository'],
+	])(
+		'recovers a dirty valid-ID checkout after a %s rename',
+		(label, oldFolder, oldSlug) => {
+			const root = mkdtempSync(path.join(tmpdir(), `starsync-force-${label}-`));
 			const target = path.join(root, 'archive');
-			const oldCloneUrl = `https://github.com/${scenario.oldSlug}.git`;
-			const currentCloneUrl = `https://github.com/${scenario.currentSlug}.git`;
-			const source = path.join(target, scenario.oldFolder);
-			const destination = path.join(target, scenario.currentFolder);
+			const oldCloneUrl = `https://github.com/${oldSlug}.git`;
+			const currentCloneUrl = `https://github.com/${currentSlug}.git`;
+			const source = path.join(target, oldFolder);
+			const destination = path.join(target, currentFolder);
 			mkdirSync(target);
 			writeManagedArchiveConfig(target);
 			const origin = createLocalOrigin(root);
@@ -358,16 +344,16 @@ describe('staged checkout creation process boundary', () => {
 			);
 
 			try {
-				const [, oldName] = scenario.oldSlug.split('/') as [string, string];
+				const [, oldName] = oldSlug.split('/') as [string, string];
 				expect(
 					runStagedCheckout(
 						{
 							clone_url: oldCloneUrl,
 							defaultBranch: 'main',
-							folderName: scenario.oldFolder,
+							folderName: oldFolder,
 							id: 321,
 							name: oldName,
-							slug: scenario.oldSlug,
+							slug: oldSlug,
 						},
 						target,
 						7,
@@ -375,37 +361,38 @@ describe('staged checkout creation process boundary', () => {
 					).outcome,
 				).toBe('added');
 				writeFileSync(path.join(source, 'local-change.txt'), 'replace me');
-				const [owner, name] = scenario.currentSlug.split('/') as [string, string];
+				const [owner, name] = currentSlug.split('/') as [string, string];
 
 				const result = runForcedVerification(
 					target,
-					{ id: 321, name, owner, slug: scenario.currentSlug },
+					{ id: 321, name, owner, slug: currentSlug },
 					gitEnv,
-					[scenario.oldSlug],
+					[oldSlug],
 				);
 
 				expect(result.exitCode).toBe(0);
-				expect(result.checkouts[0]?.name).toBe(scenario.currentFolder);
+				expect(result.checkouts[0]?.name).toBe(currentFolder);
 				expect(result.checkouts[0]?.outcome).toBe('updated');
-				expect(readdirSync(target)).toContain(scenario.currentFolder);
-				expect(readdirSync(target)).not.toContain(scenario.oldFolder);
+				expect(readdirSync(target)).toContain(currentFolder);
+				expect(readdirSync(target)).not.toContain(oldFolder);
 				expect(existsSync(path.join(destination, 'local-change.txt'))).toBe(false);
 				expect(
 					runGit(['config', '--local', '--get', 'starsync.repository-id'], destination),
 				).toBe('321');
 				expect(
 					runGit(['config', '--local', '--get', 'starsync.repository-slug'], destination),
-				).toBe(scenario.currentSlug);
+				).toBe(currentSlug);
 				expect(
 					runGit(['config', '--local', '--get', 'remote.origin.url'], destination),
 				).toBe(currentCloneUrl);
 			} finally {
 				rmSync(root, { force: true, recursive: true });
 			}
-		}
-		// Three full clone-and-reclone scenarios in one body. On Windows runners that lands just
-		// either side of the 5s default, so the budget is stated rather than left to chance.
-	}, 20_000);
+		},
+		// One clone-and-reclone per case costs about 2s on the windows-latest runner against
+		// 0.7s on ubuntu, so the budget is stated rather than left to the 5s default.
+		10_000,
+	);
 
 	test('preserves a renamed source when its stable ID does not match GitHub', () => {
 		const root = mkdtempSync(path.join(tmpdir(), 'starsync-force-id-mismatch-'));
