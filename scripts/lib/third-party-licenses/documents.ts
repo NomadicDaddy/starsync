@@ -33,7 +33,7 @@ install pulls in alongside it, not what the tarball redistributes.
 
 export const DEPENDENCIES_HEADING = 'Runtime dependencies';
 
-export const scopeSections = (BUN_VERSION: string, APP: string, LICENSE: string) => [
+export const scopeSections = [
 	{
 		body: `
 - **The published package redistributes no third-party code.** \`bun run build:bundle\` passes
@@ -48,27 +48,12 @@ export const scopeSections = (BUN_VERSION: string, APP: string, LICENSE: string)
   than the one generating this file, so it can over-include rather than under-report.
 - **Development and build tooling is not inventoried.** It is a devDependency: it is never
   installed by a consumer of the published package and is not part of any artifact.
+- **This document exists for review, not for redistribution.** Shipping no third-party code is why
+  it stays out of the tarball; it is kept in the repository as this project's own record of the
+  dependency closure an install resolves, so a compliance review has one checked-in, regenerable
+  answer instead of an ad-hoc audit of \`node_modules\`.
 `,
 		heading: 'Scope',
-	},
-	{
-		body: `
-\`bun run compile\` produces a single-file executable in \`dist/\`. That artifact is different in
-kind from the published npm package: it embeds the JavaScript of the whole runtime closure above
-*and* the Bun runtime, which statically links libraries under the LGPL — JavaScriptCore/WebKit
-(LGPL-2) and TinyCC (LGPL-2.1) among them.
-
-${APP} does not publish that executable; \`compile\` exists for local use. Anyone who does
-distribute it takes on the obligations that come with it: passing on the license texts and
-copyright lines in [\`THIRD_PARTY_NOTICES.md\`](./THIRD_PARTY_NOTICES.md), reproducing Bun's own
-license, and satisfying the LGPL's source and relink requirements for the statically linked
-components. Bun is MIT and published at <https://github.com/oven-sh/bun> (this repository pins
-\`bun@${BUN_VERSION}\`, tagged \`bun-v${BUN_VERSION}\`); the patched WebKit/JavaScriptCore it links
-is at <https://github.com/oven-sh/webkit>, and TinyCC is at <https://github.com/tinycc/tinycc>.
-${APP}'s own source is ${LICENSE}, so nothing here restricts that. A distributor must preserve the
-exact corresponding source rather than rely on those upstream locations remaining unchanged.
-`,
-		heading: 'Not covered: the compiled single-file executable',
 	},
 ];
 
