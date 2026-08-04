@@ -25,7 +25,13 @@ import {
 } from '../src/index.ts';
 import { getArchiveModificationFinding, inspectArchive } from '../src/lib/archive-inspection.ts';
 import { applyArchiveRenames } from '../src/lib/archive-rename-apply.ts';
-import { parseArgs, resolveTargetPath, stripQuotes } from '../src/lib/cli-utils.ts';
+import {
+	parseArgs,
+	parseSubcommandArgs,
+	resolveTargetPath,
+	stripQuotes,
+} from '../src/lib/cli-utils.ts';
+import { checkFreeSpace, measureAvailableSpace } from '../src/lib/free-space.ts';
 import { SYNC_HELP_TEXT } from '../src/lib/help-text.ts';
 import { createCommandReport, createCommandReporter, createFinding } from '../src/lib/reporting.ts';
 import {
@@ -37,6 +43,21 @@ import {
 	sanitizeUrl,
 } from '../src/lib/secret-safety.ts';
 import { dispatchSync } from '../src/lib/subcommands.ts';
+
+const DEFAULT_MIN_FREE_SPACE = 1024 ** 3;
+
+/**
+ * A Windows drive root that is not mounted, or null when every letter is in use or
+ * the platform has no drive letters. It is the one path a real filesystem call can
+ * be made to fail on without mocking, which is what the unmeasurable branch needs.
+ */
+const unusedWindowsRoot = (): null | string => {
+	if (process.platform !== 'win32') return null;
+	for (const letter of 'ZYXWVUT') {
+		if (!existsSync(`${letter}:\\`)) return `${letter}:\\`;
+	}
+	return null;
+};
 
 const mockExecFileSync = mock(
 	(_cmd: string, _args: string[], _options?: unknown): string | undefined => undefined,
@@ -439,6 +460,7 @@ describe('argument parsing', () => {
 			dryRun: false,
 			help: false,
 			json: false,
+			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: null,
 		});
 		expect(parseArgs(['--help'])).toEqual({
@@ -446,6 +468,7 @@ describe('argument parsing', () => {
 			dryRun: false,
 			help: true,
 			json: false,
+			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: null,
 		});
 		expect(parseArgs(['-h'])).toEqual({
@@ -453,6 +476,7 @@ describe('argument parsing', () => {
 			dryRun: false,
 			help: true,
 			json: false,
+			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: null,
 		});
 		expect(parseArgs(['repos'])).toEqual({
@@ -460,6 +484,7 @@ describe('argument parsing', () => {
 			dryRun: false,
 			help: false,
 			json: false,
+			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: 'repos',
 		});
 	});
@@ -1063,6 +1088,424 @@ describe('sync --dry-run', () => {
 	});
 });
 
+describe('sync free space floor', () => {
+	// No test filesystem can satisfy this, so the shortfall path is exercised without
+	// having to fill a disk.
+	const UNREACHABLE_MINIMUM = Number.MAX_SAFE_INTEGER;
+
+	test('refuses before querying stars when the target is short on space', async () => {
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-space-'));
+		try {
+			writeManagedArchiveConfig(target);
+			const report = await syncArchive({
+				minFreeSpace: UNREACHABLE_MINIMUM,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(1);
+			expect(report.findings).toEqual([
+				expect.objectContaining({ code: 'insufficient-free-space', severity: 'error' }),
+			]);
+			expect(report.findings[0]?.message).toContain('minimum required to synchronize');
+			expect(report.checkouts).toEqual([]);
+			expect(mockPaginate).not.toHaveBeenCalled();
+			expect(readdirSync(target)).toEqual(['.starsync']);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('clears abandoned owned artifacts before measuring and refusing', async () => {
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-space-cleanup-'));
+		try {
+			writeManagedArchiveConfig(target);
+			mkdirSync(path.join(target, '.starsync-checkout-ab12cd'), { recursive: true });
+			const report = await syncArchive({
+				minFreeSpace: UNREACHABLE_MINIMUM,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(1);
+			expect(existsSync(path.join(target, '.starsync-checkout-ab12cd'))).toBe(false);
+			expect(report.findings).toEqual([
+				expect.objectContaining({ code: 'owned-checkout-artifact-removed' }),
+				expect.objectContaining({ code: 'insufficient-free-space' }),
+			]);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('warns without blocking a dry run', async () => {
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-space-dryrun-'));
+		try {
+			writeManagedArchiveConfig(target);
+			const report = await syncArchive({
+				dryRun: true,
+				minFreeSpace: UNREACHABLE_MINIMUM,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(0);
+			expect(report.findings).toContainEqual(
+				expect.objectContaining({ code: 'insufficient-free-space', severity: 'warning' }),
+			);
+			expect(report.checkouts[0]).toEqual(
+				expect.objectContaining({ name: 'repo-a--example', plannedOutcome: 'added' }),
+			);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('skips the measurement when the minimum is zero', async () => {
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-space-off-'));
+		try {
+			writeManagedArchiveConfig(target);
+			const report = await syncArchive({
+				dryRun: true,
+				minFreeSpace: 0,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(0);
+			expect(report.findings).toEqual([]);
+			expect(report.checkouts[0]).toEqual(
+				expect.objectContaining({ name: 'repo-a--example', plannedOutcome: 'added' }),
+			);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('rejects a minimum that is not a whole count of bytes', async () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-space-invalid-'));
+		try {
+			writeManagedArchiveConfig(target);
+			const fractional = await syncArchive({
+				minFreeSpace: 1.5,
+				targetPath: target,
+				token: 'test-token',
+			});
+			const negative = await syncArchive({
+				minFreeSpace: -1,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(fractional.exitCode).toBe(2);
+			expect(negative.exitCode).toBe(2);
+			expect(fractional.findings[0]?.code).toBe('invalid-min-free-space');
+			expect(negative.findings[0]?.code).toBe('invalid-min-free-space');
+			expect(mockGetAuthenticated).not.toHaveBeenCalled();
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('carries --min-free-space from the command line into the refusal', async () => {
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-space-cli-'));
+		const savedToken = process.env.GITHUB_TOKEN;
+		process.env.GITHUB_TOKEN = 'test-token';
+		try {
+			writeManagedArchiveConfig(target);
+			const captured = await captureConsole(() =>
+				dispatchSync(['--json', `--min-free-space=${UNREACHABLE_MINIMUM}`, target]),
+			);
+			const report = parseReport(captured.stdout);
+
+			expect(captured.result).toBe(1);
+			expect(report.findings[0]?.code).toBe('insufficient-free-space');
+			expect(mockPaginate).not.toHaveBeenCalled();
+		} finally {
+			if (savedToken === undefined) {
+				delete process.env.GITHUB_TOKEN;
+			} else {
+				process.env.GITHUB_TOKEN = savedToken;
+			}
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('rejects a target that does not exist before it measures anything', async () => {
+		mockPaginate.mockResolvedValue([mockStarredRepository('repo-a', 101)]);
+		const parent = mkdtempSync(path.join(tmpdir(), 'starsync-space-absent-'));
+		const target = path.join(parent, 'not', 'created', 'yet');
+		try {
+			const report = await syncArchive({
+				dryRun: true,
+				minFreeSpace: UNREACHABLE_MINIMUM,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			// The archive guard runs first, so no measurement of a missing path is ever
+			// attempted and neither free-space code can appear here.
+			expect(report.findings).toEqual([
+				expect.objectContaining({ code: 'target-not-found', severity: 'error' }),
+			]);
+			expect(existsSync(target)).toBe(false);
+		} finally {
+			rmSync(parent, { force: true, recursive: true });
+		}
+	});
+});
+
+describe('free-space measurement', () => {
+	test('measures an absent nested path exactly as its nearest existing ancestor', () => {
+		const parent = mkdtempSync(path.join(tmpdir(), 'starsync-measure-'));
+		try {
+			const absent = path.join(parent, 'no', 'such', 'child');
+
+			expect(existsSync(absent)).toBe(false);
+			expect(measureAvailableSpace(absent)).toBe(measureAvailableSpace(parent));
+			expect(measureAvailableSpace(parent)).toBeGreaterThan(0);
+		} finally {
+			rmSync(parent, { force: true, recursive: true });
+		}
+	});
+
+	test.skipIf(process.platform !== 'win32' || unusedWindowsRoot() === null)(
+		'reports an unmeasurable filesystem as a warning rather than a shortfall',
+		() => {
+			const root = unusedWindowsRoot() ?? '';
+
+			const finding = checkFreeSpace(root, DEFAULT_MIN_FREE_SPACE, 'error', 'synchronize');
+
+			expect(finding).toEqual(
+				expect.objectContaining({ code: 'free-space-unknown', severity: 'warning' }),
+			);
+			expect(finding?.message).toContain('Cannot measure free space at the archive target');
+		},
+	);
+
+	test('skips the measurement entirely when the minimum is zero', () => {
+		const root = unusedWindowsRoot();
+		// Even a path that cannot be measured produces nothing, because a disabled
+		// check never reaches the filesystem.
+		expect(checkFreeSpace(root ?? tmpdir(), 0, 'error', 'synchronize')).toBeNull();
+	});
+});
+
+describe('verify free space floor', () => {
+	const UNREACHABLE_MINIMUM = Number.MAX_SAFE_INTEGER;
+
+	test('refuses forced repair before any checkout is verified', async () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-verify-space-'));
+		try {
+			writeManagedArchiveConfig(target);
+			createCheckout(target, 'repo-a--example');
+			const report = await verifyArchive({
+				force: true,
+				minFreeSpace: UNREACHABLE_MINIMUM,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(1);
+			expect(report.findings).toEqual([
+				expect.objectContaining({ code: 'insufficient-free-space', severity: 'error' }),
+			]);
+			expect(report.findings[0]?.message).toContain(
+				'minimum required to replace damaged checkouts',
+			);
+			expect(report.checkouts).toEqual([]);
+			expect(existsSync(path.join(target, 'repo-a--example'))).toBe(true);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('clears abandoned owned artifacts before measuring and refusing', async () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-verify-space-cleanup-'));
+		try {
+			writeManagedArchiveConfig(target);
+			mkdirSync(path.join(target, '.starsync-checkout-ab12cd'), { recursive: true });
+			const report = await verifyArchive({
+				force: true,
+				minFreeSpace: UNREACHABLE_MINIMUM,
+				targetPath: target,
+				token: 'test-token',
+			});
+
+			expect(report.exitCode).toBe(1);
+			expect(existsSync(path.join(target, '.starsync-checkout-ab12cd'))).toBe(false);
+			expect(report.findings).toEqual([
+				expect.objectContaining({ code: 'owned-checkout-artifact-removed' }),
+				expect.objectContaining({ code: 'insufficient-free-space' }),
+			]);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('never measures during read-only verification', async () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-verify-space-readonly-'));
+		try {
+			writeManagedArchiveConfig(target);
+			const report = await verifyArchive({
+				minFreeSpace: UNREACHABLE_MINIMUM,
+				targetPath: target,
+			});
+
+			expect(report.findings.map((finding) => finding.code)).not.toContain(
+				'insufficient-free-space',
+			);
+			expect(report.exitCode).toBe(0);
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('rejects a minimum that is not a whole count of bytes', async () => {
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-verify-space-invalid-'));
+		try {
+			writeManagedArchiveConfig(target);
+			const fractional = await verifyArchive({
+				minFreeSpace: 1.5,
+				targetPath: target,
+			});
+
+			expect(fractional.exitCode).toBe(2);
+			expect(fractional.findings[0]?.code).toBe('invalid-min-free-space');
+		} finally {
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('carries --min-free-space from the command line into the refusal', async () => {
+		const { dispatchVerify } = await import('../src/lib/subcommands.ts');
+		const target = mkdtempSync(path.join(tmpdir(), 'starsync-verify-space-cli-'));
+		const savedToken = process.env.GITHUB_TOKEN;
+		process.env.GITHUB_TOKEN = 'test-token';
+		try {
+			writeManagedArchiveConfig(target);
+			const captured = await captureConsole(() =>
+				dispatchVerify([
+					'--json',
+					'--force',
+					`--min-free-space=${UNREACHABLE_MINIMUM}`,
+					target,
+				]),
+			);
+			const report = parseReport(captured.stdout);
+
+			expect(captured.result).toBe(1);
+			expect(report.findings[0]?.code).toBe('insufficient-free-space');
+		} finally {
+			if (savedToken === undefined) {
+				delete process.env.GITHUB_TOKEN;
+			} else {
+				process.env.GITHUB_TOKEN = savedToken;
+			}
+			rmSync(target, { force: true, recursive: true });
+		}
+	});
+});
+
+describe('parseSubcommandArgs', () => {
+	test('defaults every flag off and the reserve to one binary gigabyte', () => {
+		expect(parseSubcommandArgs([])).toEqual({
+			apply: false,
+			dryRun: false,
+			force: false,
+			help: false,
+			json: false,
+			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
+			targetPath: null,
+		});
+	});
+
+	test('accepts only the flags its subcommand opted into', () => {
+		expect(parseSubcommandArgs(['--force'], { allowForce: true }).force).toBe(true);
+		expect(parseSubcommandArgs(['--apply'], { allowApply: true }).apply).toBe(true);
+		expect(parseSubcommandArgs(['--dry-run'], { allowDryRun: true }).dryRun).toBe(true);
+		expect(() => parseSubcommandArgs(['--force'])).toThrow('Unknown argument: --force');
+		expect(() => parseSubcommandArgs(['--apply'], { allowForce: true })).toThrow(
+			'Unknown argument: --apply',
+		);
+		expect(() => parseSubcommandArgs(['--dry-run'], { allowApply: true })).toThrow(
+			'Unknown argument: --dry-run',
+		);
+	});
+
+	test('always accepts help and json', () => {
+		expect(parseSubcommandArgs(['-h']).help).toBe(true);
+		expect(parseSubcommandArgs(['--help']).help).toBe(true);
+		expect(parseSubcommandArgs(['--json']).json).toBe(true);
+	});
+
+	test('reads --min-free-space only where it is allowed', () => {
+		expect(parseSubcommandArgs(['--min-free-space=2GB'], { allowMinFreeSpace: true })).toEqual(
+			expect.objectContaining({ minFreeSpace: 2 * 1024 ** 3 }),
+		);
+		expect(parseSubcommandArgs(['--min-free-space=0'], { allowMinFreeSpace: true })).toEqual(
+			expect.objectContaining({ minFreeSpace: 0 }),
+		);
+		expect(() => parseSubcommandArgs(['--min-free-space=1GB'])).toThrow(
+			'Unknown argument: --min-free-space=1GB',
+		);
+	});
+
+	test('rejects an unparsable or valueless --min-free-space', () => {
+		expect(() =>
+			parseSubcommandArgs(['--min-free-space=10PB'], { allowMinFreeSpace: true }),
+		).toThrow('Free space minimum must be');
+		expect(() =>
+			parseSubcommandArgs(['--min-free-space'], { allowMinFreeSpace: true }),
+		).toThrow('--min-free-space requires a value: use --min-free-space=SIZE');
+	});
+
+	test('takes one positional target and rejects a second', () => {
+		expect(parseSubcommandArgs(['C:/archive']).targetPath).toBe('C:/archive');
+		expect(() => parseSubcommandArgs(['C:/archive', 'D:/archive'])).toThrow(
+			'Unexpected positional argument: D:/archive',
+		);
+	});
+});
+
+describe('parseArgs --min-free-space', () => {
+	test('defaults to one binary gigabyte', () => {
+		expect(parseArgs([]).minFreeSpace).toBe(1024 ** 3);
+	});
+
+	test('accepts bare byte counts and binary suffixes', () => {
+		expect(parseArgs(['--min-free-space=4096']).minFreeSpace).toBe(4096);
+		expect(parseArgs(['--min-free-space=2GB']).minFreeSpace).toBe(2 * 1024 ** 3);
+		expect(parseArgs(['--min-free-space=512mb']).minFreeSpace).toBe(512 * 1024 ** 2);
+		expect(parseArgs(['--min-free-space=1.5GiB']).minFreeSpace).toBe(1024 ** 3 + 1024 ** 3 / 2);
+	});
+
+	test('accepts 0 to disable the check', () => {
+		expect(parseArgs(['--min-free-space=0']).minFreeSpace).toBe(0);
+	});
+
+	test('rejects a fraction without a unit', () => {
+		expect(() => parseArgs(['--min-free-space=1.5'])).toThrow('Free space minimum must be');
+	});
+
+	test('rejects unknown units and unparsable values', () => {
+		expect(() => parseArgs(['--min-free-space=10PB'])).toThrow('Free space minimum must be');
+		expect(() => parseArgs(['--min-free-space=abc'])).toThrow('Free space minimum must be');
+		expect(() => parseArgs(['--min-free-space=-1GB'])).toThrow('Free space minimum must be');
+	});
+
+	test('rejects the flag without a value', () => {
+		expect(() => parseArgs(['--min-free-space'])).toThrow(
+			'--min-free-space requires a value: use --min-free-space=SIZE',
+		);
+	});
+});
+
 describe('parseArgs --dry-run', () => {
 	test('accepts --dry-run flag', () => {
 		expect(parseArgs(['--dry-run'])).toEqual({
@@ -1070,6 +1513,7 @@ describe('parseArgs --dry-run', () => {
 			dryRun: true,
 			help: false,
 			json: false,
+			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: null,
 		});
 		expect(parseArgs(['--dry-run', 'repos'])).toEqual({
@@ -1077,6 +1521,7 @@ describe('parseArgs --dry-run', () => {
 			dryRun: true,
 			help: false,
 			json: false,
+			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: 'repos',
 		});
 	});
@@ -2443,6 +2888,7 @@ describe('structured command reporting', () => {
 			dryRun: false,
 			help: false,
 			json: true,
+			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: null,
 		});
 	});
