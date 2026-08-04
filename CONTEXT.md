@@ -100,6 +100,12 @@ _Avoid_: Mirror
 - Rename preview is read-only. Rename application authenticates the **Archive Owner**.
 - A dirty, unverifiable, duplicated, mismatched, or colliding checkout is not renamed.
 - Successful rename updates remain when another checkout fails or processing is interrupted.
+- **Synchronize** measures free space once at startup, after clearing abandoned owned artifacts,
+  and refuses to begin repository work below the configured minimum; a preview reports the
+  shortfall without refusing. The minimum is a starting reserve, not a guarantee that the run has
+  room to finish.
+- Forced verification takes the same reserve, since it clones replacements; read-only verification
+  writes nothing and never measures.
 - A currently starred repository has an **Active Checkout** after addition.
 - An unstarred repository becomes a **Retained Checkout** and becomes active again if re-starred.
 - A **Refresh** preserves available branches, tags, and previously retained history.

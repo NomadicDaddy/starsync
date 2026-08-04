@@ -8,7 +8,14 @@ import {
 	unlockArchive,
 	verifyArchive,
 } from './archive-api.ts';
-import { parseArgs, resolveTargetPath, stripQuotes, type Subcommand } from './cli-utils.ts';
+import {
+	parseArgs,
+	type ParsedSubcommandArgs,
+	parseSubcommandArgs,
+	resolveTargetPath,
+	stripQuotes,
+	type Subcommand,
+} from './cli-utils.ts';
 import {
 	DATES_HELP_TEXT,
 	INIT_HELP_TEXT,
@@ -19,53 +26,6 @@ import {
 } from './help-text.ts';
 import { createInterruptControl } from './interrupt-control.ts';
 import { createCommandReport, createCommandReporter, createFinding } from './reporting.ts';
-
-export interface ParsedSubcommandArgs {
-	apply: boolean;
-	dryRun: boolean;
-	force: boolean;
-	help: boolean;
-	json: boolean;
-	targetPath: null | string;
-}
-type SubcommandArgumentOptions = Partial<
-	Record<'allowApply' | 'allowDryRun' | 'allowForce', boolean>
->;
-
-const parseSubcommandArgs = (
-	argv: string[],
-	options: SubcommandArgumentOptions = {},
-): ParsedSubcommandArgs => {
-	const parsed: ParsedSubcommandArgs = {
-		apply: false,
-		dryRun: false,
-		force: false,
-		help: false,
-		json: false,
-		targetPath: null,
-	};
-	for (const arg of argv) {
-		if (arg === '--help' || arg === '-h') {
-			parsed.help = true;
-		} else if (arg === '--dry-run' && options.allowDryRun) {
-			parsed.dryRun = true;
-		} else if (arg === '--apply' && options.allowApply) {
-			parsed.apply = true;
-		} else if (arg === '--force' && options.allowForce) {
-			parsed.force = true;
-		} else if (arg === '--json') {
-			parsed.json = true;
-		} else if (!arg.startsWith('-')) {
-			if (parsed.targetPath !== null) {
-				throw new Error(`Unexpected positional argument: ${arg}`);
-			}
-			parsed.targetPath = arg;
-		} else {
-			throw new Error(`Unknown argument: ${arg}`);
-		}
-	}
-	return parsed;
-};
 
 const emitHelp = (command: Subcommand, json: boolean, helpText: string): number => {
 	createCommandReporter(json).emit(
@@ -137,6 +97,7 @@ export const dispatchSync = async (argv: string[]): Promise<number> => {
 		report = await syncArchive({
 			concurrency: args.concurrency,
 			dryRun: args.dryRun,
+			minFreeSpace: args.minFreeSpace,
 			onProgress: reporter.progress,
 			signal: interrupt.signal,
 			targetPath,
@@ -152,7 +113,7 @@ export const dispatchSync = async (argv: string[]): Promise<number> => {
 export const dispatchVerify = async (argv: string[]): Promise<number> => {
 	let args: ParsedSubcommandArgs;
 	try {
-		args = parseSubcommandArgs(argv, { allowForce: true });
+		args = parseSubcommandArgs(argv, { allowForce: true, allowMinFreeSpace: true });
 	} catch (err) {
 		return emitUsageError('verify', argv, VERIFY_HELP_TEXT, err);
 	}
@@ -169,6 +130,7 @@ export const dispatchVerify = async (argv: string[]): Promise<number> => {
 	try {
 		report = await verifyArchive({
 			force: args.force,
+			minFreeSpace: args.minFreeSpace,
 			onProgress: reporter.progress,
 			signal: interrupt.signal,
 			targetPath,
