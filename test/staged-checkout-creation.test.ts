@@ -358,8 +358,8 @@ describe('staged checkout creation process boundary', () => {
 						target,
 						7,
 						gitEnv,
-					).outcome,
-				).toBe('added');
+					),
+				).toEqual(expect.objectContaining({ outcome: 'added' }));
 				writeFileSync(path.join(source, 'local-change.txt'), 'replace me');
 				const [owner, name] = currentSlug.split('/') as [string, string];
 
@@ -389,9 +389,9 @@ describe('staged checkout creation process boundary', () => {
 				rmSync(root, { force: true, recursive: true });
 			}
 		},
-		// One clone-and-reclone per case costs about 2s on the windows-latest runner against
-		// 0.7s on ubuntu, so the budget is stated rather than left to the 5s default.
-		10_000,
+		// No per-case budget: scripts/test.ts sets one for the whole process-boundary suite. A
+		// tighter figure here would single this test back out of it, which is what the suite-wide
+		// budget exists to stop.
 	);
 
 	test('preserves a renamed source when its stable ID does not match GitHub', () => {
@@ -421,8 +421,8 @@ describe('staged checkout creation process boundary', () => {
 					target,
 					7,
 					gitEnv,
-				).outcome,
-			).toBe('added');
+				),
+			).toEqual(expect.objectContaining({ outcome: 'added' }));
 			writeFileSync(path.join(source, 'local-change.txt'), 'keep me');
 
 			const result = runForcedVerification(
@@ -471,8 +471,8 @@ describe('staged checkout creation process boundary', () => {
 						target,
 						7,
 						gitEnv,
-					).outcome,
-				).toBe('added');
+					),
+				).toEqual(expect.objectContaining({ outcome: 'added' }));
 			}
 			const dirtyPath = path.join(target, 'first--example', 'local-change.txt');
 			writeFileSync(dirtyPath, 'keep me');
@@ -528,8 +528,8 @@ describe('staged checkout creation process boundary', () => {
 					target,
 					7,
 					gitEnv,
-				).outcome,
-			).toBe('added');
+				),
+			).toEqual(expect.objectContaining({ outcome: 'added' }));
 			writeFileSync(path.join(source, 'local-change.txt'), 'keep source');
 			mkdirSync(destination);
 			writeFileSync(path.join(destination, 'keep.txt'), 'keep destination');
@@ -584,8 +584,8 @@ describe('staged checkout creation process boundary', () => {
 					target,
 					7,
 					gitEnv,
-				).outcome,
-			).toBe('added');
+				),
+			).toEqual(expect.objectContaining({ outcome: 'added' }));
 			writeFileSync(path.join(destination, '.git', 'config'), '\0'.repeat(256));
 
 			const failedCleanup = runForcedVerification(
@@ -666,8 +666,8 @@ describe('staged checkout creation process boundary', () => {
 					target,
 					7,
 					gitEnv,
-				).outcome,
-			).toBe('added');
+				),
+			).toEqual(expect.objectContaining({ outcome: 'added' }));
 			runGit(['config', '--local', '--unset-all', 'starsync.repository-id'], destination);
 			runGit(['config', '--local', '--unset-all', 'starsync.repository-slug'], destination);
 

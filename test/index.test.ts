@@ -1584,6 +1584,38 @@ describe('git-exec error classification', () => {
 		const { isTransientGitError } = await import('../src/lib/git-exec.ts');
 		expect(isTransientGitError('fatal: bad object refs/heads/main')).toBe(false);
 	});
+
+	// A held handle is as transient as a dropped connection, but only the connection was ever
+	// retried. On Windows an indexer or antivirus scanner denies the unlink or the rename
+	// outright instead of deferring it, so a clone into a fresh staging directory fails and
+	// would have succeeded a second later.
+	test('isTransientGitError detects filesystem contention', async () => {
+		const { isTransientGitError } = await import('../src/lib/git-exec.ts');
+		expect(isTransientGitError('error: unable to create file x.ts: Permission denied')).toBe(
+			true,
+		);
+		expect(
+			isTransientGitError('error: unable to write file .git/objects: Access is denied'),
+		).toBe(true);
+		expect(
+			isTransientGitError(
+				'The process cannot access the file because it is being used by another process.',
+			),
+		).toBe(true);
+		expect(isTransientGitError("EBUSY: resource busy or locked, rmdir 'archive/staging'")).toBe(
+			true,
+		);
+		expect(
+			isTransientGitError("EPERM: operation not permitted, unlink 'repo/.git/index'"),
+		).toBe(true);
+	});
+
+	// The parenthesized SSH form is authentication, not contention, and shares the words that
+	// now mark contention as retryable. Retrying it would delay a failure that cannot improve.
+	test('isTransientGitError does NOT classify SSH permission denied as transient', async () => {
+		const { isTransientGitError } = await import('../src/lib/git-exec.ts');
+		expect(isTransientGitError('git@github.com: Permission denied (publickey).')).toBe(false);
+	});
 });
 
 describe('api-retry', () => {
