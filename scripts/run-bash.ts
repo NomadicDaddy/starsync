@@ -5,13 +5,19 @@
 // and cmd session. With no WSL distro installed it fails with
 //   <3>WSL (12 - Relay) ERROR: CreateProcessCommon:818: execvpe(/bin/bash) failed
 // so `bash scripts/check-leak-guard.sh` passes from Git Bash and fails from PowerShell on the
-// same machine, and the failure lands in `prepublishOnly` where it reads as a broken release
-// rather than a shell that was never there. Resolution is therefore explicit: Git's own bash,
-// found the way git itself reports where it lives, and the System32 launcher never.
+// same machine, and the failure lands in `bun install` (the prepare script) and in check:leak-guard,
+// which smoke:qc runs and prepublishOnly gates the release on, where it reads as a broken
+// repository rather than a shell that was never there. Resolution is therefore explicit: Git's own
+// bash, found the way git itself reports where it lives, and the System32 launcher never.
 //
-// The shell scripts this runs (.githooks/leak-guard.sh, scripts/check-leak-guard.sh) are kept
-// byte-identical across the aidd, spernakit, and starsync repositories, so the portability fix
-// cannot live inside them. It lives here, in the repository-local script that invokes them.
+// The shell scripts this runs (.githooks/leak-guard-setup.sh, scripts/check-leak-guard.sh) are
+// kept byte-identical across the aidd, spernakit, and starsync repositories, so the portability
+// fix cannot live inside them. It lives here, in the repository-local script that invokes them.
+//
+// This file is therefore seeded, not synced. aidd/scripts/lib/leak-guard/contract.ts lists it
+// under SEEDED_SCRIPTS: an installer writes it into a repository that lacks it and never
+// overwrites one that has it. The three copies are deliberately not byte-identical to each other,
+// because each one names its own repository's entry points.
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
