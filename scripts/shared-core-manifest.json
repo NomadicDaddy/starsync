@@ -1,0 +1,112 @@
+{
+	"groups": [
+		{
+			"files": [
+				{ "disposition": "synced", "source": "pre-push" },
+				{ "disposition": "synced", "source": "aidd-history-guard.sh" },
+				{ "disposition": "synced", "source": "screenshot-guard.sh" }
+			],
+			"hook": "pre-push",
+			"hookMarker": "aidd history guard",
+			"name": "push-guards",
+			"owner": "aidd",
+			"sourceRoot": ".githooks",
+			"targetRoot": ".githooks",
+			"targets": { "marker": ".aidd", "model": "discovered" }
+		},
+		{
+			"files": [
+				{
+					"disposition": "synced",
+					"fallbackSource": "pre-commit-leak-guard-only",
+					"requiresScripts": ["smoke:qc:fast", "check:licenses"],
+					"source": "pre-commit"
+				},
+				{ "disposition": "synced", "source": "leak-guard.sh" },
+				{ "disposition": "synced", "source": "leak-guard-setup.sh" }
+			],
+			"hook": "pre-commit",
+			"hookMarker": "bash .githooks/leak-guard.sh",
+			"localChainMarker": "# leak-guard: local chain, kept by hand",
+			"name": "leak-guard-hooks",
+			"owner": "aidd",
+			"sourceRoot": ".githooks",
+			"targetRoot": ".githooks",
+			"targets": { "model": "discovered" }
+		},
+		{
+			"files": [
+				{ "disposition": "synced", "source": "check-leak-guard.sh" },
+				{ "disposition": "seeded", "source": "run-bash.ts" }
+			],
+			"name": "leak-guard-scripts",
+			"owner": "aidd",
+			"requiresPackageJson": true,
+			"sourceRoot": "scripts",
+			"targetRoot": "scripts",
+			"targets": { "model": "discovered" },
+			"wiring": {
+				"check:leak-guard": "bun ./scripts/run-bash.ts scripts/check-leak-guard.sh",
+				"prepare": "bun ./scripts/run-bash.ts .githooks/leak-guard-setup.sh"
+			}
+		},
+		{
+			"files": [
+				{ "disposition": "synced", "source": "scripts/check-gate-conventions.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/gate/allowlist.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/gate/discover.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/gate/rules.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/gate/toplevel.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/gate/types.ts" },
+				{ "disposition": "synced", "source": "scripts/test-gate-conventions.ts" }
+			],
+			"name": "gate-conventions",
+			"owner": "spernakit",
+			"requiresPackageJson": true,
+			"sourceRoot": ".",
+			"targetRoot": ".",
+			"targets": { "model": "roster", "roster": "gate-conventions-targets.json" },
+			"wiring": {
+				"check:gate-conventions": "bun scripts/check-gate-conventions.ts",
+				"test:gate-conventions": "bun scripts/test-gate-conventions.ts"
+			}
+		},
+		{
+			"files": [
+				{ "disposition": "synced", "source": "scripts/check-license-core.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/license-core/expression.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/license-core/installed.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/license-core/lockfile.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/license-core/manifest.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/license-core/order.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/license-core/resolve.ts" }
+			],
+			"name": "license-core",
+			"owner": "spernakit",
+			"sourceRoot": ".",
+			"targetRoot": ".",
+			"targets": { "model": "roster", "roster": "shared-core-targets.json" }
+		},
+		{
+			"files": [
+				{ "disposition": "synced", "source": "scripts/shared-core-manifest.json" },
+				{ "disposition": "synced", "source": "scripts/sync-shared-core.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/check.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/dispatch.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/manifest.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/owner.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/targets.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/write.ts" }
+			],
+			"name": "shared-core-sync",
+			"owner": "spernakit",
+			"requiresPackageJson": true,
+			"sourceRoot": ".",
+			"targetRoot": ".",
+			"targets": { "model": "roster", "roster": "shared-core-sync-targets.json" },
+			"wiring": {
+				"check:shared-core": "bun scripts/sync-shared-core.ts --check"
+			}
+		}
+	]
+}

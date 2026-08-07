@@ -32,3 +32,10 @@ nul/
 # OS
 .DS_Store
 Thumbs.db
+
+# Shared-core rosters. This repository owns no group and so writes none today, but a roster names
+# every private sibling it syncs to, and this repository is public. Ignoring them here costs three
+# lines and removes the only way one could ever be committed by accident.
+/shared-core-targets.json
+/shared-core-sync-targets.json
+/gate-conventions-targets.json
