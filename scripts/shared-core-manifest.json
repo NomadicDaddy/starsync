@@ -68,9 +68,12 @@
 		},
 		{
 			"files": [
+				{ "disposition": "synced", "source": "check-destructive-confirmation.ts" },
 				{ "disposition": "synced", "source": "check-docs.ts" },
 				{ "disposition": "synced", "source": "check-git-window-hide.ts" },
 				{ "disposition": "synced", "source": "check-no-inline-references.ts" },
+				{ "disposition": "synced", "source": "lib/destructive/evidence.ts" },
+				{ "disposition": "synced", "source": "lib/destructive/waivers.ts" },
 				{ "disposition": "synced", "source": "lib/docs/waivers.ts" }
 			],
 			"name": "portable-gates",
@@ -80,6 +83,7 @@
 			"targetRoot": "scripts",
 			"targets": { "model": "roster", "roster": "portable-gates-targets.json" },
 			"wiring": {
+				"check:destructive-confirmation": "bun scripts/check-destructive-confirmation.ts",
 				"check:docs": "bun scripts/check-docs.ts",
 				"check:git-window-hide": "bun scripts/check-git-window-hide.ts",
 				"check:no-inline-references": "bun scripts/check-no-inline-references.ts"
