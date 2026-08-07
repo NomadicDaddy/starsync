@@ -61,6 +61,16 @@
 			"wiring": { "check:env-spread": "bun scripts/check-env-spread.ts" }
 		},
 		{
+			"files": [{ "disposition": "synced", "source": "check-git-window-hide.ts" }],
+			"name": "portable-gates",
+			"owner": "spernakit",
+			"requiresPackageJson": true,
+			"sourceRoot": "scripts",
+			"targetRoot": "scripts",
+			"targets": { "model": "roster", "roster": "portable-gates-targets.json" },
+			"wiring": { "check:git-window-hide": "bun scripts/check-git-window-hide.ts" }
+		},
+		{
 			"files": [
 				{ "disposition": "synced", "source": "scripts/check-gate-conventions.ts" },
 				{ "disposition": "synced", "source": "scripts/check-script-targets.ts" },
