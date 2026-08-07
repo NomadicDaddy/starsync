@@ -53,6 +53,7 @@
 		{
 			"files": [
 				{ "disposition": "synced", "source": "scripts/check-gate-conventions.ts" },
+				{ "disposition": "synced", "source": "scripts/check-script-targets.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/gate/allowlist.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/gate/discover.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/gate/rules.ts" },
