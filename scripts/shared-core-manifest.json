@@ -129,6 +129,7 @@
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/manifest.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/owner.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/targets.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/vacuity.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/write.ts" }
 			],
 			"name": "shared-core-sync",

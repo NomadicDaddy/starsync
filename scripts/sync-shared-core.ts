@@ -27,6 +27,7 @@ import { parseArgs } from 'node:util';
 
 import { checkGroup, type Finding, type GroupReport, isFatal } from './lib/shared-core/check.ts';
 import { loadManifest, type SharedCoreGroup } from './lib/shared-core/manifest.ts';
+import { reportClean } from './lib/shared-core/vacuity.ts';
 import { applyFindings, ownershipRefusal } from './lib/shared-core/write.ts';
 
 const USAGE = `sync-shared-core — sync the files this fleet shares between peer repositories.
@@ -148,7 +149,7 @@ function selectGroups(scriptsDir: string, names: string[]): SharedCoreGroup[] {
 	return groups.filter((g) => names.includes(g.name));
 }
 
-function reportCheck(reports: GroupReport[], unverifiable: string[]): number {
+function reportCheck(reports: GroupReport[], unverifiable: string[], only?: Set<string>): number {
 	for (const report of reports) printReport(report);
 
 	const findings = reports.flatMap((r) => r.findings);
@@ -181,8 +182,7 @@ function reportCheck(reports: GroupReport[], unverifiable: string[]): number {
 		}
 		return 1;
 	}
-	console.log('[OK] Shared core: no drift.');
-	return 0;
+	return reportClean(reports, only);
 }
 
 /**
@@ -275,7 +275,7 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 		reports.push(checkGroup(group, fleetRoot, ownerRoot, options.only));
 	}
 
-	if (options.check) return reportCheck(reports, unverifiable);
+	if (options.check) return reportCheck(reports, unverifiable, options.only);
 	if (unverifiable.length > 0) console.warn(`[WARN] NOT VERIFIED: ${unverifiable.join('; ')}.`);
 	return reportWrite(reports, groups, fleetRoot, root, options.dryRun);
 }
