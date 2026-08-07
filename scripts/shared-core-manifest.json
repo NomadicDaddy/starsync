@@ -51,14 +51,20 @@
 			}
 		},
 		{
-			"files": [{ "disposition": "synced", "source": "check-env-spread.ts" }],
-			"name": "env-spread",
+			"files": [
+				{ "disposition": "synced", "source": "check-audit-artifact-hygiene.ts" },
+				{ "disposition": "synced", "source": "check-env-spread.ts" }
+			],
+			"name": "portable-gates-aidd",
 			"owner": "aidd",
 			"requiresPackageJson": true,
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts",
-			"targets": { "model": "roster", "roster": "env-spread-targets.json" },
-			"wiring": { "check:env-spread": "bun scripts/check-env-spread.ts" }
+			"targets": { "model": "roster", "roster": "portable-gates-aidd-targets.json" },
+			"wiring": {
+				"check:audit-artifact-hygiene": "bun scripts/check-audit-artifact-hygiene.ts",
+				"check:env-spread": "bun scripts/check-env-spread.ts"
+			}
 		},
 		{
 			"files": [
