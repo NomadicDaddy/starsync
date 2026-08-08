@@ -78,6 +78,23 @@ function rosterTargets(group: SharedCoreGroup, fleetRoot: string, ownerRoot: str
 	});
 }
 
+/**
+ * Whether a repository already holds every file the group keeps current.
+ *
+ * `seeded` files are excluded deliberately: they are written once and never revisited, so their
+ * presence says a repository was reached at some point, not that it is a carrier now. The synced
+ * set is the one the group is responsible for, so it is the one that decides.
+ */
+function carriesGroup(group: SharedCoreGroup, repoPath: string): boolean {
+	const synced = group.files.filter((file) => file.disposition === 'synced');
+
+	// An empty set would make `every` vacuously true and select the whole fleet root.
+	if (synced.length === 0) return false;
+	return synced.every((file) =>
+		existsSync(join(repoPath, group.targetRoot, file.target ?? file.source)),
+	);
+}
+
 function discoveredTargets(group: SharedCoreGroup, fleetRoot: string, owner: string): Target[] {
 	if (group.targets.model !== 'discovered') return [];
 	const { marker } = group.targets;
@@ -89,7 +106,22 @@ function discoveredTargets(group: SharedCoreGroup, fleetRoot: string, owner: str
 		.filter(
 			(t) =>
 				existsSync(join(t.path, '.git')) &&
-				(marker === undefined || existsSync(join(t.path, marker))),
+				(marker === undefined ||
+					existsSync(join(t.path, marker)) ||
+					// A repository that already carries the group is a target for UPDATES to it,
+					// whatever the marker says. Two repositories held a two-week-old
+					// screenshot-guard.sh for exactly this reason: they were seeded before the
+					// `.aidd` marker described them, so every later fix routed around them and the
+					// report called the group current (punchlist C1). A carrier the marker no
+					// longer selects does not stop being a carrier; it stops being maintained.
+					//
+					// This is NOT the marker-names-the-guard design the manifest's `marker` doc
+					// warns off, because it is a union arm rather than a replacement. The marker
+					// still selects repositories that lack the files, so `uncovered` stays
+					// reachable and the gate can still go red on a fleet missing the guard. This
+					// arm only ever selects repositories where `uncovered` is already impossible,
+					// so it widens maintenance without widening adoption.
+					carriesGroup(group, t.path)),
 		);
 }
 
