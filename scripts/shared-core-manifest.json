@@ -95,9 +95,11 @@
 				{ "disposition": "synced", "source": "scripts/check-script-targets.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/gate/allowlist.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/gate/discover.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/gate/fixtures.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/gate/rules.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/gate/toplevel.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/gate/types.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/gate/vacuity.ts" },
 				{ "disposition": "synced", "source": "scripts/test-gate-conventions.ts" }
 			],
 			"name": "gate-conventions",
