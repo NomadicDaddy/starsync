@@ -136,6 +136,7 @@
 				{ "disposition": "synced", "source": "scripts/sync-shared-core.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/check.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/dispatch.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/eligibility.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/manifest.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/owner.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/targets.ts" },
