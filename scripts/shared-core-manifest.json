@@ -91,6 +91,7 @@
 		},
 		{
 			"files": [
+				{ "disposition": "synced", "source": "docs/reference/gate-conventions.md" },
 				{ "disposition": "synced", "source": "scripts/check-gate-conventions.ts" },
 				{ "disposition": "synced", "source": "scripts/check-script-targets.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/gate/allowlist.ts" },
