@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import type { SharedCoreFile, SharedCoreGroup } from './manifest.ts';
 
 import { chainedByHook, dispatcherBody, hooksPath, invokes } from './dispatch.ts';
+import { assertPackageIdentity, skipReason } from './eligibility.ts';
 import { assertHookChainIsCarried, assertSourcesExist, sourcesOf } from './owner.ts';
 import { readScripts, resolveTargets } from './targets.ts';
 
@@ -92,27 +93,16 @@ export function checkGroup(
 	};
 
 	for (const target of resolveTargets(group, fleetRoot, ownerRoot, only)) {
-		if (!existsSync(target.path)) {
-			report.skipped.push(`${target.directory} (not checked out)`);
-			continue;
-		}
 		const scripts = readScripts(target.path);
-		if (group.requiresPackageJson === true && scripts === null) {
-			report.skipped.push(`${target.directory} (no package.json)`);
+		// A skipped target produces no findings, and the write path takes its worklist from findings,
+		// so every exclusion eligibility.ts makes is unwritable by the same construction that makes a
+		// foreign hook unwritable — not by a second copy of the rule kept in the writer.
+		const skip = skipReason(group, target, scripts);
+		if (skip !== null) {
+			report.skipped.push(`${target.directory} (${skip})`);
 			continue;
 		}
-		if (target.packageName !== undefined && scripts !== null) {
-			const name = (
-				JSON.parse(readFileSync(join(target.path, 'package.json'), 'utf8')) as {
-					name?: string;
-				}
-			).name;
-			if (name !== target.packageName) {
-				throw new Error(
-					`${target.directory}: expected package ${target.packageName}, found ${name ?? 'none'}.`,
-				);
-			}
-		}
+		assertPackageIdentity(target);
 		report.targets += 1;
 
 		// The dispatcher is conditional on the target's dispatcher, exactly as the full hook variant

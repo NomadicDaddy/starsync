@@ -95,6 +95,49 @@ function carriesGroup(group: SharedCoreGroup, repoPath: string): boolean {
 	);
 }
 
+/** The file a repository writes to decline this fleet's shared tooling. */
+const DECLINE_FILE = '.no-fleet-sync';
+
+/**
+ * The reason a repository declines, or null when it does not decline or is not allowed to.
+ *
+ * The inverse of the `.screenshot-capture` declaration (punchlist C7) and here for the same reason.
+ * `common` was taken off the leak-guard rollout by an owner decision recorded only in prose, so every
+ * discovered group went on classifying it `uncovered` — one of the two writable kinds — and a write
+ * from a clean fleet kept offering to install three files into a repository that had been excluded on
+ * purpose (punchlist S14). A decision no predicate can read is not an exclusion, it is a note.
+ *
+ * THE DECLARATION IS HONORED ONLY WHILE THE REPOSITORY HAS NO PUSH REMOTE, and that condition is what
+ * makes the file safe to introduce at all. This subsystem exists because a token reached disk when
+ * the leak guard was installed selectively; an unconditional opt-out would rebuild that hazard with
+ * better ergonomics, one file per repository. Conditioned this way it can only ever exempt a
+ * repository that cannot publish, and `git remote add` re-arms every group without anyone
+ * remembering to come back here — the reasoning install-history-guard.ts already gives for installing
+ * into repositories that have no remote today.
+ *
+ * A declining repository is SKIPPED WITH ITS REASON rather than dropped from discovery, because an
+ * exclusion nobody sees is how this one lasted two days. Untracked is not rejected: it fails safe,
+ * since a clone without the file is a clone that gets the guard.
+ */
+export function declineReason(repoPath: string): null | string {
+	const path = join(repoPath, DECLINE_FILE);
+	if (!existsSync(path)) return null;
+
+	const remotes = Bun.spawnSync(['git', '-C', repoPath, 'remote', '-v'], {
+		stderr: 'pipe',
+		stdout: 'pipe',
+		windowsHide: true,
+	});
+	const pushable = remotes.success && remotes.stdout.toString().includes('(push)');
+	if (pushable) return null;
+
+	const reason = readFileSync(path, 'utf8')
+		.split('\n')
+		.map((line) => line.trim())
+		.find((line) => line.length > 0 && !line.startsWith('#'));
+	return reason ?? `${DECLINE_FILE} is present but states no reason`;
+}
+
 function discoveredTargets(group: SharedCoreGroup, fleetRoot: string, owner: string): Target[] {
 	if (group.targets.model !== 'discovered') return [];
 	const { marker } = group.targets;
