@@ -4,7 +4,6 @@ Usage:
   starsync <command> [options] [target-path]
   npx starsync <command> [options] [target-path]
   bunx starsync <command> [options] [target-path]
-  bun src/cli.ts <command> [options] [target-path]
 
 Commands:
   sync       Add or refresh managed checkouts by stable repository identity
@@ -37,7 +36,8 @@ export const SYNC_HELP_TEXT = `starsync sync - add or refresh managed checkouts 
 
 Usage:
   starsync sync [options] [target-path]
-  bun src/cli.ts sync [options] [target-path]
+  npx starsync sync [options] [target-path]
+  bunx starsync sync [options] [target-path]
 
 Options:
   --help, -h          Show this help
@@ -64,7 +64,8 @@ export const VERIFY_HELP_TEXT = `starsync verify - inspect the archive for Git i
 
 Usage:
   starsync verify [options] [target-path]
-  bun src/cli.ts verify [options] [target-path]
+  npx starsync verify [options] [target-path]
+  bunx starsync verify [options] [target-path]
 
 Options:
   --help, -h        Show this help
@@ -92,7 +93,8 @@ export const RENAME_HELP_TEXT = `starsync rename - preview or apply canonical ch
 
 Usage:
   starsync rename [options] [target-path]
-  bun src/cli.ts rename [options] [target-path]
+  npx starsync rename [options] [target-path]
+  bunx starsync rename [options] [target-path]
 
 Options:
   --help, -h        Show this help
@@ -111,7 +113,8 @@ export const DATES_HELP_TEXT = `starsync dates - normalize managed checkout fold
 
 Usage:
   starsync dates [options] [target-path]
-  bun src/cli.ts dates [options] [target-path]
+  npx starsync dates [options] [target-path]
+  bunx starsync dates [options] [target-path]
 
 Options:
   --help, -h        Show this help
@@ -129,7 +132,8 @@ export const INIT_HELP_TEXT = `starsync init - initialize a managed archive with
 
 Usage:
   starsync init [options] [target-path]
-  bun src/cli.ts init [options] [target-path]
+  npx starsync init [options] [target-path]
+  bunx starsync init [options] [target-path]
 
 Options:
   --help, -h        Show this help
@@ -145,7 +149,8 @@ export const UNLOCK_HELP_TEXT = `starsync unlock - release an archive operation 
 
 Usage:
   starsync unlock [options] [target-path]
-  bun src/cli.ts unlock [options] [target-path]
+  npx starsync unlock [options] [target-path]
+  bunx starsync unlock [options] [target-path]
 
 Options:
   --help, -h        Show this help
