@@ -65,7 +65,7 @@ other hosts and credential-bearing URLs are rejected.
 Set `GITHUB_TOKEN` in a `.env` file, in the current shell, or for one invocation:
 
 ```sh
-GITHUB_TOKEN=ghp_your_token_here bun src/cli.ts sync D:/archives/stars
+GITHUB_TOKEN=ghp_your_token_here npx starsync sync D:/archives/stars
 ```
 
 `TARGET_PATH` may supply the archive path when no positional path is given. A positional path has
@@ -114,12 +114,12 @@ StarSync accepts only explicit commands. Bare invocation and unknown commands ar
 with exit code 2. Root `--help` and command-specific help remain available.
 
 ```sh
-bun src/cli.ts init [--json] [target-path]
-bun src/cli.ts sync [--dry-run] [--json] [--concurrency=N] [--min-free-space=SIZE] [target-path]
-bun src/cli.ts verify [--force] [--json] [--min-free-space=SIZE] [target-path]
-bun src/cli.ts rename [--apply] [--json] [target-path]
-bun src/cli.ts dates [--dry-run] [--json] [target-path]
-bun src/cli.ts unlock [--force] [--json] [target-path]
+npx starsync init [--json] [target-path]
+npx starsync sync [--dry-run] [--json] [--concurrency=N] [--min-free-space=SIZE] [target-path]
+npx starsync verify [--force] [--json] [--min-free-space=SIZE] [target-path]
+npx starsync rename [--apply] [--json] [target-path]
+npx starsync dates [--dry-run] [--json] [target-path]
+npx starsync unlock [--force] [--json] [target-path]
 ```
 
 Every command requires either `[target-path]` or `TARGET_PATH`. Missing, empty, or quoted-empty
