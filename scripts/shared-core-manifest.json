@@ -72,6 +72,7 @@
 				{ "disposition": "synced", "source": "check-docs.ts" },
 				{ "disposition": "synced", "source": "check-git-window-hide.ts" },
 				{ "disposition": "synced", "source": "check-no-inline-references.ts" },
+				{ "disposition": "synced", "source": "lib/destructive/comments.ts" },
 				{ "disposition": "synced", "source": "lib/destructive/evidence.ts" },
 				{ "disposition": "synced", "source": "lib/destructive/waivers.ts" },
 				{ "disposition": "synced", "source": "lib/docs/waivers.ts" }
