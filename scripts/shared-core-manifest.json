@@ -133,6 +133,16 @@
 		},
 		{
 			"files": [
+				{ "disposition": "synced", "source": "scripts/lib/third-party-licenses/resolve.ts" }
+			],
+			"name": "license-core-adapter",
+			"owner": "spernakit",
+			"sourceRoot": ".",
+			"targetRoot": ".",
+			"targets": { "model": "roster", "roster": "license-core-adapter-targets.json" }
+		},
+		{
+			"files": [
 				{ "disposition": "synced", "source": "scripts/shared-core-manifest.json" },
 				{ "disposition": "synced", "source": "scripts/sync-shared-core.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/check.ts" },
