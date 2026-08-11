@@ -18,7 +18,12 @@ import type { SharedCoreFile, SharedCoreGroup } from './manifest.ts';
 
 import { chainedByHook, dispatcherBody, hooksPath, invokes } from './dispatch.ts';
 import { assertPackageIdentity, skipReason } from './eligibility.ts';
-import { assertHookChainIsCarried, assertSourcesExist, sourcesOf } from './owner.ts';
+import {
+	assertHookChainIsCarried,
+	assertSourcesExist,
+	assertVariantsDiffer,
+	sourcesOf,
+} from './owner.ts';
 import { readScripts, resolveTargets } from './targets.ts';
 
 export type FindingKind =
@@ -80,6 +85,8 @@ export function checkGroup(
 	only?: Set<string>,
 ): GroupReport {
 	assertSourcesExist(group, ownerRoot);
+	// After assertSourcesExist, which is what lets this one read both variants without guarding.
+	assertVariantsDiffer(group, ownerRoot);
 	assertHookChainIsCarried(group, ownerRoot);
 	const chained = chainedByHook(group, ownerRoot);
 
