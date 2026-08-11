@@ -281,13 +281,14 @@ bun run smoke:live -- <temporary-managed-archive>
 | `bun run build`              | Run `build:bundle`, then `build:types`                                      |
 | `bun run build:bundle`       | Bundle `src/cli.ts` and `src/index.ts` into `dist/` for Node, deps external |
 | `bun run build:types`        | Emit declarations into `dist/types` through `tsconfig.types.json`           |
-| `bun run smoke:qc`           | Run `smoke:qc:fast`, the leak-guard and license checks, then tests          |
+| `bun run smoke:qc`           | Run static, leak, license, shared-core, and test gates                      |
 | `bun run smoke:qc:fast`      | Static gate only: source shape, types, lint, format. No tests               |
 | `bun run smoke:live`         | Run the opt-in read-only smoke against an explicit archive copy             |
 | `bun run check:max-lines`    | Enforce production file size and extracted-function shape limits            |
 | `bun run check:leak-guard`   | Self-test `.githooks/leak-guard.sh` against synthetic fixtures              |
 | `bun run check:licenses`     | Run both license checks: the shared core, then the attribution documents    |
 | `bun run check:license-core` | Verify the shared license core against the installed dependency graph       |
+| `bun run check:shared-core`  | Verify shared hooks, helpers, manifests, and gates against their owners     |
 | `bun run licenses:generate`  | Rewrite `THIRD_PARTY_LICENSES.md` and `THIRD_PARTY_NOTICES.md`              |
 | `bun run typecheck`          | `tsc --noEmit`                                                              |
 | `bun run lint`               | `eslint src scripts test eslint.config.js --max-warnings 0`                 |

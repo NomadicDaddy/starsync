@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.4.0] - 2026-08-11
+
+### Added
+
+- `smoke:qc` now checks StarSync's shared hooks, license helpers, manifests, and gate scripts
+  against their owning repositories. The checker reports absent and drifted copies separately and
+  refuses writes from repositories that do not own a shared group.
+
+### Changed
+
+- License attribution now recognizes packages excluded by platform constraints, including
+  constraints inherited through dependency edges, without treating a valid install as incomplete.
+- CLI help and README examples use the published `npx starsync` and `bunx starsync` commands. The
+  npm package also links directly to its repository, issue tracker, and homepage.
+- The release screenshot guard now reads a tracked `.screenshot-capture` declaration. StarSync is a
+  headless CLI and does not declare release captures, so tags no longer depend on untracked folders.
+
+### Fixed
+
+- Shared-core validation now rejects empty target filters, keeps existing carriers synchronized
+  when a group's discovery marker changes, and stops before comparison if an owner's full and
+  fallback variants have collapsed to identical files.
+
+### Security
+
+- The commit-time leak guard permits a repository to name itself while continuing to block private
+  sibling names. Private-key detection now requires key material, accepts harmless placeholders,
+  and catches a key body added below a header that was committed earlier.
+
 ## [2.3.0] - 2026-08-04
 
 ### Added
