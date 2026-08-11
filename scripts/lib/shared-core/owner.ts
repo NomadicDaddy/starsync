@@ -37,6 +37,51 @@ export function assertSourcesExist(group: SharedCoreGroup, ownerRoot: string): v
 }
 
 /**
+ * A file's variants must actually be different files.
+ *
+ * `fallbackSource` exists to install something LESSER where the canonical variant cannot run — a
+ * pre-commit that skips the tasks a target's package.json does not define. The two are selected
+ * between per target by `requiresScripts`, and every consumer of that choice assumes the choice
+ * means something: `resolveSource` picks one, `diverged-hook` classification asks whether a target's
+ * hook matches neither, and the writer replaces one with the other. If the owner's two variants have
+ * become the same bytes, all three questions still answer, and all three answer "fine" — a fleet
+ * where the richer hook no longer exists anywhere reads as fully covered.
+ *
+ * That is not hypothetical. On 2026-08-09 `ensureHistoryGuard` began copying
+ * `pre-commit-leak-guard-only` over `pre-commit` in every project it touched, this group's owner
+ * included. The only test guarding that copy is a marker both variants carry, so nothing refused it,
+ * and because a group's owner is excluded from its own target discovery the corruption surfaced only
+ * as sixteen `DIVERGED-HOOK` findings against sixteen OTHER repositories — every one of them
+ * correct, none of them naming the one bad file. This is the assertion that would have named it.
+ *
+ * It throws rather than reporting, for the same reason its neighbours do: a fleet-wide comparison
+ * computed against a corrupted baseline is not a fleet state, it is noise with the wrong file at the
+ * top of it.
+ */
+export function assertVariantsDiffer(group: SharedCoreGroup, ownerRoot: string): void {
+	const collapsed = group.files
+		.filter((file) => file.fallbackSource !== undefined)
+		.filter((file) => {
+			const [source, fallback] = sourcesOf(file);
+			return (
+				readFileSync(join(ownerRoot, group.sourceRoot, source as string), 'utf8') ===
+				readFileSync(join(ownerRoot, group.sourceRoot, fallback as string), 'utf8')
+			);
+		})
+		.map((file) => `${file.source} == ${file.fallbackSource as string}`);
+
+	if (collapsed.length > 0) {
+		throw new Error(
+			`group '${group.name}': ${collapsed.length} file(s) whose variants are byte-identical in ` +
+				`${group.owner} under ${group.sourceRoot}: ${collapsed.join(', ')}. One variant has ` +
+				'been overwritten by the other, so the choice `requiresScripts` makes between them no ' +
+				'longer chooses anything and every target reads as covered by whichever survived. ' +
+				'Restore the overwritten variant from history before running this again.',
+		);
+	}
+}
+
+/**
  * A hook may only chain guards its own group delivers.
  *
  * This is the rule gatesync.md 3a specified as a loader rule and it is not one, for a reason worth
