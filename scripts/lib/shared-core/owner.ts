@@ -84,8 +84,8 @@ export function assertVariantsDiffer(group: SharedCoreGroup, ownerRoot: string):
 /**
  * A hook may only chain guards its own group delivers.
  *
- * This is the rule gatesync.md 3a specified as a loader rule and it is not one, for a reason worth
- * stating: `loadManifest` is handed the running repository's `scripts/`, while a group's hook body
+ * This is an owner-validation rule rather than a loader rule for a reason worth stating:
+ * `loadManifest` is handed the running repository's `scripts/`, while a group's hook body
  * lives in its OWNER, which is usually a sibling. A loader that read it would either resolve the
  * owner from `cwd()` — the one inference this whole subsystem exists to refuse — or answer nothing
  * at all from a repository that owns no groups. So it sits beside `assertSourcesExist`, which is
