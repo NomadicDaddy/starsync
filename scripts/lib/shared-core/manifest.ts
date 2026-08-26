@@ -2,8 +2,8 @@
  * Schema and loader for scripts/shared-core-manifest.json.
  *
  * The manifest describes files that one repository OWNS and other repositories CARRY. It replaces
- * three hand-written installers whose file lists were each restated in a different place; the
- * design and the reasoning behind every field live in common/gatesync.md, section 3a.
+ * three hand-written installers whose file lists were each restated in a different place. The
+ * schema below documents every field locally so a carrier does not depend on sibling documentation.
  *
  * The loader rejects rather than repairs. A manifest that does not describe reality is worse than
  * no manifest, because a sync reports coverage either way — that failure has now been paid for
@@ -23,7 +23,7 @@ import { join } from 'node:path';
  * with a deletion condition attached, and this sync does not target derived apps at all. A third
  * disposition here would be double governance, and the concrete failure it invites is a `--check`
  * that reads an authorized temporary divergence as a violation and pressures someone into reverting
- * a fix. Recorded as common/gatesync.md decision D2, 2026-08-05.
+ * a fix. The two supported dispositions keep temporary template divergence out of this contract.
  */
 export type Disposition = 'seeded' | 'synced';
 
@@ -93,14 +93,13 @@ export interface SharedCoreGroup {
 	targetRoot: string;
 	targets: DiscoveredTargets | RosterTargets;
 	/**
-	 * Script name to a substring that script must CONTAIN. Reported and never written; see
-	 * gatesync.md 3a. Substring rather than equality because the canonical command is the smallest
-	 * thing that has to happen, not the whole of what a target's script may legitimately do. Two
-	 * carriers proved that: one composes the guard's setup into a longer `prepare` that also runs
-	 * its Bun check and its build, and one dispatches hooks through simple-git-hooks instead of
-	 * `core.hooksPath` and still seeds the pattern file. Both satisfy the contract, and an equality
-	 * test reported both identically to a repository that had never wired anything — which makes
-	 * the count untrustworthy in the one direction that matters. What each substring must name is
+	 * Script name to a substring that script must contain. This is reported and never written.
+	 * Substring rather than equality because the canonical command is the smallest thing that has
+	 * to happen, not the whole of what a target's script may legitimately do. Two carriers proved
+	 * that: one composes the guard's setup into a longer `prepare` that also runs its Bun check and
+	 * its build, and one dispatches hooks through simple-git-hooks instead of `core.hooksPath` and
+	 * still seeds the pattern file. Both satisfy the contract, and an equality test reported both
+	 * identically to a repository that had never wired anything. What each substring must name is
 	 * therefore the load-bearing invocation alone. `prepare` names only the setup script; whether
 	 * dispatch reaches .githooks is a separate question, already answered by the dispatch check.
 	 */

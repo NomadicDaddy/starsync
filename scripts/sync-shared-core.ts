@@ -10,7 +10,8 @@
  * what `--check` found absent or drifted. Neither is the default: running with no arguments does
  * nothing except say so. The write path landed per group, absorbing sync-license-core.ts,
  * install-leak-guard.ts and install-history-guard.ts one at a time, each kept working as a thin
- * delegate to this script. Design: common/gatesync.md, section 3a.
+ * delegate to this script. The ownership and safety contract is documented by the types and
+ * assertions in `scripts/lib/shared-core/`.
  *
  * OWNER VERSUS RUNNER. This script is itself a shared file present in more than one repository, so
  * it cannot infer ownership from where it is running — that would make whichever repository you
