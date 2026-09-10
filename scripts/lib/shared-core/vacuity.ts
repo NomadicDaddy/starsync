@@ -2,7 +2,7 @@
  * The clean-run verdict for `--check`.
  *
  * `check:shared-core` reads sibling checkouts rather than this tree, so "no drift" and "nothing was
- * compared" are different results that used to print the same `[OK]`. Both zero cases are real:
+ * compared" are different results that a single `[OK]` would conflate. Both zero cases are real:
  *
  * - **No peer is checked out.** CI clones one repository, and a developer may hold only one. There
  *   is genuinely nothing to compare, which `docs/reference/gate-conventions.md` covers as `[SKIP]`

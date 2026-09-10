@@ -75,6 +75,7 @@
 				{ "disposition": "synced", "source": "lib/destructive/comments.ts" },
 				{ "disposition": "synced", "source": "lib/destructive/evidence.ts" },
 				{ "disposition": "synced", "source": "lib/destructive/waivers.ts" },
+				{ "disposition": "synced", "source": "lib/docs/git-ignored.ts" },
 				{ "disposition": "synced", "source": "lib/docs/waivers.ts" }
 			],
 			"name": "portable-gates",

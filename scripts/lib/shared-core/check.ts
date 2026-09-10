@@ -224,9 +224,9 @@ export function checkGroup(
 				// checks and leaving it lets a stale copy read as covered.
 				//
 				// Fatal AND unwritable, which no other kind is. `install-leak-guard.ts` refuses this
-				// state outright and this classifier used to call it `drift`, so absorbing one into
-				// the other had to pick a loser: refuse and let a stale hook go unnoticed, or
-				// overwrite and delete someone's checks. It picks neither. The gate stays red until a
+				// state outright, and calling it plain `drift` here would have the writer overwrite
+				// it; either reading picks a loser: refuse and let a stale hook go unnoticed, or
+				// overwrite and delete someone's checks. This picks neither. The gate stays red until a
 				// person decides, and the writer is given no destination to decide it with.
 				//
 				// Matching the OTHER variant is deliberately not this: that is a target whose

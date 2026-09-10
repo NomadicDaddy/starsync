@@ -1,110 +1,120 @@
 #!/usr/bin/env bash
-# Blocks pushing a version tag whose screenshot artifact is missing, incomplete, or failed.
-#
-# Every release captures the shipped UI into screenshots/v<version>/ (`bun run smoke:screenshots`,
-# run AFTER the version bump so the directory name matches the tag). The directory is gitignored,
-# so nothing downstream can recover it later: once a tag is public without its capture, the visual
-# record of that version is gone for good. This is not theoretical — releases v3.25.0 through
-# v3.28.2 of the template shipped without screenshots because nothing enforced the artifact.
-#
-# Reads the pre-push stdin protocol: <local-ref> <local-sha> <remote-ref> <remote-sha> per line.
-# Only refs/tags/v* pushes are checked. The template names the directory v<version>; derived apps
-# name it v<version>-sv<template-version>, so any directory starting with the tag version passes.
-#
-# A TRACKED .screenshot-capture file is what says whether a repo captures at all. A headless repo —
-# a CLI, a library — never adds one, and this guard has nothing to enforce there, so its absence
-# passes. Once the file exists the repo has opted in, and a tag with no directory under
-# screenshots/ is the exact omission described above: that fails. Do not collapse these two cases
-# into one "capture is absent" check — that reads an opted-in repo's forgotten capture as an
-# opted-out repo.
-#
-# The declaration must be TRACKED, and screenshots/ itself cannot be it. That directory is
-# gitignored in every repository this guard protects, so a predicate reading it answers from
-# untracked local state: the same commit opted in on the machine that captured and opted out in a
-# fresh clone, which is where a release is most likely to be cut by someone who has not captured.
-# Four repositories also grew a screenshots/ root for something other than releases and were
-# silently one tag away from a block they had never agreed to. A repository states what it is; the
-# guard does not guess it from what happens to be on disk. Recorded as punchlist C7.
-#
-# A full-looking directory is not proof of a good crawl either: a run that fails on the last page
-# still leaves 40 PNGs behind. The crawl stamps its own verdict into crawl-result.json (`started`
-# before the first page loads, `passed`/`failed` when the report lands), and this guard refuses
-# anything that does not say success. A capture with no such file predates the stamp — or comes
-# from a repo whose crawler does not write one — so it falls back to the PNG count alone.
-#
-# Keep this file byte-identical between the aidd, spernakit, and starsync repos.
+# Shared by aidd, spernakit and starsync; distribute through push-guards and the scaffold.
+# The tagged tree decides whether capture is required. Historical trees without the declaration
+# are exempt. Opted-in historical trees with an unversioned declaration fail closed and need a
+# separately agreed historical-release policy; neither missing evidence nor --no-verify is supported.
 set -euo pipefail
-
-ZERO=0000000000000000000000000000000000000000
-CONTRACT_FILE=.screenshot-capture
-ROOT_DIR=screenshots
-MIN_PNGS=5
-RESULT_FILE=crawl-result.json
 problems=0
-
-note() { echo "  $*" >&2; }
-
 while read -r local_ref local_sha _remote_ref _remote_sha; do
 	[ -z "${local_sha:-}" ] && continue
-	# Tag deletion publishes nothing.
-	[ "$local_sha" = "$ZERO" ] && continue
-	case "$local_ref" in
-	refs/tags/v[0-9]*) ;;
-	*) continue ;;
-	esac
-
+	[ "$local_sha" = 0000000000000000000000000000000000000000 ] && continue
+	case "$local_ref" in refs/tags/v[0-9]*) ;; *) continue ;; esac
 	version="${local_ref#refs/tags/}"
-
-	# Undeclared: this repo does not capture screenshots. Nothing to enforce. A root with no
-	# declaration is called out rather than passed silently, because it is the one shape that is
-	# either an unfinished opt-in or a directory that means something else here, and only someone
-	# in this repository can say which.
-	if [ ! -f "$CONTRACT_FILE" ]; then
-		if [ -d "$ROOT_DIR" ]; then
-			note "tag $version: $ROOT_DIR/ exists but $CONTRACT_FILE does not, so nothing is enforced"
-			note "  add $CONTRACT_FILE if this repository's releases must carry a capture"
-		else
-			note "tag $version: no $CONTRACT_FILE in this repository, nothing to check"
-		fi
-		continue
-	fi
-
-	dir=""
-	for candidate in "$ROOT_DIR/$version" "$ROOT_DIR/$version"-sv*; do
-		if [ -d "$candidate" ]; then
-			dir="$candidate"
-			break
-		fi
-	done
-
-	if [ -z "$dir" ]; then
-		note "tag $version: $CONTRACT_FILE declares release capture, but $ROOT_DIR/ has no $version/"
+	if ! commit=$(git rev-parse --verify "$local_sha^{commit}" 2>/dev/null); then
+		echo "tag $version: cannot resolve tagged commit" >&2
 		problems=1
 		continue
 	fi
-
-	count=$(find "$dir" -maxdepth 1 -name '*.png' | wc -l | tr -d ' ')
-	if [ "$count" -lt "$MIN_PNGS" ]; then
-		note "tag $version: $dir has only $count PNG(s); a full capture produces at least $MIN_PNGS"
-		problems=1
+	if ! git cat-file -e "$commit:.screenshot-capture" 2>/dev/null; then
+		echo "tag $version: tagged tree has no .screenshot-capture; capture is not required" >&2
+		continue
 	fi
-
-	result="$dir/$RESULT_FILE"
-	if [ -f "$result" ] && ! grep -Eq '"success"[[:space:]]*:[[:space:]]*true' "$result"; then
-		status=$(grep -Eo '"status"[[:space:]]*:[[:space:]]*"[^"]*"' "$result" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
-		note "tag $version: $dir/$RESULT_FILE records crawl status '${status:-unknown}', not a passing run"
+	if ! bun - "$commit" "$version" <<'JAVASCRIPT'
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+const [commit, tag] = process.argv.slice(2);
+const fail = message => { throw new Error(message); };
+const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+const git = (...args) => execFileSync('git', args, { encoding: 'utf8', windowsHide: true }).trim();
+const json = path => JSON.parse(readFileSync(path, 'utf8'));
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const regular = path => { if (!lstatSync(path).isFile()) fail(`Not a regular file: ${path}`); };
+const directory = path => { if (!lstatSync(path).isDirectory()) fail(`Not a directory: ${path}`); };
+try {
+	const contract = JSON.parse(git('show', `${commit}:.screenshot-capture`));
+	if (contract.schema !== 1 || !Array.isArray(contract.routes) || contract.routes.length < 5 ||
+		contract.routes.some(route => typeof route !== 'string') ||
+		contract.viewport?.width !== 2250 || contract.viewport?.height !== 1309) {
+		fail('Tagged capture contract is unsupported; historical opt-ins need an explicit release policy.');
+	}
+	const pkg = JSON.parse(git('show', `${commit}:package.json`));
+	if (`v${pkg.version}` !== tag) fail('Tag does not match the tagged package version.');
+	const tree = git('rev-parse', `${commit}^{tree}`);
+	directory('screenshots');
+	const candidates = readdirSync('screenshots').filter(name => name === tag || name.startsWith(`${tag}-sv`));
+	if (candidates.length !== 1) fail('Expected one version directory with authoritative release evidence.');
+	const root = join('screenshots', candidates[0]);
+	directory(root);
+	regular(join(root, 'release-run.json'));
+	const { run } = json(join(root, 'release-run.json'));
+	if (typeof run !== 'string' || !/^[0-9a-f-]{36}$/.test(run)) fail('Invalid release run identity.');
+	directory(join(root, 'runs'));
+	const dir = join(root, 'runs', run);
+	directory(dir);
+	regular(join(dir, 'crawl-result.json'));
+	const manifest = json(join(dir, 'crawl-result.json'));
+	if (manifest.schema !== 1 || manifest.run !== run || manifest.status !== 'passed' ||
+		manifest.success !== true) fail('Capture is missing, started, failed, or unsupported.');
+	if (manifest.version !== pkg.version || manifest.candidate?.commit !== commit ||
+		manifest.candidate?.tree !== tree || manifest.candidate?.clean !== true) fail('Candidate identity mismatch.');
+	if (!same(manifest.contract, contract)) fail('Captured route contract differs from tagged tree.');
+	const scope = manifest.scope;
+	if (!scope || scope.page !== null || scope.startFrom !== null || scope.check404 !== true ||
+		!same(scope.viewport, contract.viewport)) fail('Capture is narrow or has the wrong viewport.');
+	const build = manifest.build;
+	if (!build || build.mode !== 'production' || build.version !== pkg.version ||
+		build.source?.commit !== commit || build.source?.tree !== tree || build.source?.clean !== true ||
+		!Array.isArray(build.assets) || build.assets.length === 0 ||
+		build.assets.some(asset => !/^[a-f0-9]{64}$/.test(asset.sha256))) fail('Production build identity is incomplete.');
+	regular(join(dir, 'report.json'));
+	const reportBytes = readFileSync(join(dir, 'report.json'));
+	const digest = hash(reportBytes);
+	const report = JSON.parse(reportBytes.toString('utf8'));
+	if (manifest.reportSha256 !== digest || manifest.analyzer?.reportSha256 !== digest ||
+		manifest.analyzer?.success !== true || !same(manifest.analyzer.failures, []) ||
+		report.summary?.success !== true) fail('Full crawl/analyzer verdict is absent, failed, or mismatched.');
+	const routes = report.visitedUrls.map(value => {
+		const url = new URL(value);
+		return url.pathname + url.search;
+	});
+	if (!same(routes, manifest.routes) || new Set(routes).size !== routes.length) fail('Route inventory mismatch.');
+	for (const pattern of contract.routes) {
+		if (!routes.some(route => new RegExp(`^(?:${pattern})$`).test(route))) fail(`Missing expected route: ${pattern}`);
+	}
+	if (!Array.isArray(manifest.images) || manifest.images.length < 5 ||
+		manifest.images.length !== report.summary.screenshotsTaken) fail('Incomplete image inventory.');
+	const names = manifest.images.map(image => image.file).sort();
+	const actual = readdirSync(dir).filter(name => name.endsWith('.png')).sort();
+	if (new Set(names).size !== names.length || !same(names, actual)) fail('Image inventory differs from directory.');
+	for (const image of manifest.images) {
+		if (!/^[a-z0-9_-]+\.png$/.test(image.file) || typeof image.route !== 'string') fail('Invalid image path or route.');
+		const path = join(dir, image.file);
+		regular(path);
+		const bytes = readFileSync(path);
+		if (hash(bytes) !== image.sha256 || bytes.length < 33 ||
+			bytes.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a' ||
+			bytes.subarray(12, 16).toString() !== 'IHDR' ||
+			bytes.subarray(-12).toString('hex') !== '0000000049454e44ae426082' ||
+			bytes.readUInt32BE(16) !== contract.viewport.width ||
+			bytes.readUInt32BE(20) < contract.viewport.height) fail(`Invalid or changed PNG: ${image.file}`);
+	}
+	for (const route of routes) {
+		if (!manifest.images.some(image => image.route === route)) fail(`Route has no capture: ${route}`);
+	}
+	console.error(`tag ${tag}: verified full release capture ${run} for ${commit}`);
+} catch (error) {
+	console.error(`tag ${tag}: ${error instanceof Error ? error.message : String(error)}`);
+	process.exit(1);
+}
+JAVASCRIPT
+	then
 		problems=1
 	fi
 done
-
 if [ "$problems" -ne 0 ]; then
-	echo "" >&2
-	echo "PUSH BLOCKED: version tag(s) above have no usable screenshot artifact." >&2
-	echo "With the bumped version in package.json, run: bun run smoke:screenshots" >&2
-	echo "and fix any crawl failures it reports — a failed crawl is not a release capture." >&2
-	echo "(single-instance rule: never start a second smoke run while one is active)." >&2
-	echo "Override with --no-verify ONLY for historical tags that predate this guard." >&2
+	echo "PUSH BLOCKED: run bun run smoke:screenshots against the clean tagged production candidate." >&2
+	echo "A complete matching full crawl and analyzer verdict are required; diagnostics cannot replace them." >&2
 	exit 1
 fi
-
-exit 0
