@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Changed
 
+- Updated development tooling and its lockfile, retaining TypeScript 6.0.3 and the existing
+  production dependency versions.
 - Synchronized the shared release guards and gate manifest. Screenshot requirements now come
   from the tagged tree, and opted-in captures must match the release commit, production build,
   routes, and image hashes. StarSync remains exempt as a CLI without a capture declaration.
