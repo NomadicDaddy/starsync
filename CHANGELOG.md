@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- Real-Git refresh tests now run in the process suite with its 30-second timeout, preventing
+  intermittent Windows failures at the unit suite's five-second limit. Assertions are unchanged.
+
 ## [2.4.0] - 2026-08-11
 
 ### Added
@@ -66,7 +73,7 @@ All notable changes to this project will be documented in this file. Format foll
   filesystem contention was the one class of transient failure with no retry at all. On Windows an
   indexer, a scanner, or a Git child that has not fully exited denies the unlink or the rename
   outright, which failed work that would have succeeded moments later. An SSH `Permission denied
-  (publickey)` is still a hard authentication failure, because authentication is classified first.
+(publickey)` is still a hard authentication failure, because authentication is classified first.
 - `bun run check:leak-guard` and the `prepare` hook resolve the `bash` that ships beside the running
   Git rather than the first one on `PATH`. On Windows `C:\Windows\System32\bash.exe` is the WSL
   launcher, and it shadows Git's bash in every PowerShell and cmd session; with no distro installed
@@ -144,7 +151,7 @@ All notable changes to this project will be documented in this file. Format foll
 - StarSync runs under Node 24 or newer as well as Bun. `npx starsync sync <path>` works on a machine
   that has never installed Bun, and root help lists the `npx` and `bunx` forms alongside the others.
 - The build emits TypeScript declarations next to the bundles, so `import { syncArchive } from
-  'starsync'` is typed for consumers that never see the source.
+'starsync'` is typed for consumers that never see the source.
 
 ### Changed
 

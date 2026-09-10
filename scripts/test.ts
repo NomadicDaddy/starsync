@@ -14,7 +14,8 @@ const processBoundaryTests = testFiles
 // pushes to main. Raising the budget once for the whole suite fixes the class rather than the
 // instance, and 30s still catches a genuine hang. Individual tests may state a tighter budget.
 //
-// The mocked unit suite keeps the default, because nothing in it waits on a process.
+// The mocked unit suite keeps the default. Real Git refresh cases belong in their own test file
+// so they run with the other process-boundary tests and receive the same timeout.
 const suites = [
 	{ args: [], files: [mockedUnitTest] },
 	{ args: ['--timeout', '30000'], files: processBoundaryTests },
