@@ -1,6 +1,6 @@
 {
 	"name": "starsync",
-	"version": "2.4.0",
+	"version": "2.4.1",
 	"packageManager": "bun@1.3.14",
 	"author": "NomadicDaddy",
 	"description": "Automatically synchronize all your starred GitHub repositories on your local drive. If a repository already exists, it will be pulled to the newest commit, otherwise it will be cloned.",
