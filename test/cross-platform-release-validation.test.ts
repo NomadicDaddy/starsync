@@ -148,11 +148,13 @@ describe('cross-platform release validation', () => {
 			/^concurrency:\r?\n {4}group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.event\.pull_request\.number \|\| github\.ref \}\}\r?\n {4}cancel-in-progress: true$/m,
 		);
 		expect(workflow).toMatch(
-			/^ {4}cross-platform:\r?\n {8}name: Bun 1\.3\.14 \/ \$\{\{ matrix\.os \}\}\r?\n {8}runs-on: \$\{\{ matrix\.os \}\}\r?\n {8}timeout-minutes: 20$/m,
+			/^ {4}cross-platform:\r?\n {8}name: Bun \/ \$\{\{ matrix\.os \}\}\r?\n {8}runs-on: \$\{\{ matrix\.os \}\}\r?\n {8}timeout-minutes: 20$/m,
 		);
 		expect(workflow).toMatch(
 			/^ {12}matrix:\r?\n {16}os:\r?\n {20}- macos-latest\r?\n {20}- ubuntu-latest\r?\n {20}- windows-latest$/m,
 		);
+		expect(workflow).toMatch(/^ {18}bun-version-file: package\.json$/m);
+		expect(workflow).not.toMatch(/^\s+bun-version:/m);
 	});
 
 	test('exercises the published bundles under node on every matrix platform', () => {

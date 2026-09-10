@@ -49,7 +49,7 @@ describe('package distribution', () => {
 		const engines = section('package.json', 'engines');
 
 		expect(manifest['private']).toBeUndefined();
-		expect(engines['bun']).toBe('>=1.3.14');
+		expect(engines['bun']).toBe('>=1.4.2');
 		expect(engines['node']).toBe('>=24.0.0');
 	});
 
