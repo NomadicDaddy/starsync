@@ -6,7 +6,7 @@ StarSync preserves every repository starred by one GitHub account in a managed l
 matches checkouts by stable GitHub repository ID, refreshes available history, and adds new stars
 under canonical `repository--owner` folders.
 
-StarSync 2 requires Git, an initialized archive using format 2, and either Bun 1.3.14 or Node 24 or
+StarSync 2 requires Git, an initialized archive using format 2, and either Bun 1.4.2 or Node 24 or
 newer. Windows, macOS, and Linux are supported.
 
 ## Install

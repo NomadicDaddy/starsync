@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Changed
 
+- Bun installations now require 1.4.2 or newer. Release CI reads the Bun version from
+  `package.json` so it can install the current lockfile. Node 24 remains supported.
 - Synchronized the shared release guards and gate manifest. Screenshot requirements now come
   from the tagged tree, and opted-in captures must match the release commit, production build,
   routes, and image hashes. StarSync remains exempt as a CLI without a capture declaration.
