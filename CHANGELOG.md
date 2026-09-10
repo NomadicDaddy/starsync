@@ -2,20 +2,13 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.4.1] - 2026-09-10
 
 ### Changed
 
-- Updated development tooling and its lockfile, retaining TypeScript 6.0.3 and the existing
-  production dependency versions.
 - Synchronized the shared release guards and gate manifest. Screenshot requirements now come
   from the tagged tree, and opted-in captures must match the release commit, production build,
   routes, and image hashes. StarSync remains exempt as a CLI without a capture declaration.
-
-### Fixed
-
-- Real-Git refresh tests now run in the process suite with its 30-second timeout, preventing
-  intermittent Windows failures at the unit suite's five-second limit. Assertions are unchanged.
 
 ## [2.4.0] - 2026-08-11
 
