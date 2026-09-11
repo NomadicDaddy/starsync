@@ -126,6 +126,6 @@ describe('package distribution', () => {
 	});
 
 	test('accepts an install driven by bun', () => {
-		expect(runInstallGuard('bun/1.3.14 npm/? node/v24.18.1 win32 x64').exitCode).toBe(0);
+		expect(runInstallGuard('bun/1.4.2 npm/? node/v24.18.1 win32 x64').exitCode).toBe(0);
 	});
 });
