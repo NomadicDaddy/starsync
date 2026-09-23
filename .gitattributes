@@ -1,11 +1,6 @@
 # Set the default behavior, in case people don't have core.autocrlf set.
 * text=auto eol=lf
 
-# PowerShell files should use CRLF on Windows
-*.ps1 text eol=crlf
-*.psm1 text eol=crlf
-*.psd1 text eol=crlf
-
 # Markdown files
 *.md text eol=lf
 
