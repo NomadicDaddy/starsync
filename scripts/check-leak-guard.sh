@@ -89,9 +89,76 @@ win_path="C:${bs}Users${bs}someone${bs}project"
 # text - it only gets blocked if the # line were treated as a pattern.
 [ "$(run_guard "$synthetic" '# synthetic private patterns for the self-test')" = 0 ] || fail 'pattern-file comment line leaked into matching'
 
-# 8. Missing pattern file: warns on stderr but passes clean content.
-[ "$(run_guard "$tmp/does-not-exist" 'plain harmless content')" = 0 ] || fail 'missing pattern file blocked a clean commit'
-grep -q 'no local pattern file' "$tmp/stderr" || fail 'missing pattern file did not warn'
+# 8. Missing pattern file: tier 2 cannot run, so even clean content is refused, and says why.
+[ "$(run_guard "$tmp/does-not-exist" 'plain harmless content')" = 1 ] || fail 'missing pattern file let a commit through'
+grep -q 'no local pattern file' "$tmp/stderr" || fail 'missing pattern file did not say why it refused'
+
+# 8b. Committing without tier 2 is allowed only when the user asks for it, and it still says so.
+code=0
+printf '%s\n' 'plain harmless content' >"$guard_repo/staged.txt"
+git -C "$guard_repo" add staged.txt
+(cd "$guard_repo" && LEAK_GUARD_PATTERNS="$tmp/does-not-exist" LEAK_GUARD_ALLOW_NO_PRIVATE=1 bash .githooks/leak-guard.sh) 2>"$tmp/stderr" || code=$?
+[ "$code" = 0 ] || fail 'LEAK_GUARD_ALLOW_NO_PRIVATE=1 did not let a clean commit through'
+grep -q 'generic checks only' "$tmp/stderr" || fail 'override did not warn that tier 2 was off'
+
+# 8c-8d. With LEAK_GUARD_PATTERNS unset, the Windows user-level value is used, so a session launched
+# from a parent that predates the variable still runs tier 2. reg.exe is replaced by an exported
+# function answering in reg's own output format; functions win over PATH, so this also runs where
+# no reg.exe exists.
+run_guard_registry() {
+	printf '%s\n' "$2" >"$guard_repo/staged.txt"
+	git -C "$guard_repo" add staged.txt
+	printf '\r\nHKEY_CURRENT_USER\\Environment\r\n    LEAK_GUARD_PATTERNS    REG_SZ    %s\r\n\r\n' "$1" >"$tmp/reg-answer"
+	local code=0
+	(
+		reg.exe() { cat "$tmp/reg-answer"; }
+		export -f reg.exe
+		export tmp
+		cd "$guard_repo" && env -u LEAK_GUARD_PATTERNS bash .githooks/leak-guard.sh
+	) 2>"$tmp/stderr" || code=$?
+	echo "$code"
+}
+[ "$(run_guard_registry "$synthetic" 'mentions zzz-synthetic-app somewhere')" = 1 ] || fail 'registry-resolved pattern file was not used'
+[ "$(run_guard_registry "$synthetic" 'plain harmless content')" = 0 ] || fail 'registry-resolved pattern file blocked clean content'
+printf '%s\n' '\bzzz-other-app\b' >"$tmp/patterns-other"
+code=0
+printf '%s\n' 'mentions zzz-synthetic-app somewhere' >"$guard_repo/staged.txt"
+git -C "$guard_repo" add staged.txt
+printf '\r\nHKEY_CURRENT_USER\\Environment\r\n    LEAK_GUARD_PATTERNS    REG_SZ    %s\r\n\r\n' "$synthetic" >"$tmp/reg-answer"
+(
+	reg.exe() { cat "$tmp/reg-answer"; }
+	export -f reg.exe
+	export tmp
+	cd "$guard_repo" && LEAK_GUARD_PATTERNS="$tmp/patterns-other" bash .githooks/leak-guard.sh
+) 2>"$tmp/stderr" || code=$?
+[ "$code" = 0 ] || fail 'the Windows value overrode an explicit LEAK_GUARD_PATTERNS'
+
+# 8f. Nothing configured anywhere (no variable, no Windows value, no seeded default), which is a
+# freshly scaffolded project on a machine that never set tier 2 up: warn and run tier 1, as before.
+# Refusing here would block every scaffolded project's first commit.
+mkdir -p "$tmp/empty-home"
+code=0
+printf '%s\n' 'plain harmless content' >"$guard_repo/staged.txt"
+git -C "$guard_repo" add staged.txt
+(
+	reg.exe() { return 1; }
+	export -f reg.exe
+	cd "$guard_repo" && env -u LEAK_GUARD_PATTERNS HOME="$tmp/empty-home" bash .githooks/leak-guard.sh
+) 2>"$tmp/stderr" || code=$?
+[ "$code" = 0 ] || fail 'an unconfigured machine refused a clean commit'
+grep -q 'generic checks only' "$tmp/stderr" || fail 'an unconfigured machine did not warn that tier 2 was off'
+
+# 8e. An unreadable pattern file is refused like a missing one. Skipped where chmod cannot revoke
+# read (NTFS under Git Bash, or root), because a run that cannot make the file unreadable proves
+# nothing about the branch.
+cp "$synthetic" "$tmp/patterns-locked"
+chmod 000 "$tmp/patterns-locked"
+if [ -r "$tmp/patterns-locked" ]; then
+	echo 'check-leak-guard: case 8e skipped, chmod cannot revoke read here' >&2
+else
+	[ "$(run_guard "$tmp/patterns-locked" 'plain harmless content')" = 1 ] || fail 'unreadable pattern file let a commit through'
+fi
+chmod 600 "$tmp/patterns-locked"
 
 # 9. A repository may write its own name. The pattern file is per-machine and names every private
 # sibling, so in the repo that IS zzz-synthetic-app the pattern for it must be dropped - otherwise

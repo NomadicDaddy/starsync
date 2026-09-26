@@ -12,7 +12,14 @@
 # Keep this file byte-identical between the aidd, spernakit, and starsync repos.
 set -euo pipefail
 
-target="${LEAK_GUARD_PATTERNS:-$HOME/.config/leak-guard/patterns}"
+# Resolved exactly as .githooks/leak-guard.sh resolves it, or a process that predates the Windows
+# user-level variable would seed a second, weaker file at the default path.
+target="${LEAK_GUARD_PATTERNS:-}"
+if [ -z "$target" ] && command -v reg.exe >/dev/null 2>&1; then
+	target="$(MSYS_NO_PATHCONV=1 reg.exe query 'HKCU\Environment' /v LEAK_GUARD_PATTERNS 2>/dev/null |
+		tr -d '\r' | sed -nE 's/^[[:space:]]*LEAK_GUARD_PATTERNS[[:space:]]+REG_(EXPAND_)?SZ[[:space:]]+//p' || true)"
+fi
+target="${target:-$HOME/.config/leak-guard/patterns}"
 [ -f "$target" ] && exit 0
 
 # Names that are public (or dot-dirs) and must not become private literals.
