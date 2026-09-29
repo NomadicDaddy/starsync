@@ -95,6 +95,13 @@ configured=0
 patterns_file="${patterns_file:-$HOME/.config/leak-guard/patterns}"
 [ -e "$patterns_file" ] && configured=1
 self_name="$(basename "$(git rev-parse --show-toplevel)")"
+# A public site may advertise sibling products whose names are private everywhere else, and the
+# self-name rule cannot express that. The tracked .githooks/leak-guard-publishes lists the names
+# this repository is cleared to publish, one per line. It is read from the INDEX, so what governs a
+# commit is what that commit's reviewer sees, not an unstaged local edit. A pattern is cleared only
+# when it matches a listed name in full (-x), so one concatenated entry cannot clear two patterns.
+# It clears tier 2 only; secret formats and home paths are never exempt, and each use is announced.
+publishes="$(git show :.githooks/leak-guard-publishes 2>/dev/null | tr -d '\r' | grep -vE '^[[:space:]]*(#|$)' || true)"
 local_hits=''
 # A configured tier the guard cannot read is a guard that is off, and it used to say so in one stderr
 # line above 'passed'. A configured file that is missing or unreadable (an account the file's ACL
@@ -125,7 +132,12 @@ else
 	[ "$grep_status" -gt 1 ] && tier2_off 'local pattern file could not be read'
 	active="$(printf '%s\n' "$active" | while IFS= read -r pattern; do
 		[ -z "$pattern" ] && continue
-		printf '%s\n' "$self_name" | grep -qEi -e "$pattern" 2>/dev/null || printf '%s\n' "$pattern"
+		printf '%s\n' "$self_name" | grep -qEi -e "$pattern" 2>/dev/null && continue
+		if [ -n "$publishes" ] && printf '%s\n' "$publishes" | grep -qxEi -e "$pattern" 2>/dev/null; then
+			echo "leak-guard: a private pattern is cleared for this repo by .githooks/leak-guard-publishes" >&2
+			continue
+		fi
+		printf '%s\n' "$pattern"
 	done)"
 	if [ -n "$active" ]; then
 		local_hits="$(printf '%s\n' "$added" | grep -nEi -f <(printf '%s\n' "$active") || true)"

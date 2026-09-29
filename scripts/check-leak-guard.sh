@@ -173,6 +173,29 @@ printf '%s\n' '\bzzz-synthetic-app\b' '\bzzz-sibling-app\b' >"$tmp/patterns-pair
 [ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-synthetic-app somewhere')" = 0 ] || fail 'self pattern survived alongside a sibling pattern'
 guard_repo="$tmp/repo"
 
+# 12. A public site may publish a sibling's name once the repo's staged leak-guard-publishes clears
+# it, and the guard says it did. The file is read from the index, so an unstaged edit clears nothing.
+publishes="$guard_repo/.githooks/leak-guard-publishes"
+printf '%s\n' '# names this repo may publish' 'zzz-sibling-app' >"$publishes"
+[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 1 ] || fail 'an unstaged publishes file cleared a pattern'
+git -C "$guard_repo" add .githooks/leak-guard-publishes
+[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 0 ] || fail 'a staged publishes entry did not clear its pattern'
+grep -q 'cleared for this repo' "$tmp/stderr" || fail 'a cleared pattern was not announced'
+
+# 12b. Clearing one name leaves every other private pattern armed, and never touches tier 1.
+[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-synthetic-app somewhere')" = 1 ] || fail 'publishes cleared a name it does not list'
+[ "$(run_guard "$tmp/patterns-pair" "key=$aws_key")" = 1 ] || fail 'publishes disarmed a tier-1 secret check'
+
+# 12c. An entry must match a pattern in full, so a longer entry that merely contains a private name
+# clears nothing. The entry is committed first: staged, its own added line would trip the guard and
+# the case would pass whether or not the full-match rule held.
+printf '%s\n' 'zzz-sibling-app-and-more' >"$publishes"
+git -C "$guard_repo" add .githooks/leak-guard-publishes
+git -C "$guard_repo" -c user.email=t@test -c user.name=t commit -q -m 'publishes entry'
+[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 1 ] || fail 'a longer publishes entry cleared a pattern it only contains'
+git -C "$guard_repo" rm -q .githooks/leak-guard-publishes
+git -C "$guard_repo" -c user.email=t@test -c user.name=t commit -q -m 'drop publishes entry'
+
 # 11. A body pasted under a header that is ALREADY COMMITTED is blocked. The header is not an
 # addition in that commit, so a scan of additions alone cannot see the pair, and pasting a body
 # under a placeholder header left behind earlier is the likeliest way this leak actually happens.
