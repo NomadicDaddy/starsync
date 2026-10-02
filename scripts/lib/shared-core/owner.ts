@@ -16,6 +16,16 @@ import type { SharedCoreFile, SharedCoreGroup } from './manifest.ts';
 import { invokedScripts } from './dispatch.ts';
 
 /**
+ * A shared file's text with line endings normalised. A Windows checkout under core.autocrlf rewrites
+ * an LF blob as CRLF in the working tree, so a byte comparison reports the whole file as drifted
+ * although the committed content is the owner's exactly. Line endings are the checkout's, not the
+ * file's; every comparison in this subsystem reads through here so they cannot disagree about it.
+ */
+export function readShared(path: string): string {
+	return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
+}
+
+/**
  * Every source a group could install, including the fallback variants. All of them must exist in
  * the owning repository or the group is a description of something that is not there.
  */
@@ -64,8 +74,8 @@ export function assertVariantsDiffer(group: SharedCoreGroup, ownerRoot: string):
 		.filter((file) => {
 			const [source, fallback] = sourcesOf(file);
 			return (
-				readFileSync(join(ownerRoot, group.sourceRoot, source as string), 'utf8') ===
-				readFileSync(join(ownerRoot, group.sourceRoot, fallback as string), 'utf8')
+				readShared(join(ownerRoot, group.sourceRoot, source as string)) ===
+				readShared(join(ownerRoot, group.sourceRoot, fallback as string))
 			);
 		})
 		.map((file) => `${file.source} == ${file.fallbackSource as string}`);

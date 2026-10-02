@@ -11,7 +11,7 @@
  * covered. Only the second fails the gate. Collapsing them would make this red on day one across a
  * fleet the write path has not been built for, and a gate that is red by construction gets removed.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { SharedCoreFile, SharedCoreGroup } from './manifest.ts';
@@ -22,6 +22,7 @@ import {
 	assertHookChainIsCarried,
 	assertSourcesExist,
 	assertVariantsDiffer,
+	readShared,
 	sourcesOf,
 } from './owner.ts';
 import { readScripts, resolveTargets } from './targets.ts';
@@ -133,7 +134,7 @@ export function checkGroup(
 			const name = file.target ?? file.source;
 			const source = resolveSource(file, scripts);
 			const sourcePath = join(ownerRoot, group.sourceRoot, source);
-			const expected = readFileSync(sourcePath, 'utf8');
+			const expected = readShared(sourcePath);
 			const destination = join(target.path, group.targetRoot, name);
 
 			if (name === group.hook && !dispatches) {
@@ -181,8 +182,9 @@ export function checkGroup(
 			}
 
 			// Idempotence by content, never by presence. A presence check is what reported eleven
-			// repositories as current while they ran a pre-push one generation behind.
-			const actual = readFileSync(destination, 'utf8');
+			// repositories as current while they ran a pre-push one generation behind. Content
+			// excludes line endings: see readShared.
+			const actual = readShared(destination);
 			if (actual === expected) {
 				report.matched += 1;
 				continue;
@@ -234,7 +236,7 @@ export function checkGroup(
 				// the right variant is exactly what `requiresScripts` is for. It falls through to
 				// drift below.
 				const variants = sourcesOf(file).map((s) =>
-					readFileSync(join(ownerRoot, group.sourceRoot, s), 'utf8'),
+					readShared(join(ownerRoot, group.sourceRoot, s)),
 				);
 				if (!variants.includes(actual)) {
 					report.findings.push({
