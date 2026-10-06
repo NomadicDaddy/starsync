@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { ArchiveOwner } from './archive-config.ts';
+import type { ArchiveHost } from './archive-host.ts';
 import type { HeldArchiveLock } from './archive-lock.ts';
 import type { CommandReport } from './reporting.ts';
 
@@ -10,11 +11,13 @@ import {
 	getAuthenticatedArchiveOwner,
 	writeArchiveConfig,
 } from './archive-config.ts';
+import { hostTokenName, parseArchiveHost } from './archive-host.ts';
 import { ARCHIVE_LOCK_FILENAME } from './archive-lock.ts';
 import { createCommandReport, createFinding } from './reporting.ts';
 import { sanitizeMessage } from './secret-safety.ts';
 
 export interface InitArchiveOptions {
+	host?: ArchiveHost;
 	onProgress?: (message: string) => void;
 	signal?: AbortSignal;
 	targetPath: string;
@@ -74,9 +77,10 @@ export const initArchiveUnlocked = async (
 		});
 	}
 	const targetPath = path.resolve(trimmedTarget);
+	const host = parseArchiveHost(options.host);
 	if (options.signal?.aborted) return interruptedReport(targetPath);
 	if (!options.token.trim()) {
-		return initFailure(targetPath, 'missing-token', 'GITHUB_TOKEN is not set.');
+		return initFailure(targetPath, 'missing-token', `${hostTokenName(host)} is not set.`);
 	}
 
 	try {
@@ -102,15 +106,15 @@ export const initArchiveUnlocked = async (
 		);
 	}
 
-	options.onProgress?.('Authenticating GitHub account...');
+	options.onProgress?.(`Authenticating ${host} account...`);
 	let owner: ArchiveOwner;
 	try {
-		owner = await getAuthenticatedArchiveOwner(options.token);
+		owner = await getAuthenticatedArchiveOwner(options.token, host);
 	} catch (err) {
 		return initFailure(
 			targetPath,
-			'github-authentication-failed',
-			`Cannot authenticate GitHub account: ${sanitizeMessage(getErrorMessage(err))}`,
+			'host-authentication-failed',
+			`Cannot authenticate ${host} account: ${sanitizeMessage(getErrorMessage(err))}`,
 		);
 	}
 	if (options.signal?.aborted) return interruptedReport(targetPath);
@@ -123,7 +127,7 @@ export const initArchiveUnlocked = async (
 				'The target directory changed during authentication and is no longer empty.',
 			);
 		}
-		writeArchiveConfig(targetPath, owner, held?.lockPath);
+		writeArchiveConfig(targetPath, owner, held?.lockPath, host);
 	} catch (err) {
 		return initFailure(
 			targetPath,
@@ -140,7 +144,7 @@ export const initArchiveUnlocked = async (
 			createFinding(
 				'info',
 				'archive-initialized',
-				`Initialized archive format ${CURRENT_ARCHIVE_FORMAT} for GitHub account ${owner.login} (identity ${owner.id}).`,
+				`Initialized archive format ${CURRENT_ARCHIVE_FORMAT} for ${host} account ${owner.login} (identity ${owner.id}).`,
 			),
 		],
 		targetPath,

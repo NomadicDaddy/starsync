@@ -1,8 +1,10 @@
-import { Octokit } from '@octokit/rest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { withApiRetry } from './api-retry.ts';
+import type { ArchiveHost } from './archive-host.ts';
+
+import { parseArchiveHost } from './archive-host.ts';
+import { createRepositoryHost } from './repository-host.ts';
 
 export const ARCHIVE_CONFIG_DIRECTORY = '.starsync';
 const ARCHIVE_CONFIG_FILE = 'config.json';
@@ -15,6 +17,7 @@ export interface ArchiveOwner {
 
 export interface ArchiveConfig {
 	archiveFormat: number;
+	host?: ArchiveHost;
 	owner: ArchiveOwner;
 }
 
@@ -28,7 +31,7 @@ const hasExactKeys = (value: Record<string, unknown>, expected: string[]): boole
 	);
 };
 
-const parseOwner = (value: unknown): ArchiveOwner => {
+const parseOwner = (value: unknown, host: ArchiveHost): ArchiveOwner => {
 	if (!isRecord(value) || !hasExactKeys(value, ['id', 'login'])) {
 		throw new Error('Archive config owner must contain only id and login.');
 	}
@@ -37,18 +40,28 @@ const parseOwner = (value: unknown): ArchiveOwner => {
 		!Number.isSafeInteger(value.id) ||
 		value.id <= 0 ||
 		typeof value.login !== 'string' ||
-		!/^(?!.*--)[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(value.login)
+		!(
+			host === 'github.com'
+				? /^(?!.*--)[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i
+				: /^[a-z\d][a-z\d_.-]*$/i
+		).test(value.login)
 	) {
 		throw new Error(
-			'Archive config owner must contain a positive integer id and valid GitHub login.',
+			'Archive config owner must contain a positive integer id and valid host login.',
 		);
 	}
 	return { id: value.id, login: value.login };
 };
 
 export const parseArchiveConfig = (value: unknown): ArchiveConfig => {
-	if (!isRecord(value) || !hasExactKeys(value, ['archiveFormat', 'owner'])) {
-		throw new Error('Archive config must contain only archiveFormat and owner.');
+	if (
+		!isRecord(value) ||
+		!(
+			hasExactKeys(value, ['archiveFormat', 'owner']) ||
+			hasExactKeys(value, ['archiveFormat', 'host', 'owner'])
+		)
+	) {
+		throw new Error('Archive config must contain only archiveFormat, owner and optional host.');
 	}
 	if (typeof value.archiveFormat !== 'number' || !Number.isInteger(value.archiveFormat)) {
 		throw new Error('Archive config archiveFormat must be an integer.');
@@ -60,7 +73,8 @@ export const parseArchiveConfig = (value: unknown): ArchiveConfig => {
 	}
 	return {
 		archiveFormat: value.archiveFormat,
-		owner: parseOwner(value.owner),
+		...('host' in value ? { host: parseArchiveHost(value.host) } : {}),
+		owner: parseOwner(value.owner, parseArchiveHost(value.host)),
 	};
 };
 
@@ -73,6 +87,7 @@ export const writeArchiveConfig = (
 	targetPath: string,
 	owner: ArchiveOwner,
 	operationLockPath?: string,
+	host: ArchiveHost = 'github.com',
 ): void => {
 	const metadataPath = path.join(targetPath, ARCHIVE_CONFIG_DIRECTORY);
 	const configPath = path.join(metadataPath, ARCHIVE_CONFIG_FILE);
@@ -103,7 +118,7 @@ export const writeArchiveConfig = (
 		try {
 			fs.writeFileSync(
 				descriptor,
-				`${JSON.stringify({ archiveFormat: CURRENT_ARCHIVE_FORMAT, owner }, null, '\t')}\n`,
+				`${JSON.stringify({ archiveFormat: CURRENT_ARCHIVE_FORMAT, host, owner }, null, '\t')}\n`,
 				'utf-8',
 			);
 			fs.fsyncSync(descriptor);
@@ -120,10 +135,8 @@ export const writeArchiveConfig = (
 	}
 };
 
-export const getAuthenticatedArchiveOwner = async (token: string): Promise<ArchiveOwner> => {
-	const octokit = new Octokit({ auth: token });
-	const response = await withApiRetry(() => octokit.rest.users.getAuthenticated(), {
-		maxRetries: 2,
-	});
-	return parseOwner({ id: response.data.id, login: response.data.login });
-};
+export const getAuthenticatedArchiveOwner = async (
+	token: string,
+	host: ArchiveHost = 'github.com',
+): Promise<ArchiveOwner> =>
+	parseOwner(await createRepositoryHost(host, token).authenticate(), host);

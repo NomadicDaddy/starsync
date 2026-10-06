@@ -1,12 +1,14 @@
 import type { CheckoutIdentity } from './checkout-identity.ts';
 import type { GitExecOptions } from './git-exec.ts';
 
+import { type ArchiveHost, parseArchiveHost } from './archive-host.ts';
 import {
 	canonicalCheckoutName,
 	REPOSITORY_ID_KEY,
 	REPOSITORY_SLUG_KEY,
 } from './checkout-identity.ts';
 import { runGit } from './git-exec.ts';
+import { extractHost } from './secret-safety.ts';
 
 export type CheckoutStateRunner = (args: string[], options: GitExecOptions) => Promise<string>;
 
@@ -94,7 +96,7 @@ const restoreCheckoutState = async (
 	return failures;
 };
 
-const desiredCheckoutState = (identity: CheckoutIdentity): CheckoutState => {
+const desiredCheckoutState = (identity: CheckoutIdentity, host: ArchiveHost): CheckoutState => {
 	if (
 		!Number.isSafeInteger(identity.repositoryId) ||
 		identity.repositoryId <= 0 ||
@@ -104,7 +106,7 @@ const desiredCheckoutState = (identity: CheckoutIdentity): CheckoutState => {
 	}
 	return {
 		identity,
-		origin: `https://github.com/${identity.repositorySlug}.git`,
+		origin: `https://${host}/${identity.repositorySlug}.git`,
 	};
 };
 
@@ -113,8 +115,12 @@ export const transitionCheckoutState = async (
 	identity: CheckoutIdentity,
 	runner: CheckoutStateRunner = runGit,
 ): Promise<void> => {
-	const desired = desiredCheckoutState(identity);
 	const snapshot = await readCheckoutState(checkoutPath, runner);
+	const host = extractHost(snapshot.origin);
+	const desired = desiredCheckoutState(
+		identity,
+		parseArchiveHost(host === 'www.github.com' ? 'github.com' : host),
+	);
 	if (snapshot.identity.repositoryId !== desired.identity.repositoryId) {
 		throw new Error('Cannot change a managed checkout stable repository identity.');
 	}

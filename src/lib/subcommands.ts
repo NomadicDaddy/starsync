@@ -1,3 +1,4 @@
+import type { ArchiveHost } from './archive-host.ts';
 import type { CommandReport } from './reporting.ts';
 
 import {
@@ -8,6 +9,7 @@ import {
 	unlockArchive,
 	verifyArchive,
 } from './archive-api.ts';
+import { parseInitHost, tokenForArchive, tokenForHost } from './cli-host.ts';
 import {
 	parseArgs,
 	type ParsedSubcommandArgs,
@@ -101,7 +103,7 @@ export const dispatchSync = async (argv: string[]): Promise<number> => {
 			onProgress: reporter.progress,
 			signal: interrupt.signal,
 			targetPath,
-			token: process.env.GITHUB_TOKEN ?? '',
+			token: tokenForArchive(targetPath),
 		});
 	} finally {
 		interrupt.dispose();
@@ -134,7 +136,7 @@ export const dispatchVerify = async (argv: string[]): Promise<number> => {
 			onProgress: reporter.progress,
 			signal: interrupt.signal,
 			targetPath,
-			token: process.env.GITHUB_TOKEN ?? '',
+			token: tokenForArchive(targetPath),
 		});
 	} finally {
 		interrupt.dispose();
@@ -165,7 +167,7 @@ export const dispatchRename = async (argv: string[]): Promise<number> => {
 			onProgress: reporter.progress,
 			signal: interrupt.signal,
 			targetPath,
-			token: process.env.GITHUB_TOKEN ?? '',
+			token: tokenForArchive(targetPath),
 		});
 	} finally {
 		interrupt.dispose();
@@ -207,8 +209,11 @@ export const dispatchDates = async (argv: string[]): Promise<number> => {
 
 export const dispatchInit = async (argv: string[]): Promise<number> => {
 	let args: ParsedSubcommandArgs;
+	let host: ArchiveHost;
 	try {
-		args = parseSubcommandArgs(argv);
+		const parsed = parseInitHost(argv);
+		host = parsed.host;
+		args = parseSubcommandArgs(parsed.argv);
 	} catch (err) {
 		return emitUsageError('init', argv, INIT_HELP_TEXT, err);
 	}
@@ -223,10 +228,11 @@ export const dispatchInit = async (argv: string[]): Promise<number> => {
 	let report: CommandReport;
 	try {
 		report = await initArchive({
+			host,
 			onProgress: reporter.progress,
 			signal: interrupt.signal,
 			targetPath,
-			token: process.env.GITHUB_TOKEN ?? '',
+			token: tokenForHost(host),
 		});
 	} finally {
 		interrupt.dispose();

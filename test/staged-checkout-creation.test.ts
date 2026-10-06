@@ -868,7 +868,7 @@ describe('staged checkout creation process boundary', () => {
 				7,
 			);
 			expect(originMismatch.outcome).toBe('failed');
-			expect(originMismatch.message).toContain('matching GitHub.com origin');
+			expect(originMismatch.message).toContain('matching host origin');
 
 			const ownerMismatch = runStagedCheckout(repository, target, 7);
 			expect(ownerMismatch.outcome).toBe('failed');

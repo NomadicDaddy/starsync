@@ -2,8 +2,8 @@
 
 **SAVE YOUR STARRED REPOS BEFORE THEY DISAPPEAR!**
 
-StarSync preserves every repository starred by one GitHub account in a managed local archive. It
-matches checkouts by stable GitHub repository ID, refreshes available history, and adds new stars
+StarSync preserves repositories starred by one GitHub or Codeberg account in a managed local archive. It
+matches checkouts by stable repository ID within that host, refreshes available history, and adds new stars
 under canonical `repository--owner` folders.
 
 StarSync 2 requires Git, an initialized archive using format 2, and either Bun 1.4.2 or Node 24 or
@@ -19,7 +19,7 @@ bunx starsync sync D:/archives/stars
 ```
 
 Both resolve `bin` to `dist/cli.js`, a node-target bundle, so Bun isn't required to use StarSync.
-A first run on an empty directory still needs `init` and a `GITHUB_TOKEN`; see below.
+A first run on an empty directory needs `init` and the selected host's API token; see below.
 
 To install it as a command instead:
 
@@ -55,14 +55,17 @@ StarSync keeps API and Git transport authentication separate:
 
 - `GITHUB_TOKEN` is used through Octokit to authenticate the archive owner and list or resolve
   GitHub repositories. It is required by `init`, `sync`, `rename`, and `verify --force`.
+- `CODEBERG_TOKEN` serves those commands for Codeberg archives through its Forgejo API.
+  Use a token with read access to the user and repositories. API requests stay on Codeberg;
+  redirects are refused and failed response bodies are not printed.
 - Clone and fetch operations use credentials already configured for Git, such as Git Credential
   Manager or SSH keys. The API token is never passed to Git.
 
 Tokens and embedded Git credentials are excluded from command arguments and archive metadata.
-Remote URLs and errors are sanitized before reporting. Managed origins must identify GitHub.com;
-other hosts and credential-bearing URLs are rejected.
+Remote URLs and errors are sanitized before reporting. Managed origins must match the archive's
+recorded host; other hosts and credential-bearing URLs are rejected.
 
-Set `GITHUB_TOKEN` in a `.env` file, in the current shell, or for one invocation:
+Supply the selected token through the current process environment or a credential manager:
 
 ```sh
 GITHUB_TOKEN=ghp_your_token_here npx starsync sync D:/archives/stars
@@ -73,11 +76,12 @@ priority.
 
 ## Archive contract
 
-Every usable archive has an exact `.starsync/config.json` containing format 2 and one valid owner:
+Every usable archive has `.starsync/config.json` containing format 2 and one valid owner on one host:
 
 ```json
 {
 	"archiveFormat": 2,
+	"host": "github.com",
 	"owner": {
 		"id": 123456,
 		"login": "archive-owner"
@@ -85,21 +89,33 @@ Every usable archive has an exact `.starsync/config.json` containing format 2 an
 }
 ```
 
-The file accepts no extra fields. A configless directory is uninitialized, whether it is empty or
+`host` accepts only `github.com` or `codeberg.org`; its absence means GitHub. New archives always
+record it explicitly. Existing GitHub archives need no rewrite. All other extra fields are rejected.
+Never change an archive's host to move its contents: IDs can collide across hosts. Initialize a
+separate empty archive for the other host. A configless directory is uninitialized, whether it is empty or
 populated. Any other format is unsupported, and malformed format-2 configuration is invalid.
 StarSync does not inspect such directories for checkouts or offer conversion.
 
 Each managed checkout must store both of these local Git configuration values:
 
-- `starsync.repository-id`: the positive stable GitHub repository ID;
+- `starsync.repository-id`: the positive stable repository ID assigned by the archive's host;
 - `starsync.repository-slug`: the last known `owner/name` slug.
 
 Missing, incomplete, invalid, or duplicated identity is a current-format error. There is no
 identity backfill path.
 
-Use `init` on an existing empty directory. It authenticates the GitHub account and writes the
-format-2 owner binding. Operations that authenticate compare the stable account ID, so a login
+Use `init` on an existing empty directory. It authenticates the selected host account and writes the
+format-2 host and owner binding. Operations that authenticate compare the stable account ID, so a login
 rename is accepted while a different account is rejected.
+
+For Codeberg, provide `CODEBERG_TOKEN`, then run:
+
+```sh
+bunx starsync init --host codeberg.org D:/archives/codeberg-stars
+bunx starsync sync D:/archives/codeberg-stars
+```
+
+Later commands read the host from the archive. `--host` is accepted only by `init`.
 
 ### Moving from StarSync 1.x
 
@@ -114,7 +130,7 @@ StarSync accepts only explicit commands. Bare invocation and unknown commands ar
 with exit code 2. Root `--help` and command-specific help remain available.
 
 ```sh
-npx starsync init [--json] [target-path]
+npx starsync init [--host github.com|codeberg.org] [--json] [target-path]
 npx starsync sync [--dry-run] [--json] [--concurrency=N] [--min-free-space=SIZE] [target-path]
 npx starsync verify [--force] [--json] [--min-free-space=SIZE] [target-path]
 npx starsync rename [--apply] [--json] [target-path]
@@ -134,11 +150,11 @@ as pending while refresh continues against the existing checkout. Use `rename` t
 label.
 
 New repositories are cloned into a unique StarSync-owned sibling staging directory. StarSync
-validates the GitHub.com origin, Git objects, archive owner, cleanliness, and identity before
+validates the archive host origin, Git objects, archive owner, cleanliness, and identity before
 atomically publishing the canonical folder. Occupied destinations are never overwritten.
 
 Refresh fetches available remote branches and tags without pruning preserved references, then
-fast-forwards to the current GitHub default branch. Divergent commits and real local changes are
+fast-forwards to the host's current default branch. Divergent commits and real local changes are
 blocked. Moved upstream tags retain their archived target and produce a warning. If an unavailable
 Git LFS object breaks a clone or refresh, StarSync retries once with `GIT_LFS_SKIP_SMUDGE=1` and
 keeps the pointer file without persisting that setting.
@@ -186,9 +202,9 @@ with the same size grammar `sync` accepts, and `--min-free-space=0` turns the ch
 ### rename
 
 `rename` is a read-only preview unless `--apply` is present. It resolves each checkout's current
-GitHub repository identity and reports one of `blocked`, `current`, `failed`, or `pending`.
+repository identity by numeric ID on the archive's host and reports one of `blocked`, `current`, `failed`, or `pending`.
 
-Every checkout must already contain a stable repository ID matching GitHub's resolved ID. Preview
+Every checkout must already contain a stable repository ID matching the host's resolved ID. Preview
 reports missing or mismatched identity, dirty or unverifiable state, duplicate identities,
 credential-bearing or invalid origins, and destination collisions without writing anything.
 
@@ -253,6 +269,9 @@ const renames = await renameArchive({
 
 Supported operations are `initArchive`, `syncArchive`, `verifyArchive`, `renameArchive`,
 `normalizeArchiveDates`, and `unlockArchive`.
+
+`initArchive` accepts `host: 'codeberg.org'` (default `'github.com'`). Pass the corresponding token
+explicitly to each authenticated operation; the API never selects tokens from the environment.
 
 ## Release validation
 

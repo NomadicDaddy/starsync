@@ -32,7 +32,7 @@ const prepareContext = (options: RenameArchiveOptions): CommandReport | RenameCo
 		return missingTokenReport(
 			'rename',
 			targetPath,
-			'GITHUB_TOKEN is required to resolve repositories.',
+			'The archive host API token is required to resolve repositories (GITHUB_TOKEN or CODEBERG_TOKEN).',
 			!apply,
 		);
 	}
@@ -44,14 +44,17 @@ const verifyApplyOwner = async (
 	token: string,
 ): Promise<CommandReport | null> => {
 	const configured = readArchiveConfig(targetPath).owner;
-	const authenticated = await getAuthenticatedArchiveOwner(token);
+	const authenticated = await getAuthenticatedArchiveOwner(
+		token,
+		readArchiveConfig(targetPath).host,
+	);
 	return authenticated.id === configured.id
 		? null
 		: operationFailureReport(
 				'rename',
 				targetPath,
 				'archive-owner-mismatch',
-				`Archive belongs to GitHub account ${configured.login} (identity ${configured.id}), but the authenticated account is ${authenticated.login} (identity ${authenticated.id}).`,
+				`Archive belongs to account ${configured.login} (identity ${configured.id}), but the authenticated account is ${authenticated.login} (identity ${authenticated.id}).`,
 			);
 };
 
@@ -80,7 +83,10 @@ const executeRename = async (
 		isInterruptionRequested: () => options.signal?.aborted ?? false,
 		...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
 	};
-	const resolver = createGitHubRepositoryResolver(options.token);
+	const resolver = createGitHubRepositoryResolver(
+		options.token,
+		readArchiveConfig(context.targetPath).host,
+	);
 	const result = context.apply
 		? await applyArchiveRenames(context.targetPath, resolver, renameOptions)
 		: await previewArchiveRenames(context.targetPath, resolver, renameOptions);

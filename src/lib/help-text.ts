@@ -1,4 +1,4 @@
-export const ROOT_HELP_TEXT = `starsync - archive command suite for GitHub starred repositories.
+export const ROOT_HELP_TEXT = `starsync - archive command suite for GitHub and Codeberg starred repositories.
 
 Usage:
   starsync <command> [options] [target-path]
@@ -27,7 +27,8 @@ Options:
                     uncertain lock after assessing the risk
 
 Environment:
-  GITHUB_TOKEN      Required for init, sync, rename, and verify --force.
+  GITHUB_TOKEN      GitHub archive token for init, sync, rename, and verify --force.
+  CODEBERG_TOKEN    Codeberg archive token for the same commands.
   TARGET_PATH       Required if no positional target-path is given.
 
 Run 'starsync <command> --help' for command-specific options.`;
@@ -55,7 +56,8 @@ Options:
                       instead of failing.
 
 Environment:
-  GITHUB_TOKEN        Required. Personal access token with repo + read:user scopes.
+  GITHUB_TOKEN        Required for GitHub archives (repo + read:user scopes).
+  CODEBERG_TOKEN      Required for Codeberg archives.
   TARGET_PATH         Required if no positional target-path is given.
 
 A positional target-path argument overrides TARGET_PATH.`;
@@ -81,7 +83,8 @@ Options:
                     verification writes nothing and never measures.
 
 Environment:
-  GITHUB_TOKEN      Required with --force to resolve repository identities.
+  GITHUB_TOKEN      Required with --force for GitHub archives.
+  CODEBERG_TOKEN    Required with --force for Codeberg archives.
   TARGET_PATH       Required if no positional target-path is given.
 
 A positional target-path argument overrides TARGET_PATH.
@@ -102,7 +105,8 @@ Options:
   --apply           Update repository slugs and origins, and safely rename folders
 
 Environment:
-  GITHUB_TOKEN      Required. Resolves repositories; apply also authenticates the archive owner.
+  GITHUB_TOKEN      Required for GitHub archives.
+  CODEBERG_TOKEN    Required for Codeberg archives.
   TARGET_PATH       Required if no positional target-path is given.
 
 A positional target-path argument overrides TARGET_PATH.
@@ -126,7 +130,7 @@ Environment:
 
 A positional target-path argument overrides TARGET_PATH.
 Archive Date is the newest committer time reachable from any local Git reference.
-Date calculation is local and does not use GITHUB_TOKEN or network access.`;
+Date calculation is local and does not use API tokens or network access.`;
 
 export const INIT_HELP_TEXT = `starsync init - initialize a managed archive with owner and format.
 
@@ -138,12 +142,15 @@ Usage:
 Options:
   --help, -h        Show this help
   --json            Emit one schema-versioned JSON result document on stdout
+  --host HOST       github.com (default) or codeberg.org; also accepts --host=HOST
 
 Environment:
-  GITHUB_TOKEN      Required. Personal access token with repo + read:user scopes.
+  GITHUB_TOKEN      Required for github.com (repo + read:user scopes).
+  CODEBERG_TOKEN    Required for codeberg.org (read:user and read:repository scopes).
   TARGET_PATH       Required if no positional target-path is given.
 
-The target directory must already exist and be empty.`;
+The target directory must already exist and be empty. Each archive belongs to one host and
+account. Later commands use the recorded host; they cannot switch it with --host.`;
 
 export const UNLOCK_HELP_TEXT = `starsync unlock - release an archive operation lock.
 

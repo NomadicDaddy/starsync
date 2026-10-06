@@ -10,6 +10,8 @@
 
 // ── Embedded credential detection ──────────────────────────────────────────
 
+import type { ArchiveHost } from './archive-host.ts';
+
 /** Matches user:password@ in an HTTPS URL. */
 const EMBEDDED_USERPASS_RE = /(https?:\/\/)[^/@:]+:[^/@]+@/g;
 /** Matches bare token@ in an HTTPS URL (no colon, just credentials before @). */
@@ -100,6 +102,9 @@ export const isGitHubDotComUrl = (url: string): boolean => {
 	const host = extractHost(url);
 	return host !== null && GITHUB_COM_HOSTS.has(host);
 };
+
+export const isArchiveHostUrl = (url: string, host: ArchiveHost): boolean =>
+	host === 'github.com' ? isGitHubDotComUrl(url) : extractHost(url) === host;
 
 // ── Git auth error detection ────────────────────────────────────────────────
 

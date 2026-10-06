@@ -1,3 +1,4 @@
+import type { ArchiveHost } from './archive-host.ts';
 import type { ArchiveEntry } from './archive-inspection.ts';
 import type { CheckoutReport, Finding } from './reporting.ts';
 
@@ -12,7 +13,7 @@ import { parseGitHubRepositorySlug } from './repository-resolution.ts';
 import {
 	CREDENTIAL_GUIDANCE,
 	hasEmbeddedCredentials,
-	isGitHubDotComUrl,
+	isArchiveHostUrl,
 	sanitizeMessage,
 	sanitizeUrl,
 } from './secret-safety.ts';
@@ -105,7 +106,7 @@ const verifyGitIntegrity = async (entry: ArchiveEntry, state: VerificationState)
 	}
 };
 
-const verifyOrigin = (entry: ArchiveEntry, state: VerificationState): void => {
+const verifyOrigin = (entry: ArchiveEntry, state: VerificationState, host: ArchiveHost): void => {
 	if (entry.gitError || !entry.origin) {
 		addBlockedFinding(
 			state,
@@ -122,20 +123,20 @@ const verifyOrigin = (entry: ArchiveEntry, state: VerificationState): void => {
 		);
 		return;
 	}
-	if (!isGitHubDotComUrl(entry.origin)) {
+	if (!isArchiveHostUrl(entry.origin, host)) {
 		addBlockedFinding(
 			state,
 			'invalid-origin',
-			`Remote origin is not GitHub.com: ${sanitizeUrl(entry.origin)}`,
+			`Remote origin does not match archive host ${host}: ${sanitizeUrl(entry.origin)}`,
 		);
 		return;
 	}
-	state.originSlug = parseGitHubRepositorySlug(entry.origin);
+	state.originSlug = parseGitHubRepositorySlug(entry.origin, host);
 	if (state.originSlug === null) {
 		addBlockedFinding(
 			state,
 			'invalid-origin',
-			`Cannot parse a GitHub repository slug from ${sanitizeUrl(entry.origin)}`,
+			`Cannot parse a repository slug from ${sanitizeUrl(entry.origin)}`,
 		);
 	}
 };
@@ -252,7 +253,10 @@ const getPendingRename = (entry: ArchiveEntry, state: VerificationState): boolea
 	return pendingRename;
 };
 
-export const verifyCheckout = async (entry: ArchiveEntry): Promise<VerifiedCheckout> => {
+export const verifyCheckout = async (
+	entry: ArchiveEntry,
+	host: ArchiveHost = 'github.com',
+): Promise<VerifiedCheckout> => {
 	if (!entry.isGitCheckout) {
 		return failEntry(entry, 'unrelated-archive-entry', 'Archive entry is not a Git checkout.');
 	}
@@ -264,7 +268,7 @@ export const verifyCheckout = async (entry: ArchiveEntry): Promise<VerifiedCheck
 		repositorySlug: null,
 	};
 	await verifyGitIntegrity(entry, state);
-	verifyOrigin(entry, state);
+	verifyOrigin(entry, state, host);
 	await verifyCheckoutState(entry, state);
 	await verifyIdentity(entry, state);
 	const pendingRename = getPendingRename(entry, state);

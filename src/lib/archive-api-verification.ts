@@ -38,7 +38,7 @@ const prepareVerifyContext = (options: VerifyArchiveOptions): CommandReport | Ve
 		return missingTokenReport(
 			'verify',
 			targetPath,
-			'GITHUB_TOKEN is required to resolve and re-clone damaged repositories.',
+			'The archive host API token is required to resolve and re-clone damaged repositories (GITHUB_TOKEN or CODEBERG_TOKEN).',
 		);
 	}
 	const minFreeSpace = resolveMinFreeSpace(options.minFreeSpace);
@@ -93,18 +93,24 @@ const prepareForcedRepair = async (
 		});
 	}
 	const configuredOwner = readArchiveConfig(targetPath).owner;
-	const authenticatedOwner = await getAuthenticatedArchiveOwner(token);
+	const authenticatedOwner = await getAuthenticatedArchiveOwner(
+		token,
+		readArchiveConfig(targetPath).host,
+	);
 	if (authenticatedOwner.id !== configuredOwner.id) {
 		return operationFailureReport(
 			'verify',
 			targetPath,
 			'archive-owner-mismatch',
-			`Archive belongs to GitHub account ${configuredOwner.login} (identity ${configuredOwner.id}), but the authenticated account is ${authenticatedOwner.login} (identity ${authenticatedOwner.id}).`,
+			`Archive belongs to account ${configuredOwner.login} (identity ${configuredOwner.id}), but the authenticated account is ${authenticatedOwner.login} (identity ${authenticatedOwner.id}).`,
 		);
 	}
 	return {
 		archiveOwnerId: configuredOwner.id,
-		resolveRepository: createGitHubRepositoryResolver(token),
+		resolveRepository: createGitHubRepositoryResolver(
+			token,
+			readArchiveConfig(targetPath).host,
+		),
 		targetPath,
 	};
 };

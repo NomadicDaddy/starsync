@@ -654,10 +654,12 @@ describe('managed archive initialization', () => {
 			);
 			expect(JSON.parse(configText)).toEqual({
 				archiveFormat: 2,
+				host: 'github.com',
 				owner: { id: 42, login: 'octocat' },
 			});
 			expect(Object.keys(JSON.parse(configText) as Record<string, unknown>).sort()).toEqual([
 				'archiveFormat',
+				'host',
 				'owner',
 			]);
 			expect(configText).not.toContain('secret-test-token');

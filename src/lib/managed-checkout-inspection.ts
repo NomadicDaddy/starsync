@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { ArchiveHost } from './archive-host.ts';
 import type { ManagedCheckout } from './managed-checkout-planning.ts';
 import type { CheckoutReport } from './reporting.ts';
 
@@ -10,7 +11,7 @@ import { blockedCheckoutReport } from './managed-checkout-classification.ts';
 import { parseGitHubRepositorySlug } from './repository-resolution.ts';
 import {
 	hasEmbeddedCredentials,
-	isGitHubDotComUrl,
+	isArchiveHostUrl,
 	sanitizeMessage,
 	sanitizeUrl,
 } from './secret-safety.ts';
@@ -27,10 +28,14 @@ export interface ManagedCheckoutScan {
 
 const emptyInspection = (): ManagedCheckoutInspection => ({ checkout: null, report: null });
 
-const originMatchesIdentity = (origin: string, repositorySlug: string): boolean => {
+const originMatchesIdentity = (
+	origin: string,
+	repositorySlug: string,
+	host: ArchiveHost,
+): boolean => {
 	if (hasEmbeddedCredentials(origin)) return false;
-	if (!isGitHubDotComUrl(origin)) return false;
-	const originSlug = parseGitHubRepositorySlug(origin);
+	if (!isArchiveHostUrl(origin, host)) return false;
+	const originSlug = parseGitHubRepositorySlug(origin, host);
 	if (originSlug === null) return false;
 	return (
 		`${originSlug.owner}/${originSlug.repository}`.toLowerCase() ===
@@ -41,6 +46,7 @@ const originMatchesIdentity = (origin: string, repositorySlug: string): boolean 
 const inspectGitCheckout = async (
 	checkoutPath: string,
 	name: string,
+	host: ArchiveHost,
 ): Promise<ManagedCheckoutInspection> => {
 	const identity = await readCheckoutIdentity(checkoutPath);
 	if (identity === null) {
@@ -56,7 +62,7 @@ const inspectGitCheckout = async (
 	const origin = await runGit(['config', '--local', '--get', 'remote.origin.url'], {
 		cwd: checkoutPath,
 	});
-	if (!originMatchesIdentity(origin, identity.repositorySlug)) {
+	if (!originMatchesIdentity(origin, identity.repositorySlug, host)) {
 		return {
 			checkout: null,
 			report: blockedCheckoutReport(
@@ -72,11 +78,12 @@ const inspectGitCheckout = async (
 export const inspectManagedCheckoutEntry = async (
 	targetPath: string,
 	name: string,
+	host: ArchiveHost = 'github.com',
 ): Promise<ManagedCheckoutInspection> => {
 	const checkoutPath = path.join(targetPath, name);
 	if (!fs.existsSync(path.join(checkoutPath, '.git'))) return emptyInspection();
 	try {
-		return await inspectGitCheckout(checkoutPath, name);
+		return await inspectGitCheckout(checkoutPath, name, host);
 	} catch (err) {
 		return {
 			checkout: null,

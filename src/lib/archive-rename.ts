@@ -1,8 +1,10 @@
+import type { ArchiveHost } from './archive-host.ts';
 import type { ArchiveEntry, ArchiveInspection } from './archive-inspection.ts';
 import type { ResolvedRenameEntry } from './checkout-rename-resolution.ts';
 import type { CheckoutReport, Finding, RenamePreview } from './reporting.ts';
 import type { RepositoryResolver } from './repository-resolution.ts';
 
+import { readArchiveConfig } from './archive-config.ts';
 import { inspectArchive } from './archive-inspection.ts';
 import { classifyResolvedRenames } from './checkout-rename-classification.ts';
 import { resolveRenameEntry } from './checkout-rename-resolution.ts';
@@ -35,6 +37,7 @@ const resolveEntries = async (
 	inspection: ArchiveInspection,
 	resolver: RepositoryResolver,
 	options: RenameOptions,
+	host: ArchiveHost,
 ): Promise<EntryResult[]> => {
 	const results: EntryResult[] = new Array(inspection.entries.length);
 	let nextIndex = 0;
@@ -46,7 +49,7 @@ const resolveEntries = async (
 			options.onProgress?.(
 				`Inspecting ${index + 1}/${inspection.entries.length} — ${entry.name}`,
 			);
-			results[index] = await resolveRenameEntry(entry, resolver);
+			results[index] = await resolveRenameEntry(entry, resolver, host);
 		}
 	};
 	const count = Math.min(RENAME_PREVIEW_CONCURRENCY, inspection.entries.length);
@@ -115,7 +118,15 @@ export const previewArchiveRenames = async (
 	inspection: ArchiveInspection = inspectArchive(targetPath),
 ): Promise<RenameResult> => {
 	if (inspection.kind !== 'current') return invalidInspectionResult(inspection);
-	return createRenameResult(inspection, await resolveEntries(inspection, resolver, options));
+	return createRenameResult(
+		inspection,
+		await resolveEntries(
+			inspection,
+			resolver,
+			options,
+			readArchiveConfig(targetPath).host ?? 'github.com',
+		),
+	);
 };
 
 export type { RenamePreview };

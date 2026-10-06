@@ -45,7 +45,7 @@ export const validateArchiveOwner = (
 		createFinding(
 			'info',
 			'archive-owner-bound',
-			`Archive is bound to GitHub account ${config.owner.login} (identity ${config.owner.id}).`,
+			`Archive is bound to ${config.host ?? 'github.com'} account ${config.owner.login} (identity ${config.owner.id}).`,
 		),
 	];
 };

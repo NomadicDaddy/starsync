@@ -16,8 +16,9 @@ import {
 	STAGED_CHECKOUT_PREFIX,
 } from './owned-checkout-artifacts.ts';
 import {
+	extractHost,
 	hasEmbeddedCredentials,
-	isGitHubDotComUrl,
+	isArchiveHostUrl,
 	sanitizeMessage,
 	sanitizeUrl,
 } from './secret-safety.ts';
@@ -65,7 +66,10 @@ const repositorySlugFromCloneUrl = (url: string): null | string => {
 	}
 };
 
-const assertRepositoryRequest = (repository: StagedCheckoutRepository): void => {
+const assertRepositoryRequest = (
+	repository: StagedCheckoutRepository,
+	targetBase: string,
+): void => {
 	if (
 		!Number.isSafeInteger(repository.repositoryId) ||
 		repository.repositoryId <= 0 ||
@@ -74,14 +78,15 @@ const assertRepositoryRequest = (repository: StagedCheckoutRepository): void => 
 			repository.repositorySlug.toLowerCase()
 	) {
 		throw new Error(
-			'New managed checkout requires a positive Repository Identity, matching GitHub.com origin, and its canonical repository--owner folder.',
+			'New managed checkout requires a positive Repository Identity, matching host origin, and its canonical repository--owner folder.',
 		);
 	}
-	if (hasEmbeddedCredentials(repository.cloneUrl) || !isGitHubDotComUrl(repository.cloneUrl)) {
+	if (
+		hasEmbeddedCredentials(repository.cloneUrl) ||
+		!isArchiveHostUrl(repository.cloneUrl, readArchiveConfig(targetBase).host ?? 'github.com')
+	) {
 		throw new Error(
-			`Repository origin is not a credential-free GitHub.com URL: ${sanitizeUrl(
-				repository.cloneUrl,
-			)}`,
+			`Repository origin does not match archive host: ${sanitizeUrl(repository.cloneUrl)}`,
 		);
 	}
 };
@@ -156,22 +161,18 @@ const validateStagedCheckout = async (
 	if (!fs.existsSync(path.join(stagingPath, '.git'))) {
 		throw new Error('Clone completed without creating a usable Git checkout.');
 	}
-
 	const origin = await runGit(['config', '--local', '--get', 'remote.origin.url'], {
 		cwd: stagingPath,
 	});
 	if (
 		hasEmbeddedCredentials(origin) ||
-		!isGitHubDotComUrl(origin) ||
+		extractHost(origin) !== extractHost(repository.cloneUrl) ||
 		normalizeRepositoryUrl(origin) !== normalizeRepositoryUrl(repository.cloneUrl)
 	) {
 		throw new Error(
-			`Staged checkout origin does not match the expected credential-free GitHub.com repository: ${sanitizeUrl(
-				origin,
-			)}`,
+			`Staged checkout origin does not match the requested repository: ${sanitizeUrl(origin)}`,
 		);
 	}
-
 	await runGit(['fsck', '--full'], { cwd: stagingPath });
 	const status = await runGit(['status', '--porcelain'], { cwd: stagingPath });
 	if (status) throw new Error('Staged checkout contains local changes after cloning.');
@@ -227,7 +228,7 @@ export const createStagedCheckout = async (
 	targetBase: string,
 	options: StagedCheckoutOptions,
 ): Promise<void> => {
-	assertRepositoryRequest(repository);
+	assertRepositoryRequest(repository, targetBase);
 	const destinationPath = path.join(targetBase, repository.folderName);
 	assertArchiveOwner(targetBase, options.archiveOwnerId);
 	assertDestinationAvailable(destinationPath, repository.folderName);
@@ -235,6 +236,7 @@ export const createStagedCheckout = async (
 	try {
 		assertArchiveOwner(targetBase, options.archiveOwnerId);
 		assertDestinationAvailable(destinationPath, repository.folderName);
+		assertRepositoryRequest(repository, targetBase);
 		fs.renameSync(stagingPath, destinationPath);
 	} catch (err) {
 		const cleanupError = tryRemoveOwnedStagingDirectory(targetBase, stagingPath);
@@ -255,7 +257,7 @@ export const replaceAnomalousCheckout = async (
 	targetBase: string,
 	options: StagedCheckoutOptions,
 ): Promise<ReplacedCheckout> => {
-	assertRepositoryRequest(repository);
+	assertRepositoryRequest(repository, targetBase);
 	const sourcePath = path.join(targetBase, repository.sourceFolderName);
 	const destinationPath = path.join(targetBase, repository.folderName);
 	assertReplacementSource(sourcePath, repository.sourceFolderName);
@@ -266,6 +268,7 @@ export const replaceAnomalousCheckout = async (
 		assertArchiveOwner(targetBase, options.archiveOwnerId);
 		assertReplacementSource(sourcePath, repository.sourceFolderName);
 		assertReplacementDestinationAvailable(sourcePath, destinationPath, repository.folderName);
+		assertRepositoryRequest(repository, targetBase);
 		fs.renameSync(sourcePath, backupPath);
 		try {
 			assertDestinationAvailable(destinationPath, repository.folderName);
@@ -279,9 +282,7 @@ export const replaceAnomalousCheckout = async (
 		const cleanupMessage =
 			cleanupError === null
 				? ''
-				: ` StarSync could not remove its staging directory: ${sanitizeMessage(
-						errorMessage(cleanupError),
-					)}`;
+				: ` Staging cleanup failed: ${sanitizeMessage(errorMessage(cleanupError))}`;
 		throw new Error(`${sanitizeMessage(errorMessage(err))}${cleanupMessage}`, { cause: err });
 	}
 
