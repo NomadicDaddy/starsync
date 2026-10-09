@@ -26,6 +26,57 @@ export function readShared(path: string): string {
 }
 
 /**
+ * Every committed generation of one owner file, newest first, normalized as readShared normalizes
+ * a checkout. Empty when the owner is not a repository or never committed the file.
+ *
+ * What a target holds is compared against these as well as against the current variants, because
+ * a hook equal to a generation the owner once shipped is a stale copy of ours — drift, which the
+ * writer replaces — and not a hand-written chain. Without this every change to a single-variant
+ * hook made the whole fleet unwritable: the first change to `.githooks/pre-push` since aidd 3.0.0
+ * classified all sixty targets as `diverged-hook`, each one holding exactly the previous owner copy.
+ */
+export function committedGenerations(ownerRoot: string, relativePath: string): string[] {
+	const log = Bun.spawnSync(['git', '-C', ownerRoot, 'log', '--format=%H', '--', relativePath], {
+		stderr: 'pipe',
+		stdout: 'pipe',
+		windowsHide: true,
+	});
+	if (log.exitCode !== 0) return [];
+	const generations: string[] = [];
+	for (const line of log.stdout.toString().split('\n')) {
+		const sha = line.trim();
+		if (sha === '') continue;
+		const show = Bun.spawnSync(['git', '-C', ownerRoot, 'show', `${sha}:${relativePath}`], {
+			stderr: 'pipe',
+			stdout: 'pipe',
+			windowsHide: true,
+		});
+		// A commit in the file's log that cannot show it is the one that deleted it.
+		if (show.exitCode !== 0) continue;
+		generations.push(show.stdout.toString().replaceAll('\r\n', '\n'));
+	}
+	return generations;
+}
+
+/**
+ * `committedGenerations` for one group, read once per source rather than once per target: it is
+ * two git invocations per generation, and the fleet is sixty targets wide.
+ */
+export function generationReader(
+	ownerRoot: string,
+	sourceRoot: string,
+): (source: string) => string[] {
+	const generations = new Map<string, string[]>();
+	return (source) => {
+		const cached = generations.get(source);
+		if (cached !== undefined) return cached;
+		const read = committedGenerations(ownerRoot, `${sourceRoot}/${source}`);
+		generations.set(source, read);
+		return read;
+	};
+}
+
+/**
  * Every source a group could install, including the fallback variants. All of them must exist in
  * the owning repository or the group is a description of something that is not there.
  */

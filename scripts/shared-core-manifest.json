@@ -3,6 +3,7 @@
 		{
 			"files": [
 				{ "disposition": "synced", "source": "pre-push" },
+				{ "disposition": "synced", "source": "force-push-guard.sh" },
 				{ "disposition": "synced", "source": "aidd-history-guard.sh" },
 				{ "disposition": "synced", "source": "screenshot-guard.sh" }
 			],

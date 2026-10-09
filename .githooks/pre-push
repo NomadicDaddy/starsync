@@ -11,6 +11,9 @@ set -euo pipefail
 hooks_dir="$(dirname "$0")"
 refs="$(cat)"
 
+echo "pre-push: force-push guard"
+printf '%s\n' "$refs" | bash "$hooks_dir/force-push-guard.sh"
+
 echo "pre-push: aidd history guard"
 printf '%s\n' "$refs" | bash "$hooks_dir/aidd-history-guard.sh" "${1:-origin}"
 

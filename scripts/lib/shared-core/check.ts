@@ -22,6 +22,7 @@ import {
 	assertHookChainIsCarried,
 	assertSourcesExist,
 	assertVariantsDiffer,
+	generationReader,
 	readShared,
 	sourcesOf,
 } from './owner.ts';
@@ -90,6 +91,7 @@ export function checkGroup(
 	assertVariantsDiffer(group, ownerRoot);
 	assertHookChainIsCarried(group, ownerRoot);
 	const chained = chainedByHook(group, ownerRoot);
+	const generationsOf = generationReader(ownerRoot, group.sourceRoot);
 
 	const report: GroupReport = {
 		findings: [],
@@ -235,10 +237,14 @@ export function checkGroup(
 				// package.json now satisfies the script contract it did not before, and moving it to
 				// the right variant is exactly what `requiresScripts` is for. It falls through to
 				// drift below.
+				// Nor is matching a generation the owner once committed: that is the stale copy
+				// drift was defined for, and the only way a fleet ever takes a hook change (the
+				// first change to pre-push since aidd 3.0.0 read all sixty targets as diverged).
 				const variants = sourcesOf(file).map((s) =>
 					readShared(join(ownerRoot, group.sourceRoot, s)),
 				);
-				if (!variants.includes(actual)) {
+				const shipped = sourcesOf(file).flatMap(generationsOf);
+				if (!variants.includes(actual) && !shipped.includes(actual)) {
 					report.findings.push({
 						detail: `${name} calls the guard but matches no current variant and does not declare itself a local chain — either delete it and re-run to take the current variant, or add '${group.localChainMarker ?? 'the local-chain marker'}' to its header if its extra steps are deliberate`,
 						group: group.name,
