@@ -29,6 +29,7 @@ import { parseArgs } from 'node:util';
 import { checkGroup, type GroupReport } from './lib/shared-core/check.ts';
 import { loadManifest, type SharedCoreGroup } from './lib/shared-core/manifest.ts';
 import { reportCheck, reportWrite } from './lib/shared-core/report.ts';
+import { describeRoots, loadFleetRoots } from './lib/shared-core/roots.ts';
 import { repoIdentity } from './lib/shared-core/write.ts';
 
 const USAGE = `sync-shared-core — sync the files this fleet shares between peer repositories.
@@ -42,7 +43,8 @@ const USAGE = `sync-shared-core — sync the files this fleet shares between pee
   --only <csv>            Restrict to the named target directories. Narrows what the group's target
                           model already resolved; it can never add a target the model rejected.
   --fleet-root <dir>      Directory holding the peer repositories. Defaults to the parent of this
-                          repository.
+                          repository. Its untracked .shared-core-roots.json names the other
+                          repo-holding roots this does not sweep, each with its reason.
   --help                  This text.
 
 --check and --write are exclusive. Neither is the default; with no mode this script does nothing.
@@ -136,13 +138,14 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 	const fleetRoot = options.fleetRoot === undefined ? dirname(root) : resolve(options.fleetRoot);
 
 	const groups = selectGroups(scriptsDir, options.groups);
+	console.log(describeRoots(fleetRoot, loadFleetRoots(fleetRoot)));
 	const reports: GroupReport[] = [];
 	const unverifiable: string[] = [];
 
 	for (const group of groups) {
 		// The owner is this checkout when this checkout is the owner, wherever the targets live:
-		// a foreign --fleet-root (D:/public) holds no copy of aidd, and the one on disk here is
-		// the baseline the installer is delivering from.
+		// a foreign --fleet-root holds no copy of aidd, and the one on disk here is the baseline
+		// the installer is delivering from.
 		const ownerRoot = repoIdentity(root) === group.owner ? root : join(fleetRoot, group.owner);
 
 		// An owner that is not checked out cannot be a baseline, and comparing against nothing
