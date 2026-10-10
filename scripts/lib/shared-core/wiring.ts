@@ -19,8 +19,11 @@ import type { Target } from './targets.ts';
  */
 const EXPLICIT_SETUP: Record<string, string> = { prepare: 'setup:hooks' };
 
-/** Words that execute the script file named right after them. Anything else (echo, cat) does not. */
-const RUNNERS = new Set(['bash', 'bun', 'node', 'run', 'sh', 'tsx']);
+/**
+ * A command step that begins by running a script file, capturing the file. Anchored at the start
+ * on purpose: `echo bun scripts/setup.ts` names a runner and a script and executes neither.
+ */
+const RUNS_SCRIPT = /^(?:bun(?:\s+run)?|node|tsx|bash|sh)\s+(\S+\.(?:sh|ts))(?:\s|$)/u;
 
 /**
  * A script's code with its comments removed, so that a setup file named only in a comment, or in
@@ -33,19 +36,21 @@ function codeOf(path: string): string {
 }
 
 /**
- * Whether `command` runs what `required` runs. Either it contains the required command, or a
- * runner in it executes a script file whose code (not its comments) names the required command's
- * final argument, the file actually set up. summon's `bun scripts/setup-hooks.ts` passes
+ * Whether `command` runs what `required` runs, judged one step at a time and by how each step
+ * begins. A step counts when it begins with the required command, or begins with a runner
+ * executing a script file whose code (not its comments) names the required command's final
+ * argument, the file actually set up. summon's `bun scripts/setup-hooks.ts` passes
  * `.githooks/leak-guard-setup.sh` to its runner itself. Any other form stays unproven, and an
- * unproven setup is reported as UNWIRED rather than assumed (Roger's dab78ef review).
+ * unproven setup is reported as UNWIRED rather than assumed (Roger's dab78ef and 7afa482 reviews).
  */
 function runsSetup(repoPath: string, command: string, required: string): boolean {
-	if (command.includes(required)) return true;
 	const setup = required.trim().split(/\s+/u).at(-1) ?? required;
-	const words = command.trim().split(/\s+/u);
-	return words.some((token, index) => {
-		if (!/\.(?:sh|ts)$/u.test(token) || !RUNNERS.has(words[index - 1] ?? '')) return false;
-		const path = join(repoPath, token);
+	const steps = command.split(/&&|\|\||;/u).map((step) => step.trim());
+	return steps.some((step) => {
+		if (step.startsWith(required)) return true;
+		const script = RUNS_SCRIPT.exec(step)?.[1];
+		if (script === undefined) return false;
+		const path = join(repoPath, script);
 		return existsSync(path) && codeOf(path).includes(setup);
 	});
 }
