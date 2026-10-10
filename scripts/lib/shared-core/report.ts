@@ -24,11 +24,12 @@ function order(findings: Finding[]): Finding[] {
 		'diverged-hook': 1,
 		drift: 0,
 		'foreign-hook': 2,
-		'local-chain': 5,
-		'not-applicable': 7,
-		uncovered: 4,
-		'unmanaged-dispatch': 6,
-		unwired: 3,
+		'local-chain': 6,
+		'not-applicable': 8,
+		uncovered: 5,
+		unguarded: 3,
+		'unmanaged-dispatch': 7,
+		unwired: 4,
 	};
 	return [...findings].sort((a, b) => rank[a.kind] - rank[b.kind]);
 }

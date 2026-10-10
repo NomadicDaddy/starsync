@@ -84,6 +84,17 @@ export function sourcesOf(file: SharedCoreFile): string[] {
 	return file.fallbackSource === undefined ? [file.source] : [file.source, file.fallbackSource];
 }
 
+/** Picks the variant a target can actually run, from the scripts its package.json defines. */
+export function resolveSource(
+	file: SharedCoreFile,
+	scripts: null | Record<string, string>,
+): string {
+	if (file.requiresScripts === undefined) return file.source;
+	const satisfied =
+		scripts !== null && file.requiresScripts.every((name) => scripts[name] !== undefined);
+	return satisfied ? file.source : (file.fallbackSource as string);
+}
+
 export function assertSourcesExist(group: SharedCoreGroup, ownerRoot: string): void {
 	const missing = group.files
 		.flatMap(sourcesOf)

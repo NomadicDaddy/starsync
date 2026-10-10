@@ -14,7 +14,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { SharedCoreFile, SharedCoreGroup } from './manifest.ts';
+import type { SharedCoreGroup } from './manifest.ts';
 
 import { chainedByHook, dispatcherBody, hooksPath, invokes } from './dispatch.ts';
 import { assertPackageIdentity, skipReason } from './eligibility.ts';
@@ -24,9 +24,11 @@ import {
 	assertVariantsDiffer,
 	generationReader,
 	readShared,
+	resolveSource,
 	sourcesOf,
 } from './owner.ts';
 import { readScripts, resolveTargets } from './targets.ts';
+import { wiringFindings } from './wiring.ts';
 
 export type FindingKind =
 	| 'diverged-hook'
@@ -35,6 +37,7 @@ export type FindingKind =
 	| 'local-chain'
 	| 'not-applicable'
 	| 'uncovered'
+	| 'unguarded'
 	| 'unmanaged-dispatch'
 	| 'unwired';
 
@@ -70,14 +73,6 @@ export interface GroupReport {
 	owner: string;
 	skipped: string[];
 	targets: number;
-}
-
-/** Picks the variant this target can actually run. */
-function resolveSource(file: SharedCoreFile, scripts: null | Record<string, string>): string {
-	if (file.requiresScripts === undefined) return file.source;
-	const satisfied =
-		scripts !== null && file.requiresScripts.every((name) => scripts[name] !== undefined);
-	return satisfied ? file.source : (file.fallbackSource as string);
 }
 
 export function checkGroup(
@@ -131,9 +126,23 @@ export function checkGroup(
 		const foreign = dispatches
 			? null
 			: dispatcherBody(target.path, configured, group.hook as string);
+		// No dispatcher at all is not a foreign one declining our guards: nothing runs, so no guard
+		// does. Reading it as unmanaged dispatch plus not-applicable guards called deeper.project and
+		// three redesign trees covered (card 001c42b9). Unwritable, since the sync never sets a hooks
+		// path, and the hook and the guards it chains get no finding of their own.
+		const unguarded = !dispatches && foreign === null;
+		if (unguarded) {
+			report.findings.push({
+				detail: `no ${group.hook} runs here: ${configured === '' ? 'core.hooksPath is unset and .git/hooks has none' : `${configured} has none`}`,
+				group: group.name,
+				kind: 'unguarded',
+				target: target.directory,
+			});
+		}
 
 		for (const file of group.files) {
 			const name = file.target ?? file.source;
+			if (unguarded && (name === group.hook || chained.has(name))) continue;
 			const source = resolveSource(file, scripts);
 			const sourcePath = join(ownerRoot, group.sourceRoot, source);
 			const expected = readShared(sourcePath);
@@ -272,19 +281,7 @@ export function checkGroup(
 			});
 		}
 
-		// Contains, not equals — see SharedCoreGroup.wiring for why, and for what each value has to
-		// name so that a passing substring is real evidence rather than a looser test.
-		for (const [key, required] of Object.entries(group.wiring ?? {})) {
-			const script = scripts === null ? undefined : scripts[key];
-			if (scripts !== null && (script === undefined || !script.includes(required))) {
-				report.findings.push({
-					detail: `package.json script '${key}' ${script === undefined ? 'is missing' : `does not run \`${required}\``}`,
-					group: group.name,
-					kind: 'unwired',
-					target: target.directory,
-				});
-			}
-		}
+		report.findings.push(...wiringFindings(group, target, scripts));
 	}
 
 	return report;
