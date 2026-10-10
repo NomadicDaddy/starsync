@@ -19,18 +19,34 @@ import type { Target } from './targets.ts';
  */
 const EXPLICIT_SETUP: Record<string, string> = { prepare: 'setup:hooks' };
 
+/** Words that execute the script file named right after them. Anything else (echo, cat) does not. */
+const RUNNERS = new Set(['bash', 'bun', 'node', 'run', 'sh', 'tsx']);
+
 /**
- * Whether `command` runs what `required` runs. Either it contains the required command, or it
- * delegates to a script file that names the required command's final argument, the file actually
- * set up (summon's `bun scripts/setup-hooks.ts` runs `.githooks/leak-guard-setup.sh` itself).
+ * A script's code with its comments removed, so that a setup file named only in a comment, or in
+ * documentation that outlived the call it describes, cannot pass for one the script runs.
+ */
+function codeOf(path: string): string {
+	const text = readFileSync(path, 'utf8');
+	if (path.endsWith('.sh')) return text.replaceAll(/^\s*#.*$/gmu, '');
+	return text.replaceAll(/\/\*[\s\S]*?\*\//gu, '').replaceAll(/(^|\s)\/\/.*$/gmu, '$1');
+}
+
+/**
+ * Whether `command` runs what `required` runs. Either it contains the required command, or a
+ * runner in it executes a script file whose code (not its comments) names the required command's
+ * final argument, the file actually set up. summon's `bun scripts/setup-hooks.ts` passes
+ * `.githooks/leak-guard-setup.sh` to its runner itself. Any other form stays unproven, and an
+ * unproven setup is reported as UNWIRED rather than assumed (Roger's dab78ef review).
  */
 function runsSetup(repoPath: string, command: string, required: string): boolean {
 	if (command.includes(required)) return true;
 	const setup = required.trim().split(/\s+/u).at(-1) ?? required;
-	return command.split(/\s+/u).some((token) => {
-		if (!/\.(?:sh|ts)$/u.test(token)) return false;
+	const words = command.trim().split(/\s+/u);
+	return words.some((token, index) => {
+		if (!/\.(?:sh|ts)$/u.test(token) || !RUNNERS.has(words[index - 1] ?? '')) return false;
 		const path = join(repoPath, token);
-		return existsSync(path) && readFileSync(path, 'utf8').includes(setup);
+		return existsSync(path) && codeOf(path).includes(setup);
 	});
 }
 
