@@ -1,9 +1,11 @@
 {
 	// Dead-code gate configuration (bun run check:dead-code, wired into smoke:qc before the test
-	// suite). Knip finds the CLI from the manifest's bin field and every script entry point from
-	// the package.json script that runs it, so those are deliberately NOT listed here: a script
-	// listed by hand stays an entry after its package script is deleted, which hides exactly the
-	// dead file this gate exists to report. Only the entries Knip cannot discover are named.
+	// suite). Knip finds every file a package.json script runs, so those are deliberately NOT
+	// listed here: a script listed by hand stays an entry after its package script is deleted,
+	// which hides exactly the dead file this gate exists to report. That includes src/cli.ts,
+	// which is an entry only through the `start` and `sync` scripts — the manifest's bin field
+	// names dist/cli.js and nothing maps that back to source, so deleting both scripts makes the
+	// gate report the CLI as unused. Only the entries Knip cannot discover are named.
 	"$schema": "./node_modules/knip/schema.json",
 	"entry": [
 		// The published library root (main/module/types). The manifest points those fields at the
