@@ -11,6 +11,29 @@ const readRepositoryJson = (relativePath: string): Record<string, unknown> =>
 const section = (relativePath: string, key: string): Record<string, unknown> =>
 	readRepositoryJson(relativePath)[key] as Record<string, unknown>;
 
+// knip.json is JSONC — Knip documents and accepts comments in its configuration, and this
+// repository uses them to record why each entry point and exemption exists. JSON.parse alone
+// cannot read it, so line comments are stripped first, tracking strings so a `//` inside a value
+// survives. Block comments are not used in the file.
+const stripLineComment = (line: string): string => {
+	let inString = false;
+	for (let index = 0; index < line.length; index++) {
+		const char = line[index] ?? '';
+		if (char === '\\') {
+			index++;
+			continue;
+		}
+		if (char === '"') inString = !inString;
+		if (!inString && char === '/' && line[index + 1] === '/') return line.slice(0, index);
+	}
+	return line;
+};
+
+const readRepositoryJsonc = (relativePath: string): Record<string, unknown> =>
+	JSON.parse(
+		readRepositoryFile(relativePath).split(/\r?\n/).map(stripLineComment).join('\n'),
+	) as Record<string, unknown>;
+
 const runInstallGuard = (userAgent: string): { exitCode: number; stderr: string } => {
 	const result = Bun.spawnSync({
 		cmd: [
@@ -127,5 +150,34 @@ describe('package distribution', () => {
 
 	test('accepts an install driven by bun', () => {
 		expect(runInstallGuard('bun/1.4.2 npm/? node/v24.18.1 win32 x64').exitCode).toBe(0);
+	});
+
+	test('wires dead-code detection into the release gate', () => {
+		const devDependencies = section('package.json', 'devDependencies');
+		const scripts = section('package.json', 'scripts');
+
+		// The detector is a pinned dependency rather than a session-level `bunx` fallback, so the
+		// release matrix installs the exact analyzed version from the lockfile.
+		expect(devDependencies['knip']).toBe('6.32.2');
+
+		// `check:dead-code` is the gate's name, and `smoke:qc` runs it before the test suite. The
+		// position is asserted because the release workflow's quality step is `smoke:qc` itself,
+		// and a detector appended after the tests would still gate the release — but one appended
+		// after a failing test would never run at all, leaving the release blocked for the wrong
+		// reason and the dead code invisible.
+		expect(scripts['check:dead-code']).toBe('knip --no-progress');
+		const smoke = String(scripts['smoke:qc']);
+		expect(smoke).toContain('bun run check:dead-code');
+		expect(smoke.indexOf('check:dead-code')).toBeLessThan(smoke.indexOf('bun run test'));
+	});
+
+	test('analyzes the process-launched test suite as knip entry points', () => {
+		const knip = readRepositoryJsonc('knip.json');
+		const entry = knip['entry'] as string[];
+
+		// scripts/test.ts discovers every test by glob and hands the list to Bun subprocesses, so
+		// Knip's Bun plugin — which reads `bun test` targets from package.json — cannot see them.
+		// Without the glob as an explicit entry, the entire suite reports as unused files.
+		expect(entry).toContain('test/**/*.test.ts');
 	});
 });
