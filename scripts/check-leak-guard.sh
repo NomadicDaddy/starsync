@@ -173,6 +173,37 @@ printf '%s\n' '\bzzz-synthetic-app\b' '\bzzz-sibling-app\b' >"$tmp/patterns-pair
 [ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-synthetic-app somewhere')" = 0 ] || fail 'self pattern survived alongside a sibling pattern'
 guard_repo="$tmp/repo"
 
+# 13. A refusal names the file and counts the lines, and never repeats what it refused. The guard
+# has just stopped that text from being committed; printing it would copy the secret into the
+# terminal and into any log that captures the hook's output.
+[ "$(run_guard "$synthetic" "key=$aws_key")" = 1 ] || fail 'synthetic AWS key was not blocked (case 13)'
+grep -q 'staged.txt: 1 line(s), secret format' "$tmp/stderr" || fail 'a refusal did not name the file and the class'
+if grep -q "$aws_key" "$tmp/stderr"; then fail 'a refusal printed the secret it refused'; fi
+[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 1 ] || fail 'sibling name was not blocked (case 13)'
+grep -q 'staged.txt: 1 line(s), private name' "$tmp/stderr" || fail 'a private-name refusal did not name the file and the class'
+if grep -q 'zzz-sibling-app' "$tmp/stderr"; then fail 'a refusal printed the private name it refused'; fi
+
+# 14. A private pattern that is not a valid expression stops the commit. It is kept in the list on
+# purpose so that it fails closed; when the error was swallowed the whole private tier reported no
+# hits and passed. The per-commit override still lets the user commit on tier 1 alone.
+printf '%s\n' '\bzzz-sibling-app\b' '[zzz-unclosed' >"$tmp/patterns-broken"
+[ "$(run_guard "$tmp/patterns-broken" 'plain harmless content')" = 1 ] || fail 'an invalid private pattern let a commit through'
+grep -q 'not a valid expression' "$tmp/stderr" || fail 'an invalid private pattern did not say why it refused'
+code=0
+(cd "$guard_repo" && LEAK_GUARD_PATTERNS="$tmp/patterns-broken" LEAK_GUARD_ALLOW_NO_PRIVATE=1 bash .githooks/leak-guard.sh) 2>"$tmp/stderr" || code=$?
+[ "$code" = 0 ] || fail 'the per-commit override did not allow a commit past an invalid private pattern'
+
+# 15. A refusal for a private key names only the file that holds one. A second staged file that
+# merely shows the header, the shape a key takes, is not what was refused, and listing it would
+# send whoever cleans up to the wrong file.
+printf '%s\n' "$pem_header" >"$guard_repo/shape.txt"
+git -C "$guard_repo" add shape.txt
+[ "$(run_guard "$synthetic" "$(printf '%s\n%s' "$pem_header" "$b64_run")")" = 1 ] || fail 'a key beside a bare header was not blocked'
+grep -q 'staged.txt: 1 key(s), private key material' "$tmp/stderr" || fail 'a key refusal did not name the file holding the key'
+if grep -q 'shape.txt' "$tmp/stderr"; then fail 'a key refusal named a file that only shows a bare header'; fi
+git -C "$guard_repo" rm -q --cached shape.txt
+rm -f "$guard_repo/shape.txt"
+
 # 12. A public site may publish a sibling's name once the repo's staged leak-guard-publishes clears
 # it, and the guard says it did. The file is read from the index, so an unstaged edit clears nothing.
 publishes="$guard_repo/.githooks/leak-guard-publishes"

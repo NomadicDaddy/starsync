@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Fast pre-commit gate: leak-guard + `bun run smoke:qc:fast`.
 #
 # leak-guard scans the staged index diff, so it is uncacheable-by-design and runs first as a
@@ -17,6 +17,27 @@
 # or confirmed false positives.
 #
 # Keep this file byte-identical between the aidd, spernakit, and starsync repos.
+
+# Find bash by absolute path and put its directory first, then start over under it. Looking bash up
+# on PATH is what broke this hook: on Windows System32 holds the WSL launcher under the same name,
+# and a session whose PATH lists System32 ahead of Git's tools ran that, which fails with
+# `execvpe(/bin/bash)`. A hook that fails every commit gets bypassed, and the leak guard goes with
+# it. `/usr/bin/bash` is Git's own bash on Windows and the system's on Linux; `/bin/bash` covers
+# macOS. With that directory first, every `bash`, `grep`, and `sort` below is the right one too.
+if [ -z "${GITHOOK_BASH_RESOLVED:-}" ]; then
+	for hook_bash in /usr/bin/bash /bin/bash; do
+		if [ -x "$hook_bash" ]; then
+			GITHOOK_BASH_RESOLVED=1
+			PATH="${hook_bash%/*}:$PATH"
+			export GITHOOK_BASH_RESOLVED PATH
+			exec "$hook_bash" "$0" "$@"
+		fi
+	done
+	echo "x pre-commit: no bash at /usr/bin/bash or /bin/bash, so the guards cannot run." >&2
+	exit 1
+fi
+# Cleared so a git command run from inside this hook resolves bash for its own hooks afresh.
+unset GITHOOK_BASH_RESOLVED
 
 set -euo pipefail
 

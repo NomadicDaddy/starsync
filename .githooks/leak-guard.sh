@@ -12,6 +12,10 @@
 # for it; with nothing configured the guard warns and runs tier 1 only.
 #
 # Scans staged ADDITIONS only. A confirmed false positive is the user's call.
+# Additions to this file itself are excluded, because it has to spell out the patterns it looks
+# for; what keeps this one file honest is that every repository's copy is byte-checked against
+# its owner. The hooks run this under whichever of /usr/bin/bash and /bin/bash exists, and on
+# macOS that is bash 3.2, so nothing here may need a newer bash.
 #
 # Keep this file byte-identical between the aidd, spernakit, and starsync
 # repos, and in sync with scripts/check-leak-guard.sh.
@@ -51,23 +55,31 @@ path_hits="$(printf '%s\n' "$added" | grep -nE -e "$path_pattern" || true)"
 # all, so a scan of additions alone cannot see the pair, and pasting a body under a placeholder
 # header is the likeliest way this leak actually happens. Context lines make the adjacency visible
 # while '+' still marks what this commit is adding.
-pem_diff="$(git diff --cached --unified=1 --no-color -- . ':(exclude).githooks/leak-guard.sh' | grep -vE '^(\+\+\+|---)' || true)"
-# Only header lines and the line after each can decide the rule, so the pair-by-pair walk runs over
-# those few rather than over the whole diff.
-pem_header_lines="$(printf '%s\n' "$pem_diff" | grep -nEi -e "^[+ ].*${pem_header_pattern}" | cut -d: -f1 || true)"
-pem_hits=''
-for pem_line_no in $pem_header_lines; do
-	pem_pair="$(printf '%s\n' "$pem_diff" | sed -n "${pem_line_no},$((pem_line_no + 1))p")"
-	pem_header_line="$(printf '%s\n' "$pem_pair" | sed -n 1p)"
-	pem_next_line="$(printf '%s\n' "$pem_pair" | sed -n 2p)"
-	# Inline material counts only on an ADDED header. A committed header that already carries key
-	# material is not what this commit is leaking, and reporting it would block every later commit
-	# to that file with no way to clear it short of the bypass.
-	if printf '%s\n' "$pem_header_line" | grep -qEi -e "^\+.*${pem_inline_pattern}" ||
-		printf '%s\n' "$pem_next_line" | grep -qE -e "$pem_body_pattern"; then
-		pem_hits="$(printf '%s\n%s' "$pem_hits" "$pem_line_no:${pem_header_line#?}")"
-	fi
-done
+#
+# pem_scan reads such a diff on stdin, file headers already removed, and prints one line per key it
+# finds. It is one function because the refusal below has to say which files hold a key by the
+# same rule that refused the commit: counting bare headers there would name a file that only
+# shows the shape a key takes, and send the person cleaning up to the wrong place.
+pem_scan() {
+	local pem_diff pem_header_lines pem_line_no pem_pair pem_header_line pem_next_line
+	pem_diff="$(cat)"
+	# Only header lines and the line after each can decide the rule, so the pair-by-pair walk runs
+	# over those few rather than over the whole diff.
+	pem_header_lines="$(printf '%s\n' "$pem_diff" | grep -nEi -e "^[+ ].*${pem_header_pattern}" | cut -d: -f1 || true)"
+	for pem_line_no in $pem_header_lines; do
+		pem_pair="$(printf '%s\n' "$pem_diff" | sed -n "${pem_line_no},$((pem_line_no + 1))p")"
+		pem_header_line="$(printf '%s\n' "$pem_pair" | sed -n 1p)"
+		pem_next_line="$(printf '%s\n' "$pem_pair" | sed -n 2p)"
+		# Inline material counts only on an ADDED header. A committed header that already carries
+		# key material is not what this commit is leaking, and reporting it would block every later
+		# commit to that file with no way to clear it short of the bypass.
+		if printf '%s\n' "$pem_header_line" | grep -qEi -e "^\+.*${pem_inline_pattern}" ||
+			printf '%s\n' "$pem_next_line" | grep -qE -e "$pem_body_pattern"; then
+			printf 'key\n'
+		fi
+	done
+}
+pem_hits="$(git diff --cached --unified=1 --no-color -- . ':(exclude).githooks/leak-guard.sh' | grep -vE '^(\+\+\+|---)' | pem_scan || true)"
 
 # Tier 2: private literals from the user-level pattern file.
 #
@@ -140,16 +152,60 @@ else
 		printf '%s\n' "$pattern"
 	done)"
 	if [ -n "$active" ]; then
-		local_hits="$(printf '%s\n' "$added" | grep -nEi -f <(printf '%s\n' "$active") || true)"
+		# grep exits 1 for no match and 2 when it cannot use a pattern. A pattern it cannot compile
+		# is kept above on purpose, so that it stops the commit here: swallowing the error would
+		# report no hits and leave the whole private tier silently off.
+		grep_status=0
+		local_hits="$(printf '%s\n' "$added" | grep -nEi -f <(printf '%s\n' "$active"))" || grep_status=$?
+		if [ "$grep_status" -gt 1 ]; then
+			local_hits=''
+			tier2_off 'a private pattern is not a valid expression, so none could be applied'
+		fi
 	fi
 fi
 
-hits="$(printf '%s\n%s\n%s\n%s\n' "$secret_hits" "$pem_hits" "$path_hits" "$local_hits" | sed '/^$/d')"
-if [ -n "$hits" ]; then
+# Says which staged files hold matching additions and how many, for one class of pattern.
+# It never prints a matching line: the guard has just refused that text, and echoing it would copy
+# the secret into the terminal and into whatever log captures the hook's output. This runs only
+# when something was found, so an ordinary commit does not pay for the per-file pass.
+#
+# File names are printed, because without one nobody can find the line. The guard inspects added
+# lines and has never inspected names, so a file named after a secret or a private name is not
+# refused for its name, and git prints that name in its own output regardless.
+count_class() {
+	local class="$1" file="$2"
+	if [ "$class" = pem ]; then
+		# The same walk that refused the commit, so a file is listed only if the rule fired in it.
+		git diff --cached --unified=1 --no-color -- "$file" | grep -vE '^(\+\+\+|---)' | pem_scan | grep -c . || true
+		return 0
+	fi
+	git diff --cached --unified=0 --no-color -- "$file" | grep -E '^\+' | grep -vE '^\+\+\+' | case "$class" in
+	secret) grep -cEi -e "$secret_pattern" ;;
+	path) grep -cE -e "$path_pattern" ;;
+	# The patterns are handed over afresh for each file: a process substitution is read once.
+	private) grep -cEi -f <(printf '%s\n' "$active") ;;
+	esac || true
+}
+report_class() {
+	local class="$1" label="$2" unit="$3" file count
+	while IFS= read -r -d '' file; do
+		count="$(count_class "$class" "$file")"
+		if [ "${count:-0}" -gt 0 ]; then
+			printf '  %s: %s %s, %s\n' "$file" "$count" "$unit" "$label" >&2
+		fi
+	done < <(git diff --cached --name-only -z --diff-filter=ACMR -- . ':(exclude).githooks/leak-guard.sh')
+}
+
+if [ -n "$secret_hits$pem_hits$path_hits$local_hits" ]; then
 	echo "" >&2
 	echo "x re-leak guard: staged changes contain forbidden private/secret patterns:" >&2
-	printf '%s\n' "$hits" | head -20 >&2
+	if [ -n "$secret_hits" ]; then report_class secret 'secret format' 'line(s)'; fi
+	if [ -n "$pem_hits" ]; then report_class pem 'private key material' 'key(s)'; fi
+	if [ -n "$path_hits" ]; then report_class path 'home-directory path' 'line(s)'; fi
+	if [ -n "$local_hits" ]; then report_class private 'private name' 'line(s)'; fi
 	echo "" >&2
+	echo "  The matching lines are not shown, so a refused secret is not copied into this output." >&2
+	echo "  See them with: git diff --cached -- <file>" >&2
 	echo "  Scrub these before committing. A confirmed false positive is the user's" >&2
 	echo "  call to make, not a reason to skip the hook." >&2
 	exit 1
