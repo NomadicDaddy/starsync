@@ -157,8 +157,10 @@ describe('package distribution', () => {
 		const scripts = section('package.json', 'scripts');
 
 		// The detector is a pinned dependency rather than a session-level `bunx` fallback, so the
-		// release matrix installs the exact analyzed version from the lockfile.
-		expect(devDependencies['knip']).toBe('6.32.2');
+		// release matrix installs the exact analyzed version from the lockfile. The assertion is
+		// that the pin is exact, not which version it is: a range would let the matrix analyze
+		// with a detector nobody ran here, and a literal version would fail on every upgrade.
+		expect(devDependencies['knip']).toMatch(/^\d+\.\d+\.\d+$/);
 
 		// `check:dead-code` is the gate's name, and `smoke:qc` runs it before the test suite. The
 		// position is asserted because the release workflow's quality step is `smoke:qc` itself,
