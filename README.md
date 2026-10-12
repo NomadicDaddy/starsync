@@ -314,8 +314,8 @@ bun run smoke:live -- <temporary-managed-archive>
 | `bun run lint`               | `eslint src scripts test eslint.config.js --max-warnings 0`                 |
 | `bun run lint:fix`           | The same scope with `--fix`                                                 |
 | `bun run test`               | Run the unit suite                                                          |
-| `bun run format`             | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
-| `bun run format:check`       | The same globs with `--check`                                               |
+| `bun run format`             | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts" knip.json` |
+| `bun run format:check`       | The same files with `--check`                                               |
 
 `prepare` and `prepublishOnly` are lifecycle hooks rather than commands to run by hand. `prepare`
 runs the install guard, points `core.hooksPath` at `.githooks/`, seeds the leak-guard pattern file,

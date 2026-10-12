@@ -181,5 +181,19 @@ describe('package distribution', () => {
 		// Knip's Bun plugin — which reads `bun test` targets from package.json — cannot see them.
 		// Without the glob as an explicit entry, the entire suite reports as unused files.
 		expect(entry).toContain('test/**/*.test.ts');
+
+		// A script listed by hand stays an entry after its package script is deleted, so the file
+		// it names can never be reported dead. Knip resolves script entry points from package.json
+		// on its own; none may be restated here.
+		expect(entry.filter((pattern) => pattern.startsWith('scripts/'))).toEqual([]);
+	});
+
+	test('formats the dead-code configuration with the sources', () => {
+		const scripts = section('package.json', 'scripts');
+
+		// knip.json carries the comments that justify each entry and exemption, and nothing else
+		// in the gate reads its layout, so it has to be named to the formatter explicitly.
+		expect(String(scripts['format'])).toContain('knip.json');
+		expect(String(scripts['format:check'])).toContain('knip.json');
 	});
 });

@@ -1,28 +1,14 @@
 {
 	// Dead-code gate configuration (bun run check:dead-code, wired into smoke:qc before the test
-	// suite). Entry points are listed explicitly and deliberately, per the finding that added this
-	// gate: Knip's package.json and Bun plugins also resolve most of them from package.json, so a
-	// "redundant entry pattern" hint here is expected, not a defect. The explicit list keeps the
-	// analyzed entry set stable even while package scripts change, and names the entries static
-	// analysis cannot discover on its own.
+	// suite). Knip finds the CLI from the manifest's bin field and every script entry point from
+	// the package.json script that runs it, so those are deliberately NOT listed here: a script
+	// listed by hand stays an entry after its package script is deleted, which hides exactly the
+	// dead file this gate exists to report. Only the entries Knip cannot discover are named.
 	"$schema": "./node_modules/knip/schema.json",
 	"entry": [
-		// Both published roots: the CLI (bin, start, sync, build:bundle) and the library entry
-		// (main/module/types). src/cli.ts is also auto-resolved from the manifest's bin field;
-		// it stays listed for the same explicit-entry reason as the scripts below.
-		"src/cli.ts",
+		// The published library root (main/module/types). The manifest points those fields at the
+		// built dist/ output, so the source file behind them has to be named.
 		"src/index.ts",
-		// Every TypeScript entry point reachable from a package.json script. The test runner is
-		// `bun ./scripts/test.ts`, not `bun test`, so no plugin discovers these implicitly today;
-		// the ones a plugin does resolve are still listed on purpose (see the header comment).
-		"scripts/check-license-core.ts",
-		"scripts/check-max-lines.ts",
-		"scripts/generate-third-party-licenses.ts",
-		"scripts/live-smoke.ts",
-		"scripts/require-bun.ts",
-		"scripts/run-bash.ts",
-		"scripts/sync-shared-core.ts",
-		"scripts/test.ts",
 		// The process-launched test suite. scripts/test.ts discovers every test file by glob and
 		// hands the list to Bun subprocesses, so none of these are visible as `bun test` targets
 		// to Knip's Bun plugin — they must be entries or the whole suite reads as unused files.
