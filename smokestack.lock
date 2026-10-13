@@ -85,6 +85,7 @@
 				}
 			}
 		},
+		"runner": {},
 		"shared-core-sync": {
 			"files": {
 				"scripts/lib/shared-core/check.ts": {
