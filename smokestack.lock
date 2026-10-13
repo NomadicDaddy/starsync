@@ -1,0 +1,8 @@
+{
+	"groups": {
+		"license-core": {},
+		"license-core-adapter": {},
+		"shared-core-sync": {}
+	},
+	"owner": "smokestack"
+}
