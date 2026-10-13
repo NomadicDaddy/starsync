@@ -30,6 +30,7 @@ function order(findings: Finding[]): Finding[] {
 		'local-chain': 6,
 		'lost-delivery': 1,
 		'not-applicable': 8,
+		'not-run': 2,
 		'stale-lock': 2,
 		uncovered: 5,
 		unguarded: 3,

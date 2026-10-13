@@ -158,10 +158,13 @@
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/lock-scope.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/lock-write.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/lock.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/manifest-file.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/manifest.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/origin.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/owner.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/reaching.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/report.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/requires.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/roots.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/self-check.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/targets.ts" },
@@ -178,6 +181,27 @@
 			"wiring": {
 				"check:shared-core": "bun scripts/sync-shared-core.ts --check"
 			}
+		},
+		{
+			"files": [
+				{ "disposition": "synced", "source": "scripts/smokestack.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/smokestack/config.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/smokestack/gate.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/smokestack/preflight.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/smokestack/spawn.ts" }
+			],
+			"name": "runner",
+			"owner": "smokestack",
+			"requires": ["shared-core-sync"],
+			"requiresPackageJson": true,
+			"sourceRoot": ".",
+			"targetRoot": ".",
+			"targets": { "model": "roster", "roster": "runner-targets.json" },
+			"wiring": {
+				"smoke:qc": "bun scripts/smokestack.ts",
+				"smoke:qc:fast": "bun scripts/smokestack.ts --fast"
+			},
+			"wiringRequired": true
 		},
 		{
 			"files": [{ "disposition": "synced", "source": "pre-commit-leak-guard-only" }],

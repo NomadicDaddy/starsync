@@ -29,8 +29,9 @@ import type { Deliveries } from './deliveries.ts';
 import type { SharedCoreGroup } from './manifest.ts';
 
 import { syncedPaths } from './expected.ts';
-import { reachingGroups } from './lock-write.ts';
 import { type Lock, LOCK_FILE, readLock } from './lock.ts';
+import { reachingGroups } from './reaching.ts';
+import { describeUndeclared, unmetRequirements } from './requires.ts';
 
 /** The lock of a repository, or null where it has none or one that cannot be read. */
 function lockOf(path: string): Lock | null {
@@ -74,6 +75,9 @@ export function scopeFindings(
 					`${LOCK_FILE} names the group '${name}', which does not reach this repository`,
 				);
 			}
+		}
+		for (const unmet of unmetRequirements(manifest, Object.keys(lock.groups))) {
+			stale(unmet.group, `${LOCK_FILE} ${describeUndeclared(unmet)}`);
 		}
 		for (const group of manifest) {
 			if (group.name in lock.groups || reaching.includes(group.name)) continue;

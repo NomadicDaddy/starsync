@@ -27,16 +27,24 @@ import { skipReason } from './eligibility.ts';
 import { groupState, lockDifferences, syncedPaths } from './expected.ts';
 import { type Lock, LOCK_FILE, LOCK_OWNER, readLock } from './lock.ts';
 import { verifyOrigin } from './origin.ts';
+import { describeUndeclared, unmetRequirements } from './requires.ts';
 import { discovers, readScripts } from './targets.ts';
 
-interface Examined {
+export interface Examined {
 	files: number;
 	/** One per defect, each `<path>:0 <message>`. */
 	findings: string[];
+	/**
+	 * Groups the lock declares with no delivery recorded. Each is also in `findings`. They are
+	 * kept apart because they are how a repository asks for a group: the commit that declares one
+	 * has to be possible, so a gate run for a commit may pass over these and nothing else.
+	 */
+	undelivered: string[];
 }
 
-function examine(root: string, manifest: SharedCoreGroup[], lock: Lock): Examined {
-	const result: Examined = { files: 0, findings: [] };
+/** What this repository holds against its lock, as findings, with nothing printed. */
+export function examine(root: string, manifest: SharedCoreGroup[], lock: Lock): Examined {
+	const result: Examined = { files: 0, findings: [], undelivered: [] };
 	const byName = new Map(manifest.map((group) => [group.name, group]));
 	const self = { directory: '.', path: root };
 	const scripts = readScripts(root);
@@ -46,6 +54,7 @@ function examine(root: string, manifest: SharedCoreGroup[], lock: Lock): Examine
 		if (group === undefined) {
 			result.findings.push(`${LOCK_FILE}:0 declares '${name}', which is not a group here`);
 		} else if (recorded === null) {
+			result.undelivered.push(name);
 			result.findings.push(`${LOCK_FILE}:0 declares '${name}' and records no delivery of it`);
 		} else {
 			result.files += Object.keys(recorded).length;
@@ -58,6 +67,10 @@ function examine(root: string, manifest: SharedCoreGroup[], lock: Lock): Examine
 				result.findings.push(`${path}:0 ${problem}`);
 			}
 		}
+	}
+
+	for (const unmet of unmetRequirements(manifest, Object.keys(lock.groups))) {
+		result.findings.push(`${LOCK_FILE}:0 ${describeUndeclared(unmet)}`);
 	}
 
 	for (const group of manifest.filter((candidate) => !(candidate.name in lock.groups))) {

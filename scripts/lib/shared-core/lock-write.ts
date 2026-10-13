@@ -24,11 +24,11 @@ import type { SharedCoreGroup } from './manifest.ts';
 import type { WriteOutcome } from './write.ts';
 
 import { unrecordedClaims } from './delivery-check.ts';
-import { skipReason } from './eligibility.ts';
 import { groupState, hookModeDefect } from './expected.ts';
 import { isUnsettled } from './lock-check.ts';
 import { type Lock, LOCK_FILE, type LockedFiles, readLock, serializeLock } from './lock.ts';
-import { readScripts, resolveTargets } from './targets.ts';
+import { reachingGroups } from './reaching.ts';
+import { describeUnmet, unmetRequirements } from './requires.ts';
 import { hasUncommittedChanges } from './write.ts';
 
 /** The tag a write is made from: the owner's version and the commit its tag names. */
@@ -99,33 +99,6 @@ export interface LockPlan {
 }
 
 /**
- * The name of every manifest group that reaches the repository at `directory`, in manifest order.
- *
- * The one answer to "which groups does this repository take", asked by the write's plan and by the
- * sweep's check of what a lock names (lock-scope.ts), so the two cannot disagree. `reports` are the
- * groups this run compared, and their answer is the comparison's own. A group outside the run was
- * not compared, so it is asked of its target model here, through the same eligibility rule.
- */
-export function reachingGroups(
-	directory: string,
-	reports: GroupReport[],
-	all: SharedCoreGroup[],
-	fleetRoot: string,
-	ownerRoot: string,
-): string[] {
-	const reportOf = new Map(reports.map((report) => [report.group, report]));
-	return all
-		.filter((group) => {
-			const report = reportOf.get(group.name);
-			if (report !== undefined) return report.reached.includes(directory);
-			return resolveTargets(group, fleetRoot, ownerRoot, new Set([directory])).some(
-				(target) => skipReason(group, target, readScripts(target.path)) === null,
-			);
-		})
-		.map((group) => group.name);
-}
-
-/**
  * Every target this run reaches that has a lock, and every reason the run would leave one of those
  * locks saying something untrue. Computed before any file is written, so a refusal costs nothing.
  *
@@ -180,6 +153,16 @@ export function planLocks(
 					'reach it from here. Writing the lock would drop what that repository declared. ' +
 					'This stops the whole run: to write the other targets, narrow with --only to ' +
 					'leave this one out.',
+			);
+			continue;
+		}
+		// A group delivered without what it requires is a tool that cannot do its first job.
+		const unmet = unmetRequirements(all, reaching);
+		if (unmet.length > 0) {
+			plan.refusals.push(
+				`${directory}: ${unmet.map(describeUnmet).join('; ')}, which does not reach it. ` +
+					'Nothing is written there until it takes both. To write the other targets ' +
+					'meanwhile, narrow with --only to leave this one out.',
 			);
 			continue;
 		}

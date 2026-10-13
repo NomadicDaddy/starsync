@@ -55,10 +55,18 @@ function runsSetup(repoPath: string, command: string, required: string): boolean
 	});
 }
 
+/** Whether the target has any file the group delivers. */
+function holdsGroup(group: SharedCoreGroup, target: Target): boolean {
+	return group.files.some((file) =>
+		existsSync(join(target.path, group.targetRoot, file.target ?? file.source)),
+	);
+}
+
 /**
  * One `unwired` finding per required script the target does not run. Contains, not equals: see
  * SharedCoreGroup.wiring for why, and for what each value has to name so that a passing substring
  * is real evidence rather than a looser test. A target with no package.json has nothing to wire.
+ * A group whose wiring is required is held to equality instead, and reported as `not-run`.
  */
 export function wiringFindings(
 	group: SharedCoreGroup,
@@ -69,7 +77,13 @@ export function wiringFindings(
 	const findings: Finding[] = [];
 	for (const [key, required] of Object.entries(group.wiring ?? {})) {
 		const script = scripts[key];
-		if (script?.includes(required) === true) continue;
+		// Where the wiring is the group's point, the script must BE the command. Containing it is
+		// not running it: `<command> --list` and `echo <command>` both contain it and run nothing.
+		const wired =
+			group.wiringRequired === true
+				? script?.trim() === required
+				: script?.includes(required) === true;
+		if (wired) continue;
 		const alternative = EXPLICIT_SETUP[key];
 		const explicit = alternative === undefined ? undefined : scripts[alternative];
 		if (
@@ -82,7 +96,9 @@ export function wiringFindings(
 		findings.push({
 			detail: `package.json script '${key}' ${script === undefined ? 'is missing' : `does not run \`${required}\``}`,
 			group: group.name,
-			kind: 'unwired',
+			// Holding the files is what makes it a failure: before a delivery there is nothing to run.
+			kind:
+				group.wiringRequired === true && holdsGroup(group, target) ? 'not-run' : 'unwired',
 			target: target.directory,
 		});
 	}

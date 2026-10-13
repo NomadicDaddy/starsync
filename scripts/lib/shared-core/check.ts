@@ -47,6 +47,7 @@ export type FindingKind =
 	| 'local-chain'
 	| 'lost-delivery'
 	| 'not-applicable'
+	| 'not-run'
 	| 'stale-lock'
 	| 'uncovered'
 	| 'unguarded'
@@ -232,13 +233,15 @@ export function checkGroup(
  * covered: see the header for why absence is not one of them, and `divergedHook` in hook.ts for why
  * that fatal kind is deliberately unwritable. The other two come from a target's lock: files that
  * are current under a lock that does not say so, and a file the lock's delivery included that is
- * gone, which is the one absence that is not a rollout gap. See lock-check.ts.
+ * gone, which is the one absence that is not a rollout gap. See lock-check.ts. The last is a group
+ * whose wiring is its point, held by a repository that does not run it: see wiring.ts.
  */
 export function isFatal(finding: Finding): boolean {
 	return (
 		finding.kind === 'diverged-hook' ||
 		finding.kind === 'drift' ||
 		finding.kind === 'lost-delivery' ||
+		finding.kind === 'not-run' ||
 		finding.kind === 'stale-lock'
 	);
 }
