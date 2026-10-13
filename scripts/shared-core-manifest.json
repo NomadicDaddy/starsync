@@ -10,7 +10,7 @@
 			"hook": "pre-push",
 			"hookMarker": "aidd history guard",
 			"name": "push-guards",
-			"owner": "aidd",
+			"owner": "smokestack",
 			"sourceRoot": ".githooks",
 			"targetRoot": ".githooks",
 			"targets": { "marker": ".aidd", "model": "discovered" }
@@ -30,7 +30,7 @@
 			"hookMarker": "bash .githooks/leak-guard.sh",
 			"localChainMarker": "# leak-guard: local chain, kept by hand",
 			"name": "leak-guard-hooks",
-			"owner": "aidd",
+			"owner": "smokestack",
 			"sourceRoot": ".githooks",
 			"targetRoot": ".githooks",
 			"targets": { "model": "discovered" }
@@ -41,7 +41,7 @@
 				{ "disposition": "seeded", "source": "run-bash.ts" }
 			],
 			"name": "leak-guard-scripts",
-			"owner": "aidd",
+			"owner": "smokestack",
 			"requiresPackageJson": true,
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts",
@@ -57,7 +57,7 @@
 				{ "disposition": "synced", "source": "check-env-spread.ts" }
 			],
 			"name": "portable-gates-aidd",
-			"owner": "aidd",
+			"owner": "smokestack",
 			"requiresPackageJson": true,
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts",
@@ -80,7 +80,7 @@
 				{ "disposition": "synced", "source": "lib/docs/waivers.ts" }
 			],
 			"name": "portable-gates",
-			"owner": "spernakit",
+			"owner": "smokestack",
 			"requiresPackageJson": true,
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts",
@@ -107,7 +107,7 @@
 				{ "disposition": "synced", "source": "scripts/test-gate-conventions.ts" }
 			],
 			"name": "gate-conventions",
-			"owner": "spernakit",
+			"owner": "smokestack",
 			"requiresPackageJson": true,
 			"sourceRoot": ".",
 			"targetRoot": ".",
@@ -128,7 +128,7 @@
 				{ "disposition": "synced", "source": "scripts/lib/license-core/resolve.ts" }
 			],
 			"name": "license-core",
-			"owner": "spernakit",
+			"owner": "smokestack",
 			"sourceRoot": ".",
 			"targetRoot": ".",
 			"targets": { "model": "roster", "roster": "shared-core-targets.json" }
@@ -138,7 +138,7 @@
 				{ "disposition": "synced", "source": "scripts/lib/third-party-licenses/resolve.ts" }
 			],
 			"name": "license-core-adapter",
-			"owner": "spernakit",
+			"owner": "smokestack",
 			"sourceRoot": ".",
 			"targetRoot": ".",
 			"targets": { "model": "roster", "roster": "license-core-adapter-targets.json" }
@@ -160,7 +160,7 @@
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/write.ts" }
 			],
 			"name": "shared-core-sync",
-			"owner": "spernakit",
+			"owner": "smokestack",
 			"requiresPackageJson": true,
 			"sourceRoot": ".",
 			"targetRoot": ".",
@@ -168,6 +168,14 @@
 			"wiring": {
 				"check:shared-core": "bun scripts/sync-shared-core.ts --check"
 			}
+		},
+		{
+			"files": [{ "disposition": "synced", "source": "pre-commit-leak-guard-only" }],
+			"name": "hook-variant-sources",
+			"owner": "smokestack",
+			"sourceRoot": ".githooks",
+			"targetRoot": ".githooks",
+			"targets": { "model": "roster", "roster": "hook-variant-sources-targets.json" }
 		}
 	]
 }

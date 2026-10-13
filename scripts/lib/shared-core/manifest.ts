@@ -106,7 +106,7 @@ export interface SharedCoreGroup {
 	wiring?: Record<string, string>;
 }
 
-const OWNERS = new Set(['aidd', 'spernakit']);
+const OWNERS = new Set(['smokestack']);
 
 function fail(message: string): never {
 	throw new Error(`shared-core-manifest.json: ${message}`);
