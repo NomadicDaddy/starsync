@@ -34,8 +34,17 @@
 	// - src/lib/free-space.ts exports formatByteSize, used only inside that file. Internalizing it
 	//   is owned by audit-dead-code-1786640825-four-implementation-only-source-declarations-remain-exported;
 	//   when that lands, this exemption must be deleted. Scoped to exports only.
+	// - scripts/lib/smokestack/config.ts and scripts/lib/smokestack/gate.ts are byte-synced owner
+	//   files too (group runner, owner smokestack). Each exports one name that this repository does
+	//   not use and the owner's own tests do: parseConfig is imported by the owner's
+	//   test/runner-config.test.ts, and EXIT_INTERRUPTED by its test/runner-interrupt.test.ts. They
+	//   cannot be changed here without failing check:shared-core; whether they stay exported is
+	//   for the owner's gate. Exports only, and these two files only: an unused FILE in that
+	//   directory, an unused type, or an unused dependency is still reported.
 	"ignoreIssues": {
 		"scripts/lib/shared-core/**": ["exports", "types"],
+		"scripts/lib/smokestack/config.ts": ["exports"],
+		"scripts/lib/smokestack/gate.ts": ["exports"],
 		"src/lib/free-space.ts": ["exports"]
 	},
 	"project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]

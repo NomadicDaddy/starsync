@@ -163,14 +163,24 @@ describe('package distribution', () => {
 		expect(devDependencies['knip']).toMatch(/^\d+\.\d+\.\d+$/);
 
 		// `check:dead-code` is the gate's name, and `smoke:qc` runs it before the test suite. The
-		// position is asserted because the release workflow's quality step is `smoke:qc` itself,
-		// and a detector appended after the tests would still gate the release — but one appended
-		// after a failing test would never run at all, leaving the release blocked for the wrong
-		// reason and the dead code invisible.
+		// release workflow's quality step is `smoke:qc` itself, which is the smokestack runner, and
+		// what the runner runs is the `qc` step list in smokestack.json, in the order written. So
+		// the step and its position are asserted there. The runner goes on after a failed step, so
+		// the detector would now run even behind a failing test; it stays ahead of the suite so the
+		// cheap, static answer comes first and the order this repository chose is not lost by edit.
 		expect(scripts['check:dead-code']).toBe('knip --no-progress');
-		const smoke = String(scripts['smoke:qc']);
-		expect(smoke).toContain('bun run check:dead-code');
-		expect(smoke.indexOf('check:dead-code')).toBeLessThan(smoke.indexOf('bun run test'));
+		expect(scripts['smoke:qc']).toBe('bun scripts/smokestack.ts');
+		const { steps } = section('smokestack.json', 'qc') as {
+			steps: { name: string; run: string[] }[];
+		};
+		const names = steps.map((step) => step.name);
+		expect(steps.find((step) => step.name === 'check:dead-code')?.run).toEqual([
+			'bun',
+			'run',
+			'check:dead-code',
+		]);
+		expect(names).toContain('test');
+		expect(names.indexOf('check:dead-code')).toBeLessThan(names.indexOf('test'));
 	});
 
 	test('analyzes the process-launched test suite as knip entry points', () => {
