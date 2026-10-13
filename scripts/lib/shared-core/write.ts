@@ -66,7 +66,7 @@ export function ownershipRefusal(group: SharedCoreGroup, root: string): null | s
  * True when a target file has uncommitted changes in its own repository. Throws when git cannot
  * answer, which the caller treats as a refusal to write that file.
  */
-function hasUncommittedChanges(targetRoot: string, relativePath: string): boolean {
+export function hasUncommittedChanges(targetRoot: string, relativePath: string): boolean {
 	const result = Bun.spawnSync(
 		['git', '-C', targetRoot, 'status', '--porcelain', '--', relativePath],
 		{ stderr: 'pipe', stdout: 'pipe', windowsHide: true },

@@ -14,8 +14,11 @@
 import type { SharedCoreGroup } from './manifest.ts';
 
 import { type Finding, type GroupReport, isFatal } from './check.ts';
+import { deliveredBy, type Deliveries, DELIVERIES_FILE, writeDeliveries } from './deliveries.ts';
+import { type Delivery, planLocks, tagStanding, writeLocks } from './lock-write.ts';
+import { LOCK_FILE } from './lock.ts';
 import { reportClean } from './vacuity.ts';
-import { applyFindings, ownershipRefusal } from './write.ts';
+import { applyFindings, ownershipRefusal, type WriteOutcome } from './write.ts';
 
 function order(findings: Finding[]): Finding[] {
 	// Keys are alphabetical to satisfy the sort rule; the VALUES carry the reporting order, which is
@@ -25,7 +28,9 @@ function order(findings: Finding[]): Finding[] {
 		drift: 0,
 		'foreign-hook': 2,
 		'local-chain': 6,
+		'lost-delivery': 1,
 		'not-applicable': 8,
+		'stale-lock': 2,
 		uncovered: 5,
 		unguarded: 3,
 		'unmanaged-dispatch': 7,
@@ -48,23 +53,48 @@ export function printReport(report: GroupReport): void {
 	for (const skip of report.skipped) console.log(`  ${'SKIPPED'.padEnd(19)} ${skip}`);
 }
 
+/**
+ * The sentence for an owner with no record of deliveries for the fleet root it is running against.
+ * Unconditional: there is no "nothing was delivered yet" case, because the only evidence for one
+ * would be the targets' locks, and a target can delete its lock.
+ */
+function noRecord(fleetRoot: string): string {
+	return (
+		`[FAIL] There is no record of deliveries for the fleet root ${fleetRoot} in ` +
+		`${DELIVERIES_FILE}. A checkout starts without one, on purpose, and only the adopt ` +
+		'command creates it, from the locks that verify against this repository: ' +
+		'bun run deliveries:adopt (with --fleet-root <dir> for another root).'
+	);
+}
+
 export function reportCheck(
 	reports: GroupReport[],
-	unverifiable: string[],
-	only?: Set<string>,
+	only: Set<string> | undefined,
+	recordMissing: boolean,
+	fleetRoot: string,
+	scope: Finding[],
 ): number {
 	for (const report of reports) printReport(report);
+	// What belongs to no group's comparison (lock-scope.ts), in a section of its own: a finding
+	// about a group that does not exist has no group report to sit under.
+	if (scope.length > 0) {
+		console.log(`\n${LOCK_FILE}, by repository — ${scope.length} finding(s) no group covers.`);
+		for (const finding of order(scope)) {
+			const label = finding.kind.toUpperCase().padEnd(19);
+			console.log(`  ${label} ${finding.target}: ${finding.detail}`);
+		}
+	}
 
-	const findings = reports.flatMap((r) => r.findings);
+	const findings = [...reports.flatMap((r) => r.findings), ...scope];
 	const fatal = findings.filter(isFatal);
 	const uncovered = findings.filter((f) => f.kind === 'uncovered');
 
 	console.log('');
-	if (unverifiable.length > 0) console.warn(`[WARN] NOT VERIFIED: ${unverifiable.join('; ')}.`);
 	if (uncovered.length > 0) {
 		console.log(
-			`${uncovered.length} file(s) absent in targets the write path has not reached yet. ` +
-				'Absent is a rollout gap, not drift; it does not fail this check.',
+			`${uncovered.length} file(s) absent. Where the write path has not reached a target yet ` +
+				'that is a rollout gap, not drift, and does not fail this check. An absent file ' +
+				"that a target's lock records as delivered is listed as LOST-DELIVERY, and does.",
 		);
 	}
 	if (fatal.length > 0) {
@@ -83,6 +113,33 @@ export function reportCheck(
 					'person can tell which. Each finding names both ways out.',
 			);
 		}
+		const lost = fatal.filter((f) => f.kind === 'lost-delivery').length;
+		if (lost > 0) {
+			console.error(
+				`\n${lost} of them are LOST-DELIVERY: a file that target was delivered and no ` +
+					'longer holds. The next write from a tagged version delivers it again, once its ' +
+					'removal is committed or undone there. The same kind names a group, a lock or a ' +
+					'whole repository the record of deliveries holds and the fleet no longer does; ' +
+					'where that is meant, the finding names the command that says so.',
+			);
+		}
+		// Named separately for the opposite reason: nothing in that target needs resyncing.
+		const stale = fatal.filter((f) => f.kind === 'stale-lock').length;
+		if (stale > 0) {
+			console.error(
+				`\n${stale} of them are STALE-LOCK: the files in that target are current and its ` +
+					`${LOCK_FILE} does not record them, or the lock and the record of deliveries ` +
+					'disagree about what was last delivered there. The next write from a tagged ' +
+					'version rewrites the lock and the record together. Where the finding is a ' +
+					'group the lock names that does not reach that repository, or a file of such a ' +
+					'group held there, no write settles it: it is corrected in that repository.',
+			);
+		}
+		if (recordMissing) console.error(`\n${noRecord(fleetRoot)}`);
+		return 1;
+	}
+	if (recordMissing) {
+		console.error(noRecord(fleetRoot));
 		return 1;
 	}
 	return reportClean(reports, only);
@@ -97,49 +154,122 @@ export function reportCheck(
  */
 export function reportWrite(
 	reports: GroupReport[],
-	groups: SharedCoreGroup[],
+	manifest: SharedCoreGroup[],
 	fleetRoot: string,
 	root: string,
 	dryRun: boolean,
+	deliveries: Deliveries | null,
 ): number {
-	const byName = new Map(groups.map((g) => [g.name, g]));
+	// Before anything else, a rehearsal included: a write updates the record, and never creates it.
+	if (deliveries === null) {
+		console.error(`${noRecord(fleetRoot)} Nothing was written.`);
+		return 1;
+	}
+	const byName = new Map(manifest.map((g) => [g.name, g]));
 	const verb = dryRun ? 'would write' : 'wrote';
-	let wrote = 0;
-	let blocked = 0;
+	const owned = reports.filter((report) => {
+		const refusal = ownershipRefusal(byName.get(report.group) as SharedCoreGroup, root);
+		if (refusal !== null) console.log(`\n${report.group} — not ours to write: ${refusal}.`);
+		return refusal === null;
+	});
+	const groups = owned.map((report) => byName.get(report.group) as SharedCoreGroup);
 
-	for (const report of reports) {
-		const group = byName.get(report.group) as SharedCoreGroup;
-		const refusal = ownershipRefusal(group, root);
-		if (refusal !== null) {
-			console.log(`\n${report.group} — not ours to write: ${refusal}.`);
-			continue;
+	// Both refusals below come before the first file, so a refused write has written nothing.
+	let delivery: Delivery | null = null;
+	if (owned.length > 0) {
+		const standing = tagStanding(root);
+		if ('delivery' in standing) delivery = standing.delivery;
+		else if (dryRun) {
+			console.warn(`[WARN] A write from here would be refused: ${standing.refusal}.`);
+		} else {
+			console.error(
+				`[FAIL] A write is made only from a tagged version, and ${standing.refusal}. ` +
+					'Nothing was written.',
+			);
+			return 1;
 		}
+	}
+	const plan = planLocks(owned, groups, manifest, fleetRoot, root, delivery);
+	if (plan.refusals.length > 0) {
+		for (const refusal of plan.refusals) console.error(`- ${refusal}`);
+		console.error(
+			`[FAIL] ${plan.refusals.length} target(s) would be left with a ${LOCK_FILE} that does ` +
+				'not describe them. Nothing was written.',
+		);
+		return 1;
+	}
+
+	const outcomes = new Map<string, WriteOutcome>();
+	for (const report of owned) {
 		const outcome = applyFindings(report.findings, fleetRoot, dryRun);
-		wrote += outcome.written.length;
-		blocked += outcome.blocked.length;
+		outcomes.set(report.group, outcome);
+		// A stale lock is not the file writer's to settle and is not left alone either: the lock
+		// is rewritten below, and reported there. Nor is a lost delivery: the same absent file is
+		// also an `uncovered` finding, which is the one the writer acts on.
+		const skipped = outcome.skipped.filter(
+			(f) => f.kind !== 'stale-lock' && f.kind !== 'lost-delivery',
+		);
 
 		console.log(
-			`\n${report.group} (owner: ${group.owner}) — ${verb} ${outcome.written.length} file(s), ` +
-				`${outcome.blocked.length} refused, ${outcome.skipped.length} not writable.`,
+			`\n${report.group} (owner: ${report.owner}) — ${verb} ${outcome.written.length} ` +
+				`file(s), ${outcome.blocked.length} refused, ${skipped.length} not writable.`,
 		);
 		for (const f of outcome.written)
 			console.log(`  ${verb.toUpperCase()} ${f.target}: ${f.detail}`);
 		for (const f of outcome.blocked) console.log(`  REFUSED     ${f.target}: ${f.detail}`);
-		for (const f of outcome.skipped) {
-			console.log(`  LEFT ALONE  ${f.target}: ${f.kind} — ${f.detail}`);
+		for (const f of skipped) console.log(`  LEFT ALONE  ${f.target}: ${f.kind} — ${f.detail}`);
+	}
+
+	const locks = writeLocks(plan, outcomes, groups, delivery, dryRun, deliveries ?? {});
+	if (plan.targets.length > 0) console.log(`\n${LOCK_FILE}`);
+	for (const directory of locks.written) console.log(`  ${verb.toUpperCase()} ${directory}`);
+	for (const reason of locks.withheld) console.log(`  WITHHELD    ${reason}`);
+	// The record follows the locks this run settled, and no others: a lock withheld keeps the
+	// entry of its last good delivery, and a target outside an --only narrowing is not touched.
+	//
+	// Only the groups this run delivered and compared are recorded from it. A group the run was
+	// narrowed away from keeps the entry the record already has: copying it out of the target's
+	// lock would write the target's own word into the owner's memory, which is how a hand-made
+	// claim was once recorded by a write narrowed to some other group. Where such a kept entry
+	// belongs to another version than this delivery, nothing is recorded for that target at all,
+	// since one entry cannot name two versions; the unnarrowed write records it.
+	if (!dryRun && locks.settled.size > 0) {
+		const section = { ...deliveries };
+		for (const [directory, lock] of locks.settled) {
+			const entry = deliveredBy(lock);
+			if (entry === null) continue;
+			const before = section[directory];
+			const kept = Object.keys(before?.groups ?? {}).some((name) => !(name in entry.groups));
+			if (kept && (before?.version !== entry.version || before.commit !== entry.commit)) {
+				continue;
+			}
+			section[directory] = { ...entry, groups: { ...before?.groups, ...entry.groups } };
+		}
+		if (writeDeliveries(root, fleetRoot, section)) {
+			console.log(`\n${DELIVERIES_FILE}: recorded ${[...locks.settled.keys()].join(', ')}`);
 		}
 	}
 
+	const wrote = [...outcomes.values()].reduce((sum, o) => sum + o.written.length, 0);
+	const blocked = [...outcomes.values()].reduce((sum, o) => sum + o.blocked.length, 0);
 	console.log('');
 	if (blocked > 0) {
 		console.error(
 			`[FAIL] Refused to write ${blocked} file(s) with uncommitted changes in the target ` +
 				'repository. Commit or discard them there, then run this again.',
 		);
-		return 1;
 	}
+	if (locks.withheld.length > 0) {
+		console.error(
+			`[FAIL] ${locks.withheld.length} ${LOCK_FILE} file(s) were not rewritten, so each still ` +
+				'describes the delivery before this one. Settle what is named above and run again.',
+		);
+	}
+	if (blocked > 0 || locks.withheld.length > 0) return 1;
 	console.log(
-		dryRun ? `[OK] Dry run: ${wrote} file(s) would change.` : `[OK] Wrote ${wrote} file(s).`,
+		dryRun
+			? `[OK] Dry run: ${wrote} file(s) and ${locks.written.length} lock(s) would change.`
+			: `[OK] Wrote ${wrote} file(s) and ${locks.written.length} lock(s).`,
 	);
 	return 0;
 }

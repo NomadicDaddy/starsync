@@ -23,6 +23,8 @@ import { join } from 'node:path';
 
 import type { SharedCoreGroup } from './manifest.ts';
 
+import { LOCK_FILE } from './lock.ts';
+
 export interface Target {
 	/** Directory name beside the fleet root, used for reporting. */
 	directory: string;
@@ -85,7 +87,7 @@ function rosterTargets(group: SharedCoreGroup, fleetRoot: string, ownerRoot: str
  * presence says a repository was reached at some point, not that it is a carrier now. The synced
  * set is the one the group is responsible for, so it is the one that decides.
  */
-function carriesGroup(group: SharedCoreGroup, repoPath: string): boolean {
+export function carriesGroup(group: SharedCoreGroup, repoPath: string): boolean {
 	const synced = group.files.filter((file) => file.disposition === 'synced');
 
 	// An empty set would make `every` vacuously true and select the whole fleet root.
@@ -138,34 +140,47 @@ export function declineReason(repoPath: string): null | string {
 	return reason ?? `${DECLINE_FILE} is present but states no reason`;
 }
 
-function discoveredTargets(group: SharedCoreGroup, fleetRoot: string, owner: string): Target[] {
-	if (group.targets.model !== 'discovered') return [];
+/**
+ * Whether a discovered group selects the git repository at `repoPath`. Asked of each sibling by the
+ * owner's sweep, and by a repository of itself when it checks its own lock, so the two cannot
+ * disagree about which hook groups apply to it.
+ */
+export function discovers(group: SharedCoreGroup, repoPath: string): boolean {
+	if (group.targets.model !== 'discovered') return false;
 	const { marker } = group.targets;
+	return (
+		existsSync(join(repoPath, '.git')) &&
+		(marker === undefined ||
+			existsSync(join(repoPath, marker)) ||
+			// A repository that keeps a lock takes every discovered group, marker or not. The
+			// marker is an untracked folder: a fresh clone has none, so while it decided this, a
+			// whole hook group and its files could be removed in one commit and the repository's
+			// own check passed in every CI checkout. The lock is tracked, so this answer is the
+			// same in the owner's sweep and in any clone.
+			existsSync(join(repoPath, LOCK_FILE)) ||
+			// A repository that already carries the group is a target for UPDATES to it,
+			// whatever the marker says. Two repositories held a two-week-old
+			// screenshot-guard.sh for exactly this reason: they were seeded before the
+			// `.aidd` marker described them, so every later fix routed around them and the
+			// report called the group current (punchlist C1). A carrier the marker no
+			// longer selects does not stop being a carrier; it stops being maintained.
+			//
+			// This is NOT the marker-names-the-guard design the manifest's `marker` doc
+			// warns off, because it is a union arm rather than a replacement. The marker
+			// still selects repositories that lack the files, so `uncovered` stays
+			// reachable and the gate can still go red on a fleet missing the guard. This
+			// arm only ever selects repositories where `uncovered` is already impossible,
+			// so it widens maintenance without widening adoption.
+			carriesGroup(group, repoPath))
+	);
+}
 
+function discoveredTargets(group: SharedCoreGroup, fleetRoot: string, owner: string): Target[] {
 	return readdirSync(fleetRoot, { withFileTypes: true })
 		.filter((entry) => entry.isDirectory() && !entry.name.endsWith('.old'))
 		.filter((entry) => entry.name !== owner)
 		.map((entry) => ({ directory: entry.name, path: join(fleetRoot, entry.name) }))
-		.filter(
-			(t) =>
-				existsSync(join(t.path, '.git')) &&
-				(marker === undefined ||
-					existsSync(join(t.path, marker)) ||
-					// A repository that already carries the group is a target for UPDATES to it,
-					// whatever the marker says. Two repositories held a two-week-old
-					// screenshot-guard.sh for exactly this reason: they were seeded before the
-					// `.aidd` marker described them, so every later fix routed around them and the
-					// report called the group current (punchlist C1). A carrier the marker no
-					// longer selects does not stop being a carrier; it stops being maintained.
-					//
-					// This is NOT the marker-names-the-guard design the manifest's `marker` doc
-					// warns off, because it is a union arm rather than a replacement. The marker
-					// still selects repositories that lack the files, so `uncovered` stays
-					// reachable and the gate can still go red on a fleet missing the guard. This
-					// arm only ever selects repositories where `uncovered` is already impossible,
-					// so it widens maintenance without widening adoption.
-					carriesGroup(group, t.path)),
-		);
+		.filter((t) => discovers(group, t.path));
 }
 
 /**

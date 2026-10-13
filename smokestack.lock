@@ -1,8 +1,187 @@
 {
+	"commit": "271d2aa81e62a193e10a8e95a99d7f31c6da267b",
 	"groups": {
-		"license-core": {},
-		"license-core-adapter": {},
-		"shared-core-sync": {}
+		"leak-guard-hooks": {
+			"files": {
+				".githooks/leak-guard-setup.sh": {
+					"mode": "100644",
+					"sha256": "2145808b328c186be2f18c569225c6dcaa431bc9e1eaeb06f33a1075910fffcb"
+				},
+				".githooks/leak-guard.sh": {
+					"mode": "100644",
+					"sha256": "60119ad6eda22c8b176c27b6aea44522399a964f787fcbef17e94897cca1dc3d"
+				},
+				".githooks/pre-commit": {
+					"mode": "100755",
+					"sha256": "4a76d13f0ddcebb58b8a9e78834841588975f030e98695d697249574b9252994"
+				}
+			}
+		},
+		"leak-guard-scripts": {
+			"files": {
+				"scripts/check-leak-guard.sh": {
+					"mode": "100644",
+					"sha256": "a8d2cce2947a875870153a8bb6b9b60b0db0933606ba670d719cbccd18eb7418"
+				}
+			}
+		},
+		"license-core": {
+			"files": {
+				"scripts/check-license-core.ts": {
+					"mode": "100644",
+					"sha256": "a6415b61b1532b463bad3ad809556295fb75cde848185ad9e0a5f206d4d2c3dc"
+				},
+				"scripts/lib/license-core/expression.ts": {
+					"mode": "100644",
+					"sha256": "c1c94a063251ba48e021cb88081fbee03666cab90c8e657c348d2ec6175d90d3"
+				},
+				"scripts/lib/license-core/installed.ts": {
+					"mode": "100644",
+					"sha256": "b3bb9990ba8a0667cc9da5f6d9d40e7b5910416f6e71b418e689d1b4988f87bc"
+				},
+				"scripts/lib/license-core/lockfile.ts": {
+					"mode": "100644",
+					"sha256": "c45ff83c95137c6a5600c9beb4e33a53cbf79da76a74b52910f4ff4a3184d4af"
+				},
+				"scripts/lib/license-core/manifest.ts": {
+					"mode": "100644",
+					"sha256": "d27f6909be4e6c2a399f600d60bd0938678e8504f4b49e76c579283d3f13f8c0"
+				},
+				"scripts/lib/license-core/order.ts": {
+					"mode": "100644",
+					"sha256": "1d07d1871143b79334e6016f941d1f7042e3acbc4cafb443c893f6819812bc7c"
+				},
+				"scripts/lib/license-core/resolve.ts": {
+					"mode": "100644",
+					"sha256": "b7957ae32736e9e6ffc79831ea054eb13c528d26776ac9e448e791a839c34e2f"
+				}
+			}
+		},
+		"license-core-adapter": {
+			"files": {
+				"scripts/lib/third-party-licenses/resolve.ts": {
+					"mode": "100644",
+					"sha256": "14b381e116501771ac7bff9e93dae74e2977e134ab0a6fa70707eeefcd4271c8"
+				}
+			}
+		},
+		"push-guards": {
+			"files": {
+				".githooks/aidd-history-guard.sh": {
+					"mode": "100644",
+					"sha256": "099db9337908def2f7418dda8b6fa5afb84405bc32983f0a213a4cc9e365588b"
+				},
+				".githooks/force-push-guard.sh": {
+					"mode": "100644",
+					"sha256": "c74334c110d0f42d5af5c1a736b216fa1b2b3920572a24e59cfea022f3211f62"
+				},
+				".githooks/pre-push": {
+					"mode": "100755",
+					"sha256": "31879315a1d5a153be0eac049cf110d60f52fa75dcee11051b72268111421adf"
+				},
+				".githooks/screenshot-guard.sh": {
+					"mode": "100644",
+					"sha256": "6c449932c2263d34fe5c278205c405e93b276d63c8e057e852483783a4d8363d"
+				}
+			}
+		},
+		"shared-core-sync": {
+			"files": {
+				"scripts/lib/shared-core/check.ts": {
+					"mode": "100644",
+					"sha256": "492ae69156d8c9cae7719cc014be093db092ed34107d8b5c1f452d4f0049aa59"
+				},
+				"scripts/lib/shared-core/deliveries.ts": {
+					"mode": "100644",
+					"sha256": "4590e5f6ec92f1c5aeaabf907146118fa8ffef095fb50fbe9a369565a4f4468e"
+				},
+				"scripts/lib/shared-core/delivery-check.ts": {
+					"mode": "100644",
+					"sha256": "f9a726c39888871915baea086fc0ab9875f134ad3363f60e51337cd1ccf0272b"
+				},
+				"scripts/lib/shared-core/dispatch.ts": {
+					"mode": "100644",
+					"sha256": "8be1a7521a7fa69e551e6d328c8fc616a4957bad9be6839b308d1a9c3fbcfe6f"
+				},
+				"scripts/lib/shared-core/eligibility.ts": {
+					"mode": "100644",
+					"sha256": "0e39b2dfa6073a4b7993a60a8fde796388995e9e409fb14d70e6b4bb6de79654"
+				},
+				"scripts/lib/shared-core/expected.ts": {
+					"mode": "100644",
+					"sha256": "6744078fafea77fdc10fbc2016659864a9432175f32e7c79a4bcd039cada1d79"
+				},
+				"scripts/lib/shared-core/hook.ts": {
+					"mode": "100644",
+					"sha256": "d34906e6c5264048e8efa4c99cb74964ebc1b4f6982abf9d3ec878ecd0a6cdaf"
+				},
+				"scripts/lib/shared-core/lock-check.ts": {
+					"mode": "100644",
+					"sha256": "fe2ed43c375755de6aff06e9e5e0fc6d6917370fa1c3807727b43ff08c9e024f"
+				},
+				"scripts/lib/shared-core/lock-scope.ts": {
+					"mode": "100644",
+					"sha256": "c6f3ea89e381a7bd08e93b5532aaa0f84c6d4f6b53d7eca7e69bd361e5f7443a"
+				},
+				"scripts/lib/shared-core/lock-write.ts": {
+					"mode": "100644",
+					"sha256": "6b67cfd63474b6582b6abb3709ab3da1b925e04bc68d62a11bbec092fb589311"
+				},
+				"scripts/lib/shared-core/lock.ts": {
+					"mode": "100644",
+					"sha256": "ca32cfc6f002234e65235c99dcdfba02f28b070395188c2f88dfe8ae72464417"
+				},
+				"scripts/lib/shared-core/manifest.ts": {
+					"mode": "100644",
+					"sha256": "48774ce9fd9a129afeb76d28dd5e181dc2c3b9e572dc47e982501b373b198a56"
+				},
+				"scripts/lib/shared-core/origin.ts": {
+					"mode": "100644",
+					"sha256": "39c132b5bbb9251994c6003524257aad8af62b6e76733f1d4e8c711909b70652"
+				},
+				"scripts/lib/shared-core/owner.ts": {
+					"mode": "100644",
+					"sha256": "0d68e27e4beee0fe31eb5bd9c5419efbc3e99a20328c27320f2edd0f27e7094a"
+				},
+				"scripts/lib/shared-core/report.ts": {
+					"mode": "100644",
+					"sha256": "9479b4e692629065d7bacd70354b76bd5cb268d6ed81581fe915ebb17e497998"
+				},
+				"scripts/lib/shared-core/roots.ts": {
+					"mode": "100644",
+					"sha256": "a1bb5e451f51807d66eb49f82d8e74187eb30e193b3ce7e1d161c09404085c0e"
+				},
+				"scripts/lib/shared-core/self-check.ts": {
+					"mode": "100644",
+					"sha256": "8030be0630bd0d4272a0bb0458a7c5e70707c40cedbfa805601cae9f4036bc9b"
+				},
+				"scripts/lib/shared-core/targets.ts": {
+					"mode": "100644",
+					"sha256": "4f625a932e04b54bd8fa43601d3b8cbb90f4bc58c7c218b8157850d64e357344"
+				},
+				"scripts/lib/shared-core/vacuity.ts": {
+					"mode": "100644",
+					"sha256": "8f6ad20000de37622bfa781aecd9c8b18d68fe476fe6d385d99e4ecdc6c860d5"
+				},
+				"scripts/lib/shared-core/wiring.ts": {
+					"mode": "100644",
+					"sha256": "6859d4aec318aee38834764043f08d563d6943ba199cacdd68056403c56b6037"
+				},
+				"scripts/lib/shared-core/write.ts": {
+					"mode": "100644",
+					"sha256": "1555864fb99b6913d1beeba2efe5440a471c6be3027004635dc955eec2822aa8"
+				},
+				"scripts/shared-core-manifest.json": {
+					"mode": "100644",
+					"sha256": "78a8486c223e0ea974e9a068e55c63a28822867181c1c5097049caee89879921"
+				},
+				"scripts/sync-shared-core.ts": {
+					"mode": "100644",
+					"sha256": "0f98f287d0d350c7b53e3838b20b193676bb273a16e81846fabb53988fde54c4"
+				}
+			}
+		}
 	},
-	"owner": "smokestack"
+	"owner": "smokestack",
+	"version": "0.3.0"
 }

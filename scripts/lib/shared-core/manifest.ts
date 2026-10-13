@@ -262,8 +262,12 @@ function asGroup(raw: unknown, index: number): SharedCoreGroup {
 export function loadManifest(scriptsDir: string): SharedCoreGroup[] {
 	const path = join(scriptsDir, 'shared-core-manifest.json');
 	if (!existsSync(path)) fail(`not found at ${path}.`);
+	return parseManifest(readFileSync(path, 'utf8'));
+}
 
-	const parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+/** Validates a manifest's text, wherever it was read from: the working tree, or a commit. */
+export function parseManifest(text: string): SharedCoreGroup[] {
+	const parsed = JSON.parse(text) as unknown;
 	const rawGroups = (parsed as null | Record<string, unknown>)?.['groups'];
 	if (!Array.isArray(rawGroups) || rawGroups.length === 0) {
 		fail('expected a non-empty "groups" array.');
