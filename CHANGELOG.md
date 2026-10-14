@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Security
+
+- Updated the locked `brace-expansion` development dependency from 5.0.9 to 5.0.12,
+  fixing three denial-of-service advisories in the lint toolchain. Runtime dependencies
+  and the TypeScript 6.0.3 pin are unchanged.
+
 ## [2.4.1] - 2026-09-10
 
 ### Changed
