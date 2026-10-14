@@ -28,6 +28,8 @@ const internalDeclarations = {
 	'src/lib/archive-verification-repair.ts': ['CheckoutReplacer'],
 	'src/lib/cli-utils.ts': ['DEFAULT_CONCURRENCY', 'SUBCOMMANDS'],
 	'src/lib/dates-reporting.ts': ['DatesStatus'],
+	'src/lib/free-space.ts': ['formatByteSize'],
+	'src/lib/refresh.ts': ['SyncOutcome'],
 	'src/lib/reporting.ts': ['REPORT_SCHEMA_VERSION'],
 	'src/lib/windows-checkout.ts': [
 		'escapeSparsePattern',
@@ -88,6 +90,25 @@ describe('archive module facades', () => {
 		const archiveLockSource = readSource('src/lib/archive-lock.ts');
 		expect(archiveLockSource).not.toMatch(/export\s*\{[^}]*\bgetProcessState\b/s);
 		expect(archiveLockSource).not.toMatch(/export\s+type\s*\{[^}]*\bArchiveProcessState\b/s);
+	});
+
+	test('keeps implementation-only symbols out of named export lists', () => {
+		for (const [relativePath, symbol] of [
+			['src/lib/archive-rename.ts', 'RenamePreview'],
+			['src/lib/dates-command.ts', 'DatesDisplayRow'],
+			['src/lib/free-space.ts', 'formatByteSize'],
+			['src/lib/refresh.ts', 'SyncOutcome'],
+		] as const) {
+			expect(readSource(relativePath)).not.toMatch(
+				new RegExp(`\\bexport\\s+(?:type\\s*)?\\{[^}]*\\b${symbol}\\b`, 's'),
+			);
+		}
+		expect(readSource('src/lib/dates-command.ts')).toMatch(
+			/\bexport\s+type\s*\{[^}]*\bDatesResult\b/s,
+		);
+		expect(readSource('src/index.ts')).toMatch(
+			/\bexport\s+type\s*\{[^}]*\bRenamePreview\b[^}]*\}\s*from\s+['"]\.\/lib\/reporting\.ts['"]/s,
+		);
 	});
 
 	test('checks function shape in every non-excluded production module', () => {

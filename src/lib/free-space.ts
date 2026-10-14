@@ -50,7 +50,7 @@ export const parseFreeSpaceBytes = (value: string): number => {
 	return bytes;
 };
 
-export const formatByteSize = (bytes: number): string => {
+const formatByteSize = (bytes: number): string => {
 	let amount = bytes;
 	let index = 0;
 	while (amount >= 1024 && index < SIZE_UNITS.length - 1) {

@@ -1,7 +1,7 @@
 import type { ArchiveHost } from './archive-host.ts';
 import type { ArchiveEntry, ArchiveInspection } from './archive-inspection.ts';
 import type { ResolvedRenameEntry } from './checkout-rename-resolution.ts';
-import type { CheckoutReport, Finding, RenamePreview } from './reporting.ts';
+import type { CheckoutReport, Finding } from './reporting.ts';
 import type { RepositoryResolver } from './repository-resolution.ts';
 
 import { readArchiveConfig } from './archive-config.ts';
@@ -128,5 +128,3 @@ export const previewArchiveRenames = async (
 		),
 	);
 };
-
-export type { RenamePreview };

@@ -137,4 +137,4 @@ export const runDatesCommand = async (
 };
 
 export { formatDatesTables };
-export type { DatesDisplayRow, DatesResult };
+export type { DatesResult };

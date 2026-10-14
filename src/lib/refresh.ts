@@ -1,6 +1,5 @@
 /** The sync outcome for a single checkout attempt. */
-export type SyncOutcome =
-	'added' | 'blocked' | 'current' | 'failed' | 'retained' | 'skipped' | 'updated';
+type SyncOutcome = 'added' | 'blocked' | 'current' | 'failed' | 'retained' | 'skipped' | 'updated';
 
 /** A starred repository from the GitHub API. */
 export interface RepoRecord {
