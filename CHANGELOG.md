@@ -4,11 +4,46 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+### Added
+
+- Codeberg archives alongside GitHub archives. `init --host codeberg.org` binds an archive
+  to one Codeberg account; subsequent commands use `CODEBERG_TOKEN` and that host's stable
+  repository identities. Existing format-2 archives keep their GitHub default without a
+  migration, and an archive cannot mix hosts. Other Forgejo hosts are not supported.
+- `bun run check:dead-code` checks project files and exports with Knip before the test suite.
+  Shared files retain their documented owner-specific exemptions.
+
+### Changed
+
+- Shared hooks and quality tooling are now delivered from tagged smokestack versions and
+  checked against `smokestack.lock`. Shared-file checks tolerate checkout line-ending
+  differences, report skipped repository roots, and verify that hook setup is an executable
+  command step rather than a comment or incidental mention.
+- The full quality gate runs through the smokestack runner, checks the delivered files first,
+  then runs every existing check and reports all failures before exiting. The fast gate keeps
+  its four static checks and stops at the first failure.
+
+### Fixed
+
+- Git hooks find Git's Bash by absolute path on Windows, avoiding the unrelated WSL launcher
+  when it appears first on `PATH`.
+- Knip discovers package-script entry points itself, so deleting a script can expose its
+  orphaned file. Formatting checks now cover `knip.json`, and its CLI discovery explanation
+  names the `start` and `sync` scripts that actually reach the source entry point.
+
 ### Security
 
 - Updated the locked `brace-expansion` development dependency from 5.0.9 to 5.0.12,
   fixing three denial-of-service advisories in the lint toolchain. Runtime dependencies
   and the TypeScript 6.0.3 pin are unchanged.
+- Codeberg requests reject redirects, validate responses, and fail on repeated repository
+  identities during pagination. API tokens remain separate from Git authentication and
+  are never written to archive configuration or passed to clone and fetch commands.
+- Agent-issued pushes are blocked when they would delete a remote ref or rewrite its history.
+- Commit guards recover configured private-pattern locations from the Windows user setting,
+  refuse missing, unreadable or invalid configured patterns, and report matching files and
+  counts without printing the refused text. A tracked publication allowlist clears only
+  matching private-name patterns, never secret formats or home-directory paths.
 
 ## [2.4.1] - 2026-09-10
 
