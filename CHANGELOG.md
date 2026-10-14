@@ -7,9 +7,11 @@ All notable changes to this project will be documented in this file. Format foll
 ### Added
 
 - Codeberg archives alongside GitHub archives. `init --host codeberg.org` binds an archive
-  to one Codeberg account; subsequent commands use `CODEBERG_TOKEN` and that host's stable
-  repository identities. Existing format-2 archives keep their GitHub default without a
-  migration, and an archive cannot mix hosts. Other Forgejo hosts are not supported.
+  to one Codeberg account. Initialization, sync, rename and `verify --force` use
+  `CODEBERG_TOKEN` for Codeberg archives and keep identities scoped to that host.
+  Read-only verification, dates and unlock require no API token. Existing format-2 archives
+  keep their GitHub default without a migration, and an archive cannot mix hosts.
+  Other Forgejo hosts are not supported.
 - `bun run check:dead-code` checks project files and exports with Knip before the test suite.
   Shared files retain their documented owner-specific exemptions.
 
