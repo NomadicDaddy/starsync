@@ -17,7 +17,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const CONFIG_FILE = 'smokestack.json';
+import { assertCacheCoverage, parseStepCache, type StepCache } from './cache-config.ts';
+import { asObject, asText, CONFIG_FILE, fail } from './config-read.ts';
+import { type EnvPolicy, parseEnv } from './env.ts';
+
 const RUNNER_ENTRY = 'scripts/smokestack.ts';
 
 /** The version this runner introduces. It also accepts the one before; see ACCEPTED_VERSIONS. */
@@ -31,42 +34,18 @@ const CONFIG_VERSION = 1;
 const ACCEPTED_VERSIONS: readonly number[] = [CONFIG_VERSION];
 
 export interface Step {
+	/** What the step reads, for the step cache. Null: never replayed and never recorded. */
+	cache: null | StepCache;
 	description: string;
 	name: string;
 	run: string[];
 }
 
 export interface Config {
+	/** What a step is handed. Null: the runner's whole environment, as before (env.ts). */
+	env: EnvPolicy | null;
 	fast: null | Step[];
 	qc: Step[];
-}
-
-export class ConfigError extends Error {}
-
-function fail(message: string): never {
-	throw new ConfigError(`${CONFIG_FILE}: ${message}`);
-}
-
-function asObject(
-	raw: unknown,
-	where: string,
-	allowed: readonly string[],
-): Record<string, unknown> {
-	if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-		fail(`${where} must be an object.`);
-	}
-	const object = raw as Record<string, unknown>;
-	for (const key of Object.keys(object)) {
-		if (!allowed.includes(key)) fail(`${where} has an unknown key '${key}'.`);
-	}
-	return object;
-}
-
-function asText(raw: unknown, where: string): string {
-	if (typeof raw !== 'string' || raw.trim().length === 0) {
-		fail(`${where} must be a non-empty string.`);
-	}
-	return raw;
 }
 
 function asRun(raw: unknown, where: string): string[] {
@@ -90,7 +69,10 @@ function reachesRunner(name: string, scripts: Record<string, string>, seen: Set<
  * And no step may run the gate: it would start the gate inside itself, without end. That is
  * refused whether the step starts the runner's file itself or reaches it through package scripts.
  */
-function assertScriptExists(step: Step, scripts: null | Record<string, string>): void {
+function assertScriptExists(
+	step: Pick<Step, 'name' | 'run'>,
+	scripts: null | Record<string, string>,
+): void {
 	if (step.run.some((part) => part.replaceAll('\\', '/').endsWith(RUNNER_ENTRY))) {
 		fail(`step '${step.name}' runs ${RUNNER_ENTRY}, which is the gate itself.`);
 	}
@@ -109,10 +91,11 @@ function asSteps(raw: unknown, scripts: null | Record<string, string>): Step[] {
 	const list = qc['steps'];
 	if (!Array.isArray(list) || list.length === 0) fail('qc.steps must be a non-empty list.');
 	const seen = new Set<string>();
-	return list.map((item, index) => {
+	const steps = list.map((item, index) => {
 		const where = `qc.steps[${index}]`;
-		const object = asObject(item, where, ['description', 'name', 'run']);
+		const object = asObject(item, where, ['cache', 'description', 'name', 'run']);
 		const step: Step = {
+			cache: object['cache'] === undefined ? null : parseStepCache(object['cache'], where),
 			description: asText(object['description'], `${where}.description`),
 			name: asText(object['name'], `${where}.name`),
 			run: asRun(object['run'], `${where}.run`),
@@ -122,6 +105,8 @@ function asSteps(raw: unknown, scripts: null | Record<string, string>): Step[] {
 		assertScriptExists(step, scripts);
 		return step;
 	});
+	assertCacheCoverage(steps);
+	return steps;
 }
 
 function asReplacements(
@@ -139,7 +124,7 @@ function asReplacements(
 			name: asText(entry['name'], `${where}.name`),
 			run: asRun(entry['run'], `${where}.run`),
 		};
-		assertScriptExists({ ...replacement, description: '' }, scripts);
+		assertScriptExists(replacement, scripts);
 		replacements.set(replaced, replacement);
 	}
 	return replacements;
@@ -161,7 +146,9 @@ function asFast(raw: unknown, qc: Step[], scripts: null | Record<string, string>
 	const steps = names.map((name) => {
 		const full = byName.get(name) as Step;
 		const replacement = replacements.get(name);
-		return replacement === undefined ? full : { ...full, ...replacement };
+		// A substitute is other work in the step's place, so it never reads or writes the step's
+		// cache entry: its pass says nothing about what the full step would do.
+		return replacement === undefined ? full : { ...full, ...replacement, cache: null };
 	});
 	if (new Set(steps.map((step) => step.name)).size !== steps.length) {
 		fail('fast.replace gives two fast steps one name.');
@@ -177,7 +164,7 @@ export function parseConfig(text: string, scripts: null | Record<string, string>
 	} catch (err) {
 		fail(`is not JSON (${err instanceof Error ? err.message : String(err)}).`);
 	}
-	const root = asObject(raw, 'the file', ['fast', 'qc', 'version']);
+	const root = asObject(raw, 'the file', ['env', 'fast', 'qc', 'version']);
 	const version = root['version'];
 	if (typeof version !== 'number' || !ACCEPTED_VERSIONS.includes(version)) {
 		fail(
@@ -186,7 +173,7 @@ export function parseConfig(text: string, scripts: null | Record<string, string>
 		);
 	}
 	const qc = asSteps(root['qc'], scripts);
-	return { fast: asFast(root['fast'], qc, scripts), qc };
+	return { env: parseEnv(root['env']), fast: asFast(root['fast'], qc, scripts), qc };
 }
 
 /** Reads the config at `root`. A missing file is a ConfigError: nothing says what the gate is. */

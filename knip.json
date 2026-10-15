@@ -38,8 +38,14 @@
 	//   cannot be changed here without failing check:shared-core; whether they stay exported is
 	//   for the owner's gate. Exports only, and these two files only: an unused FILE in that
 	//   directory, an unused type, or an unused dependency is still reported.
+	// - cache-inputs.ts exports globFiles and gitInventory for the owner's
+	//   test/runner-cache-inputs.test.ts; its own production code calls both internally.
+	//   Exports only for this file, approved by Phillip at #11758 to #11756. Remove this and
+	//   the two runner entries above when smokestack's runner-exports-only-what-consumers-call
+	//   lands and is delivered; unused files, types and dependencies remain checked.
 	"ignoreIssues": {
 		"scripts/lib/shared-core/**": ["exports", "types"],
+		"scripts/lib/smokestack/cache-inputs.ts": ["exports"],
 		"scripts/lib/smokestack/config.ts": ["exports"],
 		"scripts/lib/smokestack/gate.ts": ["exports"]
 	},

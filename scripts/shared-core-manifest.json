@@ -185,7 +185,14 @@
 		{
 			"files": [
 				{ "disposition": "synced", "source": "scripts/smokestack.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/smokestack/cache-config.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/smokestack/cache-inputs.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/smokestack/cache-prettier.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/smokestack/cache-store.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/smokestack/cache.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/smokestack/config-read.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/smokestack/config.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/smokestack/env.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/smokestack/gate.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/smokestack/preflight.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/smokestack/spawn.ts" }

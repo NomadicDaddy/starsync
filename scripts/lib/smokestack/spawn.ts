@@ -25,6 +25,19 @@ function resolveProgram(program: string): string {
 	return program === 'bun' ? execPath : program;
 }
 
+/**
+ * With an allow-list (`env` given), the bun the runner starts is told not to load .env files, which
+ * would put keys the list does not name back into its environment. Only that bun: one a script
+ * starts loads them again, so with a list those files are keyed instead (env.ts, cache.ts).
+ */
+function argsFor(
+	program: string,
+	args: string[],
+	env: Record<string, string> | undefined,
+): string[] {
+	return program === 'bun' && env !== undefined ? ['--no-env-file', ...args] : args;
+}
+
 function stopTree(child: ChildProcess): void {
 	if (child.pid === undefined) return;
 	if (platform === 'win32') {
@@ -45,8 +58,15 @@ function stopTree(child: ChildProcess): void {
 /**
  * Runs `run` in `cwd` and resolves when it has ended. When `signal` aborts, the step and everything
  * it started are stopped and the result is `stopped`, whatever exit code the dying process gave.
+ * `env` is the whole environment the step is handed; undefined hands it this process's (env.ts),
+ * and only then does a bun the runner starts load .env files.
  */
-export function runProcess(run: string[], cwd: string, signal: AbortSignal): Promise<Ended> {
+export function runProcess(
+	run: string[],
+	cwd: string,
+	env: Record<string, string> | undefined,
+	signal: AbortSignal,
+): Promise<Ended> {
 	const [program, ...args] = run;
 	if (program === undefined) {
 		return Promise.resolve({ reason: 'the step has no program', state: 'could-not-start' });
@@ -56,9 +76,10 @@ export function runProcess(run: string[], cwd: string, signal: AbortSignal): Pro
 	return new Promise<Ended>((resolve) => {
 		let child: ChildProcess;
 		try {
-			child = spawn(resolveProgram(program), args, {
+			child = spawn(resolveProgram(program), argsFor(program, args, env), {
 				cwd,
 				detached: platform !== 'win32',
+				env,
 				stdio: ['ignore', 'inherit', 'inherit'],
 				windowsHide: true,
 			});

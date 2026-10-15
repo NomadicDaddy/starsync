@@ -9,8 +9,11 @@
  * runs nothing further, and is reported as an interruption with the count of steps that did not
  * run. It is never recorded as a failed step followed by more work.
  *
- * The summary counts what happened. A step is passed only when its process ended with 0.
+ * The summary counts what happened. A step is passed only when its process ended with 0, or when
+ * the step cache replays a pass recorded over the same key and inputs (cache.ts); a replay is
+ * counted with the passes and said to be one.
  */
+import type { CacheSession } from './cache.ts';
 import type { Step } from './config.ts';
 
 import { runProcess } from './spawn.ts';
@@ -27,6 +30,8 @@ export interface GateResult {
 	interrupted: boolean;
 	notRun: number;
 	passed: number;
+	/** Of the passed, how many were replayed from the cache. */
+	replayed: number;
 	selected: number;
 }
 
@@ -39,6 +44,10 @@ export interface Preflight {
 }
 
 export interface GateOptions {
+	/** Null when the config declares no cache: every step runs. */
+	cache: CacheSession | null;
+	/** What every step is handed; undefined for the runner's whole environment (env.ts). */
+	env: Record<string, string> | undefined;
 	mode: Mode;
 	preflight: null | Preflight;
 	root: string;
@@ -47,7 +56,8 @@ export interface GateOptions {
 }
 
 /**
- * Set in the runner's own environment before its first step, and so inherited by every step. A
+ * Set in the runner's own environment before its first step, and so handed to every step, whatever
+ * the config's `env.pass` lists (env.ts). A
  * runner that finds it set was started by a step of another run, and refuses: a step that runs the
  * gate starts the gate inside itself without end. The config reader refuses the spellings of that
  * it can recognise in text; this catches the rest, however the step reached the runner.
@@ -76,10 +86,19 @@ function reportPreflight(preflight: Preflight, result: GateResult): void {
 }
 
 async function runOne(step: Step, options: GateOptions, result: GateResult): Promise<void> {
+	const { cache } = options;
+	const assessed = cache === null || step.cache === null ? null : await cache.assess(step);
+	if (assessed?.replay === true) {
+		console.log(`[CACHED] ${step.name} (${assessed.reason})`);
+		result.passed += 1;
+		result.replayed += 1;
+		return;
+	}
 	console.log(`==> ${step.name}`);
 	console.log(`    ${step.run.join(' ')}`);
+	if (assessed !== null) console.log(`    cache: runs, ${assessed.reason}`);
 	const started = Date.now();
-	const ended = await runProcess(step.run, options.root, options.signal);
+	const ended = await runProcess(step.run, options.root, options.env, options.signal);
 	const took = seconds(Date.now() - started);
 	if (ended.state === 'stopped') {
 		result.interrupted = true;
@@ -89,15 +108,20 @@ async function runOne(step: Step, options: GateOptions, result: GateResult): Pro
 	if (ended.state === 'could-not-start') {
 		console.error(`[FAIL] ${step.name} (could not start: ${ended.reason})`);
 		result.failures.push({ detail: 'could not start', name: step.name });
+		if (assessed !== null) cache?.forget(step);
 		return;
 	}
 	if (ended.code !== 0) {
 		console.error(`[FAIL] ${step.name} (exit ${ended.code}) ${took}`);
 		result.failures.push({ detail: `exit ${ended.code}`, name: step.name });
+		if (assessed !== null) cache?.forget(step);
 		return;
 	}
 	console.log(`[PASS] ${step.name} ${took}`);
 	result.passed += 1;
+	if (cache !== null && assessed !== null && assessed.before !== null) {
+		console.log(`    cache: ${await cache.record(step, assessed.before)}`);
+	}
 }
 
 /** Runs the gate and prints each step. The summary is printed by `summarise`. */
@@ -108,6 +132,7 @@ export async function runGate(options: GateOptions): Promise<GateResult> {
 		interrupted: false,
 		notRun: 0,
 		passed: 0,
+		replayed: 0,
 		selected: steps.length + (preflight === null ? 0 : 1),
 	};
 	if (preflight !== null) reportPreflight(preflight, result);
@@ -141,8 +166,9 @@ export function exitCodeFor(result: GateResult): number {
 export function summarise(result: GateResult, mode: Mode, fullCount: number, ms: number): void {
 	const scope =
 		mode === 'fast' ? ` (fast subset of ${fullCount} qc steps, not the full gate)` : '';
+	const replayed = result.replayed > 0 ? ` (${result.replayed} replayed from the cache)` : '';
 	const counts =
-		`${result.selected} selected, ${result.passed} passed, ` +
+		`${result.selected} selected, ${result.passed} passed${replayed}, ` +
 		`${result.failures.length} failed, ${result.notRun} not run`;
 	if (result.interrupted) {
 		console.error(`smokestack: ${mode} INTERRUPTED${scope}: ${counts} (${seconds(ms)})`);
