@@ -162,7 +162,7 @@ function selfCheck(root: string, manifest: SharedCoreGroup[], lock: Lock | null)
 		console.warn(`[WARN] Behind: ${origin.behind}. Taking it is this repository's decision.`);
 	}
 	const verified = origin.state === 'verified' ? ', verified against that tag' : '';
-	console.log(
+	console.info(
 		`[OK] Shared core: ${files} file(s) in ${groups} group(s) match ${LOCK_FILE} at ` +
 			`${LOCK_OWNER} v${lock.version}${verified}.`,
 	);

@@ -33,14 +33,14 @@ export function reportClean(reports: GroupReport[], only?: Set<string>): number 
 	}
 
 	if (targets === 0) {
-		console.log(
+		console.info(
 			'[SKIP] Shared core: no peer repository is checked out beside this one, so there is ' +
 				'nothing to compare against.',
 		);
 		return 0;
 	}
 
-	console.log(
+	console.info(
 		`[OK] Shared core: no drift (${files} file(s) across ${targets} target(s) examined).`,
 	);
 	return 0;

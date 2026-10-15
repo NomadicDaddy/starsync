@@ -74,10 +74,10 @@ function seconds(ms: number): string {
 }
 
 function reportPreflight(preflight: Preflight, result: GateResult): void {
-	console.log(`==> ${preflight.name}`);
-	for (const line of preflight.lines) console.log(`    ${line}`);
+	console.info(`==> ${preflight.name}`);
+	for (const line of preflight.lines) console.info(`    ${line}`);
 	if (preflight.passed) {
-		console.log(`[PASS] ${preflight.name}`);
+		console.info(`[PASS] ${preflight.name}`);
 		result.passed += 1;
 		return;
 	}
@@ -89,14 +89,14 @@ async function runOne(step: Step, options: GateOptions, result: GateResult): Pro
 	const { cache } = options;
 	const assessed = cache === null || step.cache === null ? null : await cache.assess(step);
 	if (assessed?.replay === true) {
-		console.log(`[CACHED] ${step.name} (${assessed.reason})`);
+		console.info(`[CACHED] ${step.name} (${assessed.reason})`);
 		result.passed += 1;
 		result.replayed += 1;
 		return;
 	}
-	console.log(`==> ${step.name}`);
-	console.log(`    ${step.run.join(' ')}`);
-	if (assessed !== null) console.log(`    cache: runs, ${assessed.reason}`);
+	console.info(`==> ${step.name}`);
+	console.info(`    ${step.run.join(' ')}`);
+	if (assessed !== null) console.info(`    cache: runs, ${assessed.reason}`);
 	const started = Date.now();
 	const ended = await runProcess(step.run, options.root, options.env, options.signal);
 	const took = seconds(Date.now() - started);
@@ -117,10 +117,10 @@ async function runOne(step: Step, options: GateOptions, result: GateResult): Pro
 		if (assessed !== null) cache?.forget(step);
 		return;
 	}
-	console.log(`[PASS] ${step.name} ${took}`);
+	console.info(`[PASS] ${step.name} ${took}`);
 	result.passed += 1;
 	if (cache !== null && assessed !== null && assessed.before !== null) {
-		console.log(`    cache: ${await cache.record(step, assessed.before)}`);
+		console.info(`    cache: ${await cache.record(step, assessed.before)}`);
 	}
 }
 
@@ -175,7 +175,7 @@ export function summarise(result: GateResult, mode: Mode, fullCount: number, ms:
 		return;
 	}
 	if (result.failures.length === 0) {
-		console.log(`smokestack: ${mode} passed${scope}: ${counts} (${seconds(ms)})`);
+		console.info(`smokestack: ${mode} passed${scope}: ${counts} (${seconds(ms)})`);
 		return;
 	}
 	console.error(`smokestack: ${mode} FAILED${scope}: ${counts} (${seconds(ms)})`);

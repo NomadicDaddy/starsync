@@ -43,15 +43,15 @@ function order(findings: Finding[]): Finding[] {
 export function printReport(report: GroupReport): void {
 	const findings = order(report.findings);
 	const drift = findings.filter(isFatal).length;
-	console.log(
+	console.info(
 		`\n${report.group} (owner: ${report.owner}) — ${report.targets} target(s), ` +
 			`${report.matched} file(s) current, ${drift} drifted.`,
 	);
 	for (const finding of findings) {
 		const label = finding.kind === 'drift' ? 'DRIFT' : finding.kind.toUpperCase();
-		console.log(`  ${label.padEnd(19)} ${finding.target}: ${finding.detail}`);
+		console.info(`  ${label.padEnd(19)} ${finding.target}: ${finding.detail}`);
 	}
-	for (const skip of report.skipped) console.log(`  ${'SKIPPED'.padEnd(19)} ${skip}`);
+	for (const skip of report.skipped) console.info(`  ${'SKIPPED'.padEnd(19)} ${skip}`);
 }
 
 /**
@@ -79,10 +79,10 @@ export function reportCheck(
 	// What belongs to no group's comparison (lock-scope.ts), in a section of its own: a finding
 	// about a group that does not exist has no group report to sit under.
 	if (scope.length > 0) {
-		console.log(`\n${LOCK_FILE}, by repository — ${scope.length} finding(s) no group covers.`);
+		console.info(`\n${LOCK_FILE}, by repository — ${scope.length} finding(s) no group covers.`);
 		for (const finding of order(scope)) {
 			const label = finding.kind.toUpperCase().padEnd(19);
-			console.log(`  ${label} ${finding.target}: ${finding.detail}`);
+			console.info(`  ${label} ${finding.target}: ${finding.detail}`);
 		}
 	}
 
@@ -90,9 +90,9 @@ export function reportCheck(
 	const fatal = findings.filter(isFatal);
 	const uncovered = findings.filter((f) => f.kind === 'uncovered');
 
-	console.log('');
+	console.info('');
 	if (uncovered.length > 0) {
-		console.log(
+		console.info(
 			`${uncovered.length} file(s) absent. Where the write path has not reached a target yet ` +
 				'that is a rollout gap, not drift, and does not fail this check. An absent file ' +
 				"that a target's lock records as delivered is listed as LOST-DELIVERY, and does.",
@@ -170,7 +170,7 @@ export function reportWrite(
 	const verb = dryRun ? 'would write' : 'wrote';
 	const owned = reports.filter((report) => {
 		const refusal = ownershipRefusal(byName.get(report.group) as SharedCoreGroup, root);
-		if (refusal !== null) console.log(`\n${report.group} — not ours to write: ${refusal}.`);
+		if (refusal !== null) console.info(`\n${report.group} — not ours to write: ${refusal}.`);
 		return refusal === null;
 	});
 	const groups = owned.map((report) => byName.get(report.group) as SharedCoreGroup);
@@ -211,20 +211,20 @@ export function reportWrite(
 			(f) => f.kind !== 'stale-lock' && f.kind !== 'lost-delivery',
 		);
 
-		console.log(
+		console.info(
 			`\n${report.group} (owner: ${report.owner}) — ${verb} ${outcome.written.length} ` +
 				`file(s), ${outcome.blocked.length} refused, ${skipped.length} not writable.`,
 		);
 		for (const f of outcome.written)
-			console.log(`  ${verb.toUpperCase()} ${f.target}: ${f.detail}`);
-		for (const f of outcome.blocked) console.log(`  REFUSED     ${f.target}: ${f.detail}`);
-		for (const f of skipped) console.log(`  LEFT ALONE  ${f.target}: ${f.kind} — ${f.detail}`);
+			console.info(`  ${verb.toUpperCase()} ${f.target}: ${f.detail}`);
+		for (const f of outcome.blocked) console.info(`  REFUSED     ${f.target}: ${f.detail}`);
+		for (const f of skipped) console.info(`  LEFT ALONE  ${f.target}: ${f.kind} — ${f.detail}`);
 	}
 
 	const locks = writeLocks(plan, outcomes, groups, delivery, dryRun, deliveries ?? {});
-	if (plan.targets.length > 0) console.log(`\n${LOCK_FILE}`);
-	for (const directory of locks.written) console.log(`  ${verb.toUpperCase()} ${directory}`);
-	for (const reason of locks.withheld) console.log(`  WITHHELD    ${reason}`);
+	if (plan.targets.length > 0) console.info(`\n${LOCK_FILE}`);
+	for (const directory of locks.written) console.info(`  ${verb.toUpperCase()} ${directory}`);
+	for (const reason of locks.withheld) console.info(`  WITHHELD    ${reason}`);
 	// The record follows the locks this run settled, and no others: a lock withheld keeps the
 	// entry of its last good delivery, and a target outside an --only narrowing is not touched.
 	//
@@ -247,13 +247,13 @@ export function reportWrite(
 			section[directory] = { ...entry, groups: { ...before?.groups, ...entry.groups } };
 		}
 		if (writeDeliveries(root, fleetRoot, section)) {
-			console.log(`\n${DELIVERIES_FILE}: recorded ${[...locks.settled.keys()].join(', ')}`);
+			console.info(`\n${DELIVERIES_FILE}: recorded ${[...locks.settled.keys()].join(', ')}`);
 		}
 	}
 
 	const wrote = [...outcomes.values()].reduce((sum, o) => sum + o.written.length, 0);
 	const blocked = [...outcomes.values()].reduce((sum, o) => sum + o.blocked.length, 0);
-	console.log('');
+	console.info('');
 	if (blocked > 0) {
 		console.error(
 			`[FAIL] Refused to write ${blocked} file(s) with uncommitted changes in the target ` +
@@ -267,7 +267,7 @@ export function reportWrite(
 		);
 	}
 	if (blocked > 0 || locks.withheld.length > 0) return 1;
-	console.log(
+	console.info(
 		dryRun
 			? `[OK] Dry run: ${wrote} file(s) and ${locks.written.length} lock(s) would change.`
 			: `[OK] Wrote ${wrote} file(s) and ${locks.written.length} lock(s).`,

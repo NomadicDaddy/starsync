@@ -133,12 +133,12 @@ function selectGroups(groups: SharedCoreGroup[], names: string[]): SharedCoreGro
 
 export function runSharedCoreSync(options: SharedCoreOptions): number {
 	if (options.help) {
-		console.log(USAGE);
+		console.info(USAGE);
 		return 0;
 	}
 	if (!options.check && !options.write) {
-		console.log('Nothing to do: pass --check or --write.');
-		console.log(USAGE);
+		console.info('Nothing to do: pass --check or --write.');
+		console.info(USAGE);
 		return 0;
 	}
 
@@ -154,7 +154,7 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 	// --fleet-root holds no copy of it, and the one on disk here is what a write delivers from.
 	const fleetRoot = options.fleetRoot === undefined ? dirname(root) : resolve(options.fleetRoot);
 	const groups = selectGroups(manifest, options.groups);
-	console.log(describeRoots(fleetRoot, loadFleetRoots(fleetRoot)));
+	console.info(describeRoots(fleetRoot, loadFleetRoots(fleetRoot)));
 
 	// The owner's own record of what it delivered under this fleet root (lib/shared-core/
 	// deliveries.ts). One that cannot be read is exit 2: nothing was learned. One that is not there

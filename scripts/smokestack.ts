@@ -80,16 +80,16 @@ async function cacheStatus(
 	cache: CacheSession | null,
 	env: EnvPolicy | null,
 ): Promise<void> {
-	console.log(`smokestack: ${mode}, ${steps.length} step(s), cache status, nothing run`);
-	console.log(describeEnv(env));
-	if (cache?.storeNote) console.log(cache.storeNote);
+	console.info(`smokestack: ${mode}, ${steps.length} step(s), cache status, nothing run`);
+	console.info(describeEnv(env));
+	if (cache?.storeNote) console.info(cache.storeNote);
 	for (const step of steps) {
 		const assessed =
 			cache === null || step.cache === null
 				? { reason: 'no cache declared', replay: false }
 				: await cache.assess(step);
 		const verdict = assessed.replay ? 'would-replay' : 'would-run';
-		console.log(`${step.name}\t${verdict}\t${assessed.reason}`);
+		console.info(`${step.name}\t${verdict}\t${assessed.reason}`);
 	}
 }
 
@@ -102,9 +102,9 @@ function selectSteps(config: Config, mode: Mode): Step[] {
 }
 
 function list(steps: Step[], mode: Mode, env: EnvPolicy | null): void {
-	console.log(`smokestack: ${mode}, ${steps.length} step(s), nothing run`);
-	console.log(describeEnv(env));
-	for (const step of steps) console.log(`${step.name}\t${step.run.join(' ')}`);
+	console.info(`smokestack: ${mode}, ${steps.length} step(s), nothing run`);
+	console.info(describeEnv(env));
+	for (const step of steps) console.info(`${step.name}\t${step.run.join(' ')}`);
 }
 
 /** Runs the gate for the repository at `root`. `signal` stops it; see gate.ts. */
@@ -157,11 +157,13 @@ export async function runSmokestack(
 	}
 	process.env[GATE_MARK] = '1';
 
-	console.log(`smokestack ${stand.version}: ${mode}, ${steps.length} step(s)`);
+	console.info(`smokestack ${stand.version}: ${mode}, ${steps.length} step(s)`);
 	if (stand.preflight === null) {
-		console.log('This repository is the owner of what it would check itself against; no lock.');
+		console.info(
+			'This repository is the owner of what it would check itself against; no lock.',
+		);
 	}
-	if (cache?.storeNote) console.log(cache.storeNote);
+	if (cache?.storeNote) console.info(cache.storeNote);
 	const started = Date.now();
 	// After the mark is set: a step's environment is built with it (env.ts).
 	const env = childEnv(config.env);
