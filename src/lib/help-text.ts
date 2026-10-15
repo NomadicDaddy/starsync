@@ -80,7 +80,8 @@ Options:
                     removed (default: 1GB). Accepts a byte count or a B, KB, MB, GB, or
                     TB suffix (KiB, MiB, GiB, TiB are accepted as the same binary
                     multiples); --min-free-space=0 disables the check. Read-only
-                    verification writes nothing and never measures.
+                    verification preserves checkout content and never measures;
+                    read-only operations and previews still use a transient operation lock.
 
 Environment:
   GITHUB_TOKEN      Required with --force for GitHub archives.

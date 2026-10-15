@@ -107,7 +107,8 @@ _Avoid_: Mirror
   shortfall without refusing. The minimum is a starting reserve, not a guarantee that the run has
   room to finish.
 - Forced verification takes the same reserve, since it clones replacements; read-only verification
-  writes nothing and never measures.
+  preserves checkout content and never measures free space. Read-only operations and previews still
+  create and remove transient operation-lock metadata.
 - A currently starred repository has an **Active Checkout** after addition.
 - An unstarred repository becomes a **Retained Checkout** and becomes active again if re-starred.
 - A **Refresh** preserves available branches, tags, and previously retained history.

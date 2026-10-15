@@ -197,7 +197,7 @@ Because forced recovery clones, it takes the same startup reserve as `sync`: aft
 before any checkout is replaced, StarSync measures the free space on the filesystem holding the
 target and refuses below the minimum. The default is 1GB, `--min-free-space=SIZE` sets another one
 with the same size grammar `sync` accepts, and `--min-free-space=0` turns the check off. Read-only
-`verify` writes nothing and never measures.
+`verify` preserves checkout content and never measures free space. It still uses the operation lock.
 
 ### rename
 
@@ -222,10 +222,12 @@ committer time reachable across all local Git references and aligns the folder t
 
 ### unlock
 
-Every archive operation except lock recovery uses `.starsync/operation-lock.json`. StarSync
-reclaims a same-host lock only after confirming its process is dead. Remote or uncertain ownership
-requires `unlock --force`, which still refuses to remove a lock owned by a confirmed live local
-process.
+Every archive operation except lock recovery uses `.starsync/operation-lock.json`, including
+read-only verification and previews. They create and remove transient coordination metadata;
+read-only describes preservation of checkout content, not an absence of filesystem writes.
+StarSync reclaims a same-host lock only after confirming its process is dead. Remote or uncertain
+ownership requires `unlock --force`, which still refuses to remove a lock owned by a confirmed live
+local process.
 
 ## Reporting and exit codes
 

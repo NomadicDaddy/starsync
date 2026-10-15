@@ -57,7 +57,7 @@ const prepareVerifyContext = (options: VerifyArchiveOptions): CommandReport | Ve
  * Gates forced repair on the free space its re-clones need, after the abandoned
  * owned artifacts have been cleared: that cleanup can be the reason the archive is
  * short, so measuring first would refuse a run that had already freed what it
- * needed. Read-only verification never reaches this, because it writes nothing.
+ * needed. Read-only verification never reaches this, because it does not re-clone.
  */
 const checkRepairFreeSpace = (
 	context: VerifyContext,
@@ -164,7 +164,7 @@ export const verifyArchiveUnlocked = async (
 	options.onProgress?.(
 		context.force
 			? 'Forced recovery is enabled; damaged or locally modified checkouts will be replaced with validated fresh clones.'
-			: 'Verification is read-only; no archive data will be changed.',
+			: 'Verification preserves checkout content; a transient operation lock is used.',
 	);
 	try {
 		return await runVerification(options, context, held);

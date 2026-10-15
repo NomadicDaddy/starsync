@@ -25,6 +25,11 @@ reporting and identity types.
 
 ## Implementation
 
+The Bun-only statement above records the decision on July 23. The August 3 distribution
+contract extended the CLI and programmatic API to Node.js 24 or later: both published bundles
+target Node, and declarations resolve for NodeNext and bundler consumers. Bun remains the
+development package manager and test runner. This extension preserves the shared command API.
+
 - [`src/index.ts`](../../src/index.ts) is the supported package entry point.
 - [`src/lib/archive-api.ts`](../../src/lib/archive-api.ts) implements `initArchive`,
   `syncArchive`, `verifyArchive`, `renameArchive`, and `normalizeArchiveDates`.
