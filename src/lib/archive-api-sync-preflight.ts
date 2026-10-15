@@ -71,7 +71,7 @@ export const validateSyncOptions = (options: SyncArchiveOptions): CommandReport 
 };
 
 /**
- * A dry run reports a shortfall without failing, because a preview writes nothing
+ * A dry run reports a shortfall without failing, because a preview does not clone
  * and the operator still needs to see what a real run would hit.
  */
 const checkSyncFreeSpace = (context: SyncContext): Finding | null =>

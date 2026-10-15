@@ -119,7 +119,7 @@ export const renameArchiveUnlocked = async (
 	options.onProgress?.(
 		context.apply
 			? 'Applying canonical checkout renames.'
-			: 'Rename preview is read-only; no archive data will be changed.',
+			: 'Rename preview preserves checkout content; a transient operation lock is used.',
 	);
 	try {
 		const validation = await validateApplication(context, options.token);
