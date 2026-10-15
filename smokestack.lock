@@ -1,5 +1,5 @@
 {
-	"commit": "5eaefdc13fa89940bda4e28ba3bb0f2fac209167",
+	"commit": "58b7632e67b0f21c91d8a817de8f155beff62631",
 	"groups": {
 		"leak-guard-hooks": {
 			"files": {
@@ -93,7 +93,7 @@
 				},
 				"scripts/lib/smokestack/cache-inputs.ts": {
 					"mode": "100644",
-					"sha256": "b262f95650955cfdefda1bc3d643efc7587d33b6e4757b72be0a95e763c28756"
+					"sha256": "9af39f81f64f4826e3d500b5157f5c16a3edcd0f2efdf8accd533b663d90f1d8"
 				},
 				"scripts/lib/smokestack/cache-prettier.ts": {
 					"mode": "100644",
@@ -113,7 +113,7 @@
 				},
 				"scripts/lib/smokestack/config.ts": {
 					"mode": "100644",
-					"sha256": "cc8616b5675ceb63133e3f18e7af7c7a99a83e90f95c302291726fde6e93e251"
+					"sha256": "95adce90e9f9107a0ee2e7d8e67078a7828bdb379c2953fdd15419f3c439c68f"
 				},
 				"scripts/lib/smokestack/env.ts": {
 					"mode": "100644",
@@ -121,7 +121,7 @@
 				},
 				"scripts/lib/smokestack/gate.ts": {
 					"mode": "100644",
-					"sha256": "ce2ec326b0301b3080502a7ce5a76a1ffa096dc62636625967d366bcfe32f92f"
+					"sha256": "9ce237213b97d8c1797472378f52b5a61280a9902a296b7466fcc93c477d28d6"
 				},
 				"scripts/lib/smokestack/preflight.ts": {
 					"mode": "100644",
@@ -247,5 +247,5 @@
 		}
 	},
 	"owner": "smokestack",
-	"version": "0.5.1"
+	"version": "0.5.2"
 }

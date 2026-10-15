@@ -67,7 +67,7 @@ export const GATE_MARK = 'SMOKESTACK_GATE_RUNNING';
 /** Exit codes. 2 is reserved for a run that could not start, decided before this module. */
 const EXIT_PASSED = 0;
 const EXIT_FAILED = 1;
-export const EXIT_INTERRUPTED = 130;
+const EXIT_INTERRUPTED = 130;
 
 function seconds(ms: number): string {
 	return `${(ms / 1000).toFixed(1)}s`;

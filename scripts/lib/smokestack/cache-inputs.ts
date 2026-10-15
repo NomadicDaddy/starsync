@@ -34,13 +34,13 @@ function isFile(path: string): boolean {
  * The files a pattern matches. `**` does not walk into a dot-directory unless the pattern names
  * it, as in a shell: `.githooks/*` reaches `.githooks/`, a pattern starting with `**` does not.
  */
-export function globFiles(root: string, pattern: string): string[] {
+function globFiles(root: string, pattern: string): string[] {
 	const found = new Bun.Glob(pattern).scanSync({ cwd: root, onlyFiles: true });
 	return [...found].map((path) => path.split(sep).join('/'));
 }
 
 /** Every tracked file and every untracked one git does not ignore, that is on disk now. */
-export function gitInventory(root: string): string[] {
+function gitInventory(root: string): string[] {
 	const run = Bun.spawnSync(
 		['git', '-C', root, 'ls-files', '--cached', '--others', '--exclude-standard', '-z'],
 		{ stderr: 'pipe', stdout: 'pipe', windowsHide: true },

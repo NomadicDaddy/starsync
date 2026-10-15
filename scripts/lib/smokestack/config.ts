@@ -157,7 +157,7 @@ function asFast(raw: unknown, qc: Step[], scripts: null | Record<string, string>
 }
 
 /** Parses and validates the text of a config. `scripts` is the repository's package.json scripts. */
-export function parseConfig(text: string, scripts: null | Record<string, string>): Config {
+function parseConfig(text: string, scripts: null | Record<string, string>): Config {
 	let raw: unknown;
 	try {
 		raw = JSON.parse(text);
