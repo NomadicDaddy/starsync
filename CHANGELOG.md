@@ -32,6 +32,8 @@ All notable changes to this project will be documented in this file. Format foll
 - Knip discovers package-script entry points itself, so deleting a script can expose its
   orphaned file. Formatting checks now cover `knip.json`, and its CLI discovery explanation
   names the `start` and `sync` scripts that actually reach the source entry point.
+- The delivered runner keeps test-only helpers private, removing the need for its three
+  temporary Knip export exemptions.
 
 ### Security
 

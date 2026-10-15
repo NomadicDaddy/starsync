@@ -31,23 +31,8 @@
 	//   owner repository and re-synced; local edits would fail check:shared-core. Tracked by
 	//   audit-dead-code-1786640825-spernakit-owned-shared-core-helpers-expose-five-unused-exports.
 	//   Enforcement for this directory belongs to the owner's own gates.
-	// - scripts/lib/smokestack/config.ts and scripts/lib/smokestack/gate.ts are byte-synced owner
-	//   files too (group runner, owner smokestack). Each exports one name that this repository does
-	//   not use and the owner's own tests do: parseConfig is imported by the owner's
-	//   test/runner-config.test.ts, and EXIT_INTERRUPTED by its test/runner-interrupt.test.ts. They
-	//   cannot be changed here without failing check:shared-core; whether they stay exported is
-	//   for the owner's gate. Exports only, and these two files only: an unused FILE in that
-	//   directory, an unused type, or an unused dependency is still reported.
-	// - cache-inputs.ts exports globFiles and gitInventory for the owner's
-	//   test/runner-cache-inputs.test.ts; its own production code calls both internally.
-	//   Exports only for this file, approved by Phillip at #11758 to #11756. Remove this and
-	//   the two runner entries above when smokestack's runner-exports-only-what-consumers-call
-	//   lands and is delivered; unused files, types and dependencies remain checked.
 	"ignoreIssues": {
-		"scripts/lib/shared-core/**": ["exports", "types"],
-		"scripts/lib/smokestack/cache-inputs.ts": ["exports"],
-		"scripts/lib/smokestack/config.ts": ["exports"],
-		"scripts/lib/smokestack/gate.ts": ["exports"]
+		"scripts/lib/shared-core/**": ["exports", "types"]
 	},
 	"project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
 }
