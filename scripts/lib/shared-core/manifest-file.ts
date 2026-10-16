@@ -1,7 +1,30 @@
+import { posix } from 'node:path';
+
 import type { SharedCoreFile } from './manifest.ts';
 
 function fail(message: string): never {
 	throw new Error(`shared-core-manifest.json: ${message}`);
+}
+
+/**
+ * Refuses a path a lock could not hold. Every manifest path ends up in a lock key, and the lock
+ * reader rejects a key with a backslash, so a path accepted here would produce a lock its own
+ * reader calls corrupt. Absolute and `..` paths would reach outside the repository, and an
+ * unnormalized one would key the same file twice. A root may be `.`.
+ */
+export function assertLockablePath(value: string, where: string): void {
+	const reason = unlockableReason(value);
+	if (reason !== null) fail(`${where} path '${value}' ${reason}; use a relative path with /.`);
+}
+
+function unlockableReason(value: string): null | string {
+	if (value.includes('\\')) return 'contains a backslash';
+	if (posix.isAbsolute(value) || /^[A-Za-z]:/u.test(value)) return 'is absolute';
+	if (value.split('/').includes('..')) return 'leaves the repository with ..';
+	if (posix.normalize(value) !== value || value.endsWith('/')) {
+		return `is not in normal form (${posix.normalize(value)})`;
+	}
+	return null;
 }
 
 /** Reads one file entry of a group from the manifest's raw JSON. Throws on anything unverifiable. */
@@ -42,6 +65,11 @@ export function asFile(raw: unknown, where: string): SharedCoreFile {
 	const target = file['target'];
 	if (target !== undefined && (typeof target !== 'string' || target.length === 0)) {
 		fail(`${where} target must be a non-empty string when present.`);
+	}
+	assertLockablePath(source, `${where} source`);
+	if (typeof target === 'string') assertLockablePath(target, `${where} target`);
+	if (typeof fallbackSource === 'string') {
+		assertLockablePath(fallbackSource, `${where} fallbackSource`);
 	}
 
 	return {

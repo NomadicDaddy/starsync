@@ -15,7 +15,13 @@ import { join } from 'node:path';
 import type { Finding } from './check.ts';
 import type { SharedCoreFile, SharedCoreGroup } from './manifest.ts';
 
-import { dispatcherBody, hooksPath, invokes } from './dispatch.ts';
+import {
+	dispatcherBody,
+	executableShell,
+	hooksPath,
+	invokes,
+	namesTargetRoot,
+} from './dispatch.ts';
 import { readShared, sourcesOf } from './owner.ts';
 
 /**
@@ -50,7 +56,8 @@ export interface Dispatch {
 
 export function readDispatch(group: SharedCoreGroup, targetPath: string): Dispatch {
 	const configured = group.hook === undefined ? '' : hooksPath(targetPath);
-	const dispatches = group.hook === undefined || configured === group.targetRoot;
+	const dispatches =
+		group.hook === undefined || namesTargetRoot(targetPath, configured, group.targetRoot);
 	const foreign = dispatches
 		? null
 		: dispatcherBody(targetPath, configured, group.hook as string);
@@ -106,7 +113,9 @@ export function standingOf(
 	const conditional = name === group.hook || chained.has(name);
 	if (dispatch.unguarded) return conditional ? 'unguarded' : 'applies';
 	if (name === group.hook) return 'unmanaged-dispatch';
-	if (chained.has(name) && !invokes(dispatch.foreign ?? '', name)) return 'not-applicable';
+	if (chained.has(name) && !invokes(executableShell(dispatch.foreign ?? ''), name)) {
+		return 'not-applicable';
+	}
 	return 'applies';
 }
 

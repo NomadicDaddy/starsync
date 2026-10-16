@@ -14,7 +14,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { asFile } from './manifest-file.ts';
+import { asFile, assertLockablePath } from './manifest-file.ts';
 import { asRequires, assertRequirements } from './requires.ts';
 
 /**
@@ -158,6 +158,7 @@ function asGroup(raw: unknown, index: number): SharedCoreGroup {
 		if (typeof group[key] !== 'string' || (group[key] as string).length === 0) {
 			fail(`${where} needs a non-empty ${key}.`);
 		}
+		assertLockablePath(group[key] as string, `${where} ${key}`);
 	}
 	const rawFiles = group['files'];
 	if (!Array.isArray(rawFiles) || rawFiles.length === 0) {

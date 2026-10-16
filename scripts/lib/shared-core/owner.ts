@@ -9,7 +9,7 @@
  * check.ts compares a target against the owner; this file never opens a target at all.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, join, posix } from 'node:path';
 
 import type { SharedCoreFile, SharedCoreGroup } from './manifest.ts';
 
@@ -82,6 +82,43 @@ export function generationReader(
  */
 export function sourcesOf(file: SharedCoreFile): string[] {
 	return file.fallbackSource === undefined ? [file.source] : [file.source, file.fallbackSource];
+}
+
+/**
+ * Why a write from `ownerRoot` would deliver bytes its tag does not hold, or null. The tag check
+ * covers tracked files only, so a source the manifest names that exists on disk but was never
+ * committed would be delivered from the working tree. Every variant counts, as in
+ * `assertSourcesExist`.
+ */
+export function untrackedSourcesRefusal(
+	groups: SharedCoreGroup[],
+	ownerRoot: string,
+): null | string {
+	const sources = [
+		...new Set(
+			groups.flatMap((group) =>
+				group.files
+					.flatMap(sourcesOf)
+					.map((source) => posix.join(group.sourceRoot, source)),
+			),
+		),
+	];
+	if (sources.length === 0) return null;
+	// -z: without it git quotes a name holding non-ASCII or control characters, and a tracked file
+	// would then read as untracked.
+	const listed = Bun.spawnSync(['git', '-C', ownerRoot, 'ls-files', '-z', '--', ...sources], {
+		stderr: 'pipe',
+		stdout: 'pipe',
+		windowsHide: true,
+	});
+	if (listed.exitCode !== 0) return 'git could not list the tracked source files';
+	const tracked = new Set(listed.stdout.toString().split('\0'));
+	const untracked = sources.filter((source) => !tracked.has(source));
+	if (untracked.length === 0) return null;
+	return (
+		`${untracked.length} source file(s) the manifest names are not tracked, so the tag does ` +
+		`not hold them: ${untracked.join(', ')}`
+	);
 }
 
 /** Picks the variant a target can actually run, from the scripts its package.json defines. */

@@ -116,6 +116,7 @@ export function checkGroup(
 		targets: 0,
 	};
 
+	const skipReasons = new Map<string, string>();
 	for (const target of resolveTargets(group, fleetRoot, ownerRoot, only)) {
 		const scripts = readScripts(target.path);
 		// A skipped target produces no findings, and the write path takes its worklist from findings,
@@ -124,6 +125,7 @@ export function checkGroup(
 		const skip = skipReason(group, target, scripts);
 		if (skip !== null) {
 			report.skipped.push(`${target.directory} (${skip})`);
+			skipReasons.set(target.directory, skip);
 			continue;
 		}
 		assertPackageIdentity(target);
@@ -223,7 +225,7 @@ export function checkGroup(
 
 	// A repository the record says was delivered this group, and which was not reached above.
 	report.findings.push(
-		...departedFindings(group, deliveries, fleetRoot, report.reached, report.skipped, only),
+		...departedFindings(group, deliveries, fleetRoot, report.reached, skipReasons, only),
 	);
 	return report;
 }

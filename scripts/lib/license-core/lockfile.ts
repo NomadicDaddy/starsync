@@ -47,11 +47,23 @@ interface QueueEntry {
 	optional: boolean;
 }
 
+/**
+ * A JSON string token, or a trailing comma with the bracket or brace that follows it. Strings are
+ * matched first and kept whole, so a comma inside a value such as `"a, ]"` is never taken for a
+ * trailing one; only the second alternative, which can match only outside a string, is rewritten.
+ */
+const STRING_OR_TRAILING_COMMA = /"(?:[^"\\]|\\.)*"|,(\s*[}\]])/g;
+
 function parseLockfile(text: string): {
 	packages: Record<string, unknown>;
 	workspaces: Record<string, unknown>;
 } {
-	const parsed = JSON.parse(text.replace(/,(\s*[}\]])/g, '$1')) as Record<string, unknown>;
+	// bun.lock is JSON with trailing commas, which JSON.parse rejects.
+	const json = text.replace(
+		STRING_OR_TRAILING_COMMA,
+		(token: string, closer: string | undefined) => closer ?? token,
+	);
+	const parsed = JSON.parse(json) as Record<string, unknown>;
 	return {
 		packages: (parsed.packages ?? {}) as Record<string, unknown>,
 		workspaces: (parsed.workspaces ?? {}) as Record<string, unknown>,

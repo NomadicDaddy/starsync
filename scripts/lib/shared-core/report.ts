@@ -17,6 +17,7 @@ import { type Finding, type GroupReport, isFatal } from './check.ts';
 import { deliveredBy, type Deliveries, DELIVERIES_FILE, writeDeliveries } from './deliveries.ts';
 import { type Delivery, planLocks, tagStanding, writeLocks } from './lock-write.ts';
 import { LOCK_FILE } from './lock.ts';
+import { untrackedSourcesRefusal } from './owner.ts';
 import { reportClean } from './vacuity.ts';
 import { applyFindings, ownershipRefusal, type WriteOutcome } from './write.ts';
 
@@ -178,7 +179,10 @@ export function reportWrite(
 	// Both refusals below come before the first file, so a refused write has written nothing.
 	let delivery: Delivery | null = null;
 	if (owned.length > 0) {
-		const standing = tagStanding(root);
+		const tagged = tagStanding(root);
+		const untracked = untrackedSourcesRefusal(groups, root);
+		const standing =
+			'delivery' in tagged && untracked !== null ? { refusal: untracked } : tagged;
 		if ('delivery' in standing) delivery = standing.delivery;
 		else if (dryRun) {
 			console.warn(`[WARN] A write from here would be refused: ${standing.refusal}.`);

@@ -35,7 +35,12 @@ export function skipReason(
 
 	const declined = declineReason(target.path);
 	if (declined !== null) return `declines: ${declined}`;
-	if (group.requiresPackageJson === true && scripts === null) return 'no package.json';
+	if (group.requiresPackageJson === true && scripts === null) {
+		// readScripts gives null for both, and they want different fixes.
+		return existsSync(join(target.path, 'package.json'))
+			? 'package.json is not valid JSON'
+			: 'no package.json';
+	}
 	return null;
 }
 
@@ -52,7 +57,16 @@ export function assertPackageIdentity(target: Target): void {
 	const manifest = join(target.path, 'package.json');
 	if (!existsSync(manifest)) return;
 
-	const name = (JSON.parse(readFileSync(manifest, 'utf8')) as { name?: string }).name;
+	let name: string | undefined;
+	try {
+		name = (JSON.parse(readFileSync(manifest, 'utf8')) as { name?: string }).name;
+	} catch (err) {
+		// Unguarded, the parse error named no repository and stopped the whole sweep.
+		const reason = err instanceof Error ? err.message : String(err);
+		throw new Error(`${target.directory}: package.json is not valid JSON (${reason}).`, {
+			cause: err,
+		});
+	}
 	if (name !== target.packageName) {
 		throw new Error(
 			`${target.directory}: expected package ${target.packageName}, found ${name ?? 'none'}.`,

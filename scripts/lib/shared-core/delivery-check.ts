@@ -193,14 +193,16 @@ export function heldToRecord(
 
 /**
  * The recorded repositories this group did not reach on this run: gone, renamed, moved, or no
- * longer taking the group. `reached` and `skipped` are the group's report so far.
+ * longer taking the group. `reached` is the group's report so far, and `skipReasons` the reason
+ * for each skipped directory, keyed exactly: matching a formatted "<directory> (" prefix let a
+ * sibling named "<directory> (old)" lend its reason to the wrong repository.
  */
 export function departedFindings(
 	group: SharedCoreGroup,
 	deliveries: Deliveries,
 	fleetRoot: string,
 	reached: string[],
-	skipped: string[],
+	skipReasons: Map<string, string>,
 	only?: Set<string>,
 ): Finding[] {
 	const findings: Finding[] = [];
@@ -208,12 +210,12 @@ export function departedFindings(
 		if (entry.groups[group.name] === undefined || reached.includes(directory)) continue;
 		if (only !== undefined && !only.has(directory)) continue;
 
-		const skip = skipped.find((line) => line.startsWith(`${directory} (`));
+		const skip = skipReasons.get(directory);
 		let now = 'this group no longer reaches it';
 		if (!existsSync(join(fleetRoot, directory))) {
 			now = 'no repository is at that directory now (removed, renamed or moved)';
 		} else if (skip !== undefined) {
-			now = `it is now skipped: ${skip.slice(directory.length + 1)}`;
+			now = `it is now skipped: (${skip})`;
 		}
 		findings.push({
 			detail: `v${entry.version} was delivered here, and ${now}. ${forget(directory, group.name)}`,

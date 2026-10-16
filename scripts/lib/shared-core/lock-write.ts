@@ -2,9 +2,11 @@
  * The two things a write owes a lock: a tagged version to name, and the lock itself.
  *
  * A TAG, because a lock that names a version has to name something that can be found again. A write
- * is made only while the owner's HEAD is exactly the annotated tag `v<package.json version>` and no
- * tracked file is modified or staged, so the bytes delivered are the bytes that commit holds.
- * Untracked files do not block it: they are not in the commit and are not delivered. The tag is cut
+ * is made only while the owner's HEAD is exactly the annotated tag `v<package.json version>`, no
+ * tracked file is modified or staged, and every source file the manifest names is tracked, so the
+ * bytes delivered are the bytes that commit holds. A source that exists on disk but was never
+ * committed would otherwise be delivered from the working tree and its lock read as forged against
+ * the tag. Other untracked files do not block it: nothing delivers them. The tag is cut
  * before the write and before any target's gate has run on those bytes, so it marks a delivery, not
  * a verified one.
  *

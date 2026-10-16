@@ -75,7 +75,7 @@ b64_run="$(printf 'A%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 
 [ "$(run_guard "$synthetic" "\"tlsKey\": \"${pem_header}\\n...\"")" = 0 ] || fail 'PEM placeholder in docs was blocked'
 
 # 4. Home-directory path (runtime-built backslashes) is blocked.
-bs="$(printf '\\')"
+bs="$(printf '\134')"
 win_path="C:${bs}Users${bs}someone${bs}project"
 [ "$(run_guard "$synthetic" "path=$win_path")" = 1 ] || fail 'home-directory path was not blocked'
 
@@ -111,6 +111,7 @@ run_guard_registry() {
 	printf '\r\nHKEY_CURRENT_USER\\Environment\r\n    LEAK_GUARD_PATTERNS    REG_SZ    %s\r\n\r\n' "$1" >"$tmp/reg-answer"
 	local code=0
 	(
+		# shellcheck disable=SC2317 # exported with export -f; the guard calls it in a child bash
 		reg.exe() { cat "$tmp/reg-answer"; }
 		export -f reg.exe
 		export tmp
@@ -126,6 +127,7 @@ printf '%s\n' 'mentions zzz-synthetic-app somewhere' >"$guard_repo/staged.txt"
 git -C "$guard_repo" add staged.txt
 printf '\r\nHKEY_CURRENT_USER\\Environment\r\n    LEAK_GUARD_PATTERNS    REG_SZ    %s\r\n\r\n' "$synthetic" >"$tmp/reg-answer"
 (
+	# shellcheck disable=SC2317 # exported with export -f; the guard calls it in a child bash
 	reg.exe() { cat "$tmp/reg-answer"; }
 	export -f reg.exe
 	export tmp
@@ -141,6 +143,7 @@ code=0
 printf '%s\n' 'plain harmless content' >"$guard_repo/staged.txt"
 git -C "$guard_repo" add staged.txt
 (
+	# shellcheck disable=SC2317 # exported with export -f; the guard calls it in a child bash
 	reg.exe() { return 1; }
 	export -f reg.exe
 	cd "$guard_repo" && env -u LEAK_GUARD_PATTERNS HOME="$tmp/empty-home" bash .githooks/leak-guard.sh

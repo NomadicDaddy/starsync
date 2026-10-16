@@ -167,11 +167,16 @@ function newer(a: number[], b: number[]): boolean {
 	return false;
 }
 
+/** Thrown when git cannot list the owner's tags, which is not the same as there being none. */
+class TagListUnreadable extends Error {}
+
 /** The owner's highest version tag above `version`, or null when the lock is at the newest. */
 function newestTagAbove(ownerRoot: string, version: string): null | string {
 	const mine = versionOf(`v${version}`) ?? [];
 	let newest: null | string = null;
-	for (const tag of (git(ownerRoot, ['tag', '--list', 'v*'])?.toString() ?? '').split('\n')) {
+	const listed = git(ownerRoot, ['tag', '--list', 'v*']);
+	if (listed === null) throw new TagListUnreadable(`git could not read the tags in ${ownerRoot}`);
+	for (const tag of listed.toString().split('\n')) {
 		const candidate = versionOf(tag.trim());
 		if (candidate === null || !newer(candidate, mine)) continue;
 		if (newest === null || newer(candidate, versionOf(newest) ?? [])) newest = tag.trim();
@@ -179,8 +184,21 @@ function newestTagAbove(ownerRoot: string, version: string): null | string {
 	return newest;
 }
 
-/** Verifies a delivered lock against the owner checked out at `ownerRoot`. */
+/**
+ * Verifies a delivered lock against the owner checked out at `ownerRoot`. A tag list git cannot
+ * read leaves the lock unverified with that reason, never with the older-checkout reason that an
+ * empty list would produce, since it may be hiding a newer tag that makes the lock forged.
+ */
 export function verifyOrigin(ownerRoot: string, lock: Lock): Origin {
+	try {
+		return verifyOriginAt(ownerRoot, lock);
+	} catch (err) {
+		if (err instanceof TagListUnreadable) return { reason: err.message, state: 'unverified' };
+		throw err;
+	}
+}
+
+function verifyOriginAt(ownerRoot: string, lock: Lock): Origin {
 	const tag = `v${lock.version}`;
 	if (git(ownerRoot, ['rev-parse', '--git-dir']) === null) {
 		return { reason: `${ownerRoot} is not a git repository`, state: 'unverified' };

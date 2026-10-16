@@ -177,7 +177,15 @@ export function openCache(options: CacheOptions): CacheSession {
 			if (force) return { before, reason: '--force', replay: false };
 			const entry = store.entries.get(step.name);
 			if (entry === undefined) return { before, reason: 'no pass recorded', replay: false };
-			const changed = difference(entry, before) ?? outputShortfall(root, cache.outputs);
+			let changed: null | string;
+			try {
+				changed = difference(entry, before) ?? outputShortfall(root, cache.outputs);
+			} catch (err) {
+				// An output removed or locked (EBUSY on Windows) between its glob and its stat or
+				// read is an output not vouched for: the step runs, and the run goes on.
+				const why = err instanceof Error ? err.message : String(err);
+				return { before, reason: `cannot check outputs: ${why}`, replay: false };
+			}
 			if (changed !== null) return { before, reason: changed, replay: false };
 			return { reason: `unchanged since ${entry.recordedAt}`, replay: true };
 		},

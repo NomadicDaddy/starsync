@@ -115,25 +115,37 @@ export function writeStore(root: string, entries: ReadonlyMap<string, Entry>): v
  * Why the runner will not use a cache here, or null. Inside a git work tree the cache file must be
  * ignored: tracked or committable, it would carry one checkout's results into another. Outside one
  * there is nothing to commit it to.
+ *
+ * Outside is only what git says it is. git exits 128 there, and with the same code in a repository
+ * it cannot read: a broken one, one it refuses as of dubious ownership (safe.directory), one it
+ * lacks the permissions for. So 128 alone is unknown, and unknown refuses the cache with git's own
+ * reason; only "not a git repository" counts as outside. A git that prints that in another
+ * language refuses too, which costs a run its cache and never lets a committable one through.
  */
 export function cacheIgnoreRefusal(root: string): null | string {
 	let code: number;
+	let reason: string;
 	try {
 		const run = Bun.spawnSync(['git', '-C', root, 'check-ignore', '-q', CACHE_FILE], {
-			stderr: 'ignore',
+			stderr: 'pipe',
 			stdout: 'ignore',
 			windowsHide: true,
 		});
 		code = run.exitCode;
+		reason = run.stderr.toString().trim();
 	} catch (err) {
 		return `git could not be started to check that ${CACHE_FILE} is ignored (${String(err)})`;
 	}
+	if (code === 0) return null;
 	if (code === 1) {
 		return (
 			`${CACHE_FILE} is not ignored by git here. Add /${CACHE_FILE} to .gitignore: it is ` +
 			"this checkout's memory and must never be committed"
 		);
 	}
-	// 0 is ignored; anything else is git saying this is not a work tree.
-	return null;
+	if (reason.includes('not a git repository')) return null;
+	return (
+		`git could not say whether ${CACHE_FILE} is ignored here ` +
+		`(exit ${code}: ${reason === '' ? 'no message' : reason})`
+	);
 }

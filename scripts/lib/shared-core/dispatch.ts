@@ -99,6 +99,93 @@ export function invokedScripts(body: string): Set<string> {
 	return new Set([...code.matchAll(INVOKED)].map((match) => match[0]));
 }
 
+/** Commands whose arguments are text written out, not anything run. */
+const OUTPUT_COMMANDS = new Set(['echo', 'printf']);
+
+/**
+ * A shell body reduced to what it runs: comments removed, including a trailing `#` comment outside
+ * quotes, and every `echo` or `printf` command dropped, since their arguments are output. Quoted
+ * arguments to anything else stay, because `sh "$dir/leak-guard.sh"` is a call.
+ *
+ * For a body somebody else wrote, where a mention is the wrong answer in the direction that
+ * matters: `standingOf` reads a foreign dispatcher with this, and a guard it merely names in a note
+ * or a message must not count as dispatched. Commands are split on `;`, `&`, `&&`, `|` and `||`
+ * only outside quotes and escapes, so an output command keeps all of its text, separators included.
+ * A `$(…)` or backtick substitution runs wherever it sits outside single quotes, so its text is kept
+ * as code even inside an output command; dropping it would read a guard that really runs as not
+ * dispatched. Not a shell parser; heredocs are left as they are.
+ */
+export function executableShell(body: string): string {
+	return body.split('\n').map(runnableCommands).join('\n');
+}
+
+interface Command {
+	/** The text of every `$(…)` and backtick substitution in it, which runs whatever the command. */
+	substitutions: string[];
+	text: string;
+}
+
+/** One line's commands, without comments, and output commands reduced to their substitutions. */
+function runnableCommands(line: string): string {
+	const commands: Command[] = [];
+	let current: Command = { substitutions: [], text: '' };
+	let quote: null | string = null;
+	for (let i = 0; i < line.length; i++) {
+		const char = line[i] as string;
+		if (char === '\\' && quote !== "'") {
+			current.text += char + (line[i + 1] ?? '');
+			i++;
+			continue;
+		}
+		const substitution = quote === "'" ? null : substitutionAt(line, i);
+		if (substitution !== null) {
+			// Reduced by the same rule, so an output command inside it is text and a call is kept.
+			const runs = runnableCommands(substitution.inner);
+			current.substitutions.push(runs);
+			current.text += ` ${runs} `;
+			i = substitution.end - 1;
+			continue;
+		}
+		if (quote !== null) {
+			if (char === quote) quote = null;
+		} else if (char === "'" || char === '"') {
+			quote = char;
+		} else if (char === '#' && (i === 0 || /\s/u.test(line[i - 1] as string))) {
+			break;
+		} else if (char === ';' || char === '&' || char === '|') {
+			commands.push(current);
+			current = { substitutions: [], text: '' };
+			continue;
+		}
+		current.text += char;
+	}
+	commands.push(current);
+	return commands
+		.map((command) =>
+			OUTPUT_COMMANDS.has(command.text.trim().split(/\s+/u)[0] ?? '')
+				? command.substitutions.join(' ')
+				: command.text,
+		)
+		.join(' ');
+}
+
+/** The `$(…)` or backtick substitution starting at `start`, with its inner text, or null. */
+function substitutionAt(line: string, start: number): { end: number; inner: string } | null {
+	if (line[start] === '`') {
+		const close = line.indexOf('`', start + 1);
+		return close === -1 ? null : { end: close + 1, inner: line.slice(start + 1, close) };
+	}
+	if (line[start] !== '$' || line[start + 1] !== '(') return null;
+	let depth = 0;
+	for (let i = start + 1; i < line.length; i++) {
+		if (line[i] === '(') depth++;
+		else if (line[i] === ')' && --depth === 0) {
+			return { end: i + 1, inner: line.slice(start + 2, i) };
+		}
+	}
+	return null;
+}
+
 /**
  * The body of the hook git will actually run for `hookName`, or null when nothing is dispatched.
  *
@@ -106,6 +193,20 @@ export function invokedScripts(body: string): Set<string> {
  * where a foreign dispatcher such as simple-git-hooks writes. Reading it is how a caller tells a
  * guard a target genuinely runs from one it merely holds a copy of.
  */
+/**
+ * Whether `configured`, a core.hooksPath value, names `targetRoot` inside `repoPath`. Compared as
+ * resolved paths, the way git and `dispatcherBody` read it: `./.githooks`, a trailing separator and
+ * an absolute path all name the same directory, and on Windows so does any other letter case.
+ */
+export function namesTargetRoot(repoPath: string, configured: string, targetRoot: string): boolean {
+	if (configured === '') return false;
+	const canonical = (path: string): string => {
+		const resolved = resolve(path).replace(/[\\/]+$/u, '');
+		return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+	};
+	return canonical(resolve(repoPath, configured)) === canonical(resolve(repoPath, targetRoot));
+}
+
 export function dispatcherBody(
 	repoPath: string,
 	configured: string,
