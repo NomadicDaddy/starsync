@@ -61,7 +61,11 @@ function sha256(parts: readonly (string | Uint8Array)[]): string {
  * script may run another, so such a step is keyed on the whole scripts block. Null otherwise.
  */
 function scriptsKey(root: string, argv: readonly string[]): null | string {
-	if (argv[0] !== 'bun' || argv[1] !== 'run') return null;
+	// Bun's own flags may come before `run` (`bun --bun run x`), so any `run` after `bun` counts. A
+	// step that merely passes the word to a file is keyed as well, which can only withhold a replay.
+	// The key reads the repository root's package.json: a step that runs another directory's
+	// script (`bun --cwd dir run x`) must list dir/package.json among its cache inputs.
+	if (argv[0] !== 'bun' || !argv.slice(1).includes('run')) return null;
 	const manifest: unknown = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 	const scripts =
 		manifest !== null && typeof manifest === 'object' && 'scripts' in manifest

@@ -28,14 +28,26 @@ export type Origin =
 	| { findings: string[]; state: 'forged' }
 	| { reason: string; state: 'unverified' };
 
+const answered = new Map<string, Buffer | null>();
+
+/**
+ * Every question asked here reads the owner's history (tags, and files at a tagged commit), which
+ * does not change while one sweep runs, so each is answered once per process. The owner's sweep
+ * verifies every target's lock and most name the same tag; asking git again for each of them was
+ * over half of the whole check's time.
+ */
 function git(root: string, args: string[], stdin?: string): Buffer | null {
+	const key = JSON.stringify([root, args, stdin ?? null]);
+	if (answered.has(key)) return answered.get(key) ?? null;
 	const result = Bun.spawnSync(['git', '-C', root, ...args], {
 		stderr: 'pipe',
 		stdout: 'pipe',
 		windowsHide: true,
 		...(stdin === undefined ? {} : { stdin: Buffer.from(stdin) }),
 	});
-	return result.exitCode === 0 ? Buffer.from(result.stdout) : null;
+	const out = result.exitCode === 0 ? Buffer.from(result.stdout) : null;
+	answered.set(key, out);
+	return out;
 }
 
 /**

@@ -16,17 +16,25 @@ import { join, resolve } from 'node:path';
 
 import type { SharedCoreGroup } from './manifest.ts';
 
+const configuredHooks = new Map<string, string>();
+
 /**
  * The single value git dispatches hooks from. An empty string means unset, in which case git runs
- * .git/hooks and a file written to the group's targetRoot would never execute.
+ * .git/hooks and a file written to the group's targetRoot would never execute. Read once per
+ * repository per process: every group with a hook asks it of every target, and a sweep does not
+ * change a repository's config.
  */
 export function hooksPath(repoPath: string): string {
+	const known = configuredHooks.get(repoPath);
+	if (known !== undefined) return known;
 	const result = Bun.spawnSync(['git', '-C', repoPath, 'config', '--local', 'core.hooksPath'], {
 		stderr: 'pipe',
 		stdout: 'pipe',
 		windowsHide: true,
 	});
-	return result.success ? result.stdout.toString().trim() : '';
+	const configured = result.success ? result.stdout.toString().trim() : '';
+	configuredHooks.set(repoPath, configured);
+	return configured;
 }
 
 /**
