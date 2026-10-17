@@ -38,3 +38,8 @@ Thumbs.db
 # Ignoring the whole name shape costs one line and removes the only way one could ever be committed
 # by accident.
 /*-targets.json
+
+# The gate runner's step cache and the temporary file it writes while saving (smokestack
+# runner-step-cache, clause 8). Local to this machine; never committed or delivered.
+/.smokestack-cache.json
+/.smokestack-cache.json.*.tmp
