@@ -21,7 +21,8 @@
 # Deliberately no override spelling is printed. An agent that needs remote history rewritten
 # stops and says so; the operator runs the push from their own shell, where this guard is inert.
 #
-# Keep this file byte-identical between the aidd and spernakit repos.
+# smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+# smokestack; every repository that takes it holds a byte-identical copy.
 set -euo pipefail
 
 ZERO=0000000000000000000000000000000000000000

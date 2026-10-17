@@ -9,7 +9,8 @@
 # already exists; never overwrites. The generated file lives outside the
 # repo and must never be committed.
 #
-# Keep this file byte-identical between the aidd, spernakit, and starsync repos.
+# smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+# smokestack; every repository that takes it holds a byte-identical copy.
 set -euo pipefail
 
 # Resolved exactly as .githooks/leak-guard.sh resolves it, or a process that predates the Windows

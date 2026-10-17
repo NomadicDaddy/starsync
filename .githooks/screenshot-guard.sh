@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Shared by aidd, spernakit and starsync; distribute through push-guards and the scaffold.
+# smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+# smokestack; every repository that takes it holds a byte-identical copy.
 # The tagged tree decides whether capture is required. Historical trees without the declaration
 # are exempt. Opted-in historical trees with an unversioned declaration fail closed and need a
 # separately agreed historical-release policy; neither missing evidence nor --no-verify is supported.

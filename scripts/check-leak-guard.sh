@@ -6,7 +6,8 @@
 # repo under a temp dir; the real user-level pattern file is never read
 # (LEAK_GUARD_PATTERNS is always set explicitly).
 #
-# Keep this file byte-identical between the aidd, spernakit, and starsync repos.
+# smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+# smokestack; every repository that takes it holds a byte-identical copy.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"

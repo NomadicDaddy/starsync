@@ -8,7 +8,8 @@
 # check first. The full smoke:qc (tests, builds, and the remaining static checks) still runs in CI.
 #
 # This hook depends on a script-name contract, not on any repository's internals: every repo that
-# installs it defines `smoke:qc:fast`, `check:licenses`, and `check:leak-guard` in package.json and
+# installs it defines `smoke:qc:fast` and `check:licenses` in package.json (the manifest's
+# requiresScripts for this hook; the leak guard itself runs as .githooks/leak-guard.sh) and
 # is free to implement them differently. That is what lets this file stay byte-identical while the
 # repositories diverge — a repo with no third-party inventory to verify may legitimately define
 # `check:licenses` as the license core alone.
@@ -16,7 +17,8 @@
 # Bypass with `git commit --no-verify` only for WIP/experimental commits
 # or confirmed false positives.
 #
-# Keep this file byte-identical between the aidd, spernakit, and starsync repos.
+# smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+# smokestack; every repository that takes it holds a byte-identical copy.
 
 # Find bash by absolute path and put its directory first, then start over under it. Looking bash up
 # on PATH is what broke this hook: on Windows System32 holds the WSL launcher under the same name,

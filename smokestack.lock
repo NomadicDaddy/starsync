@@ -1,19 +1,19 @@
 {
-	"commit": "b0fcb022616355dc1c28f9fec9ffdbb28e6ac195",
+	"commit": "88a5603890a271766de795bfacfb0dc6c65848f7",
 	"groups": {
 		"leak-guard-hooks": {
 			"files": {
 				".githooks/leak-guard-setup.sh": {
 					"mode": "100644",
-					"sha256": "2145808b328c186be2f18c569225c6dcaa431bc9e1eaeb06f33a1075910fffcb"
+					"sha256": "37145c612eaa45d8dcbfc9cce982387bb1cc4006efb0aa41c8fcb31005cc74c3"
 				},
 				".githooks/leak-guard.sh": {
 					"mode": "100644",
-					"sha256": "60119ad6eda22c8b176c27b6aea44522399a964f787fcbef17e94897cca1dc3d"
+					"sha256": "729a8d4b91ff98fdb369fdda14861427b7bd7f390aea4c3b3943d90f202d361f"
 				},
 				".githooks/pre-commit": {
 					"mode": "100755",
-					"sha256": "4a76d13f0ddcebb58b8a9e78834841588975f030e98695d697249574b9252994"
+					"sha256": "90aabc6e4ff1b28089ab5c6bddf5a8c89b9e50e14d8829a2f344ecef9c2ccaa6"
 				}
 			}
 		},
@@ -21,7 +21,7 @@
 			"files": {
 				"scripts/check-leak-guard.sh": {
 					"mode": "100644",
-					"sha256": "4de9b50f9bd6a7bfcb2a9694160e60b6bc271daa89eeff805dccd184e2fcd0c6"
+					"sha256": "12dbe32ba5c49c74d1792a71e3ba1d643bc2cd7f71ad62579e2ac50157c5f11b"
 				}
 			}
 		},
@@ -29,31 +29,31 @@
 			"files": {
 				"scripts/check-license-core.ts": {
 					"mode": "100644",
-					"sha256": "a6415b61b1532b463bad3ad809556295fb75cde848185ad9e0a5f206d4d2c3dc"
+					"sha256": "8ea65672a645559179c08edf3730175c336f6a5980eccb6a057870aafaca35b0"
 				},
 				"scripts/lib/license-core/expression.ts": {
 					"mode": "100644",
-					"sha256": "c1c94a063251ba48e021cb88081fbee03666cab90c8e657c348d2ec6175d90d3"
+					"sha256": "a033e5501999f6cfd3310eeffc47f5294ae004735355b80446889e5bdc330322"
 				},
 				"scripts/lib/license-core/installed.ts": {
 					"mode": "100644",
-					"sha256": "b3bb9990ba8a0667cc9da5f6d9d40e7b5910416f6e71b418e689d1b4988f87bc"
+					"sha256": "15c0212ad0458cc974d0f1e0a31d1b2d56530d4076af4fbb3325682d8cbf8335"
 				},
 				"scripts/lib/license-core/lockfile.ts": {
 					"mode": "100644",
-					"sha256": "a3e81291d76279469effe6d3af71e3ff6485eae17e6da39ccea39218aabd05a3"
+					"sha256": "22fecc8f16ab5dd6a6aafa1061cf9e120c0faa2d0ec9a62fe09603a179786441"
 				},
 				"scripts/lib/license-core/manifest.ts": {
 					"mode": "100644",
-					"sha256": "d27f6909be4e6c2a399f600d60bd0938678e8504f4b49e76c579283d3f13f8c0"
+					"sha256": "3dcb981f967151c25084a2fcfa331194b3dc1e5989d027c666c09c701db439b7"
 				},
 				"scripts/lib/license-core/order.ts": {
 					"mode": "100644",
-					"sha256": "1d07d1871143b79334e6016f941d1f7042e3acbc4cafb443c893f6819812bc7c"
+					"sha256": "8c65aef8a547e260a21737af5e5bf55a0db7faa91294f8d07ac6ad02677a8c02"
 				},
 				"scripts/lib/license-core/resolve.ts": {
 					"mode": "100644",
-					"sha256": "b7957ae32736e9e6ffc79831ea054eb13c528d26776ac9e448e791a839c34e2f"
+					"sha256": "c491fff2140c57756b337fd85aebb89202d1025b098a1ff33b60901d00fadd66"
 				}
 			}
 		},
@@ -69,11 +69,11 @@
 			"files": {
 				".githooks/aidd-history-guard.sh": {
 					"mode": "100644",
-					"sha256": "099db9337908def2f7418dda8b6fa5afb84405bc32983f0a213a4cc9e365588b"
+					"sha256": "05ce250a9dba5ae460ef7eb7c566a64a9fc558a3f6bea4054c4508cdf15f7914"
 				},
 				".githooks/force-push-guard.sh": {
 					"mode": "100644",
-					"sha256": "c74334c110d0f42d5af5c1a736b216fa1b2b3920572a24e59cfea022f3211f62"
+					"sha256": "3336dfd1f7b708e0d61897d897fe720590799b994ff77d192a1cecabb324206a"
 				},
 				".githooks/pre-push": {
 					"mode": "100755",
@@ -81,7 +81,7 @@
 				},
 				".githooks/screenshot-guard.sh": {
 					"mode": "100644",
-					"sha256": "6c449932c2263d34fe5c278205c405e93b276d63c8e057e852483783a4d8363d"
+					"sha256": "718b589718cb61f00baa0d8e6bdf1e62c998abac28306c28cf82d159fde40e5c"
 				}
 			}
 		},
@@ -177,7 +177,7 @@
 				},
 				"scripts/lib/shared-core/lock-write.ts": {
 					"mode": "100644",
-					"sha256": "e1f2baae966980f295c02e4d80e4ff811d955534317aac1f413f7450e520a67d"
+					"sha256": "1d73593e32b96a4644dde5b605fea52def571ac8184bf1a3b1d1673e77754105"
 				},
 				"scripts/lib/shared-core/lock.ts": {
 					"mode": "100644",
@@ -237,7 +237,7 @@
 				},
 				"scripts/shared-core-manifest.json": {
 					"mode": "100644",
-					"sha256": "9da22ce6f67cab286687d4989e643e86cea8c1e9154fe57cc52f44cd77ddcdf7"
+					"sha256": "4cce189985b15ec8774594f8eec30d15c7e0a32dcf28d6671a8ae3ee5e941589"
 				},
 				"scripts/sync-shared-core.ts": {
 					"mode": "100644",
@@ -247,5 +247,5 @@
 		}
 	},
 	"owner": "smokestack",
-	"version": "0.5.5"
+	"version": "0.5.6"
 }

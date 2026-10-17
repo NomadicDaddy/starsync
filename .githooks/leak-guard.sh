@@ -17,8 +17,9 @@
 # its owner. The hooks run this under whichever of /usr/bin/bash and /bin/bash exists, and on
 # macOS that is bash 3.2, so nothing here may need a newer bash.
 #
-# Keep this file byte-identical between the aidd, spernakit, and starsync
-# repos, and in sync with scripts/check-leak-guard.sh.
+# smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+# smokestack; every repository that takes it holds a byte-identical copy. Keep it in step with
+# scripts/check-leak-guard.sh, which tests it.
 set -euo pipefail
 
 added="$(git diff --cached --unified=0 --no-color -- . ':(exclude).githooks/leak-guard.sh' | grep -E '^\+' | grep -vE '^\+\+\+' || true)"

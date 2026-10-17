@@ -19,7 +19,8 @@
 # history — not the tip. This is not theoretical: an app in this fleet had its .aidd untracked,
 # read clean at the tip, and still had 170 unpushed commits carrying the files.
 #
-# Keep this file byte-identical between the aidd and spernakit repos.
+# smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+# smokestack; every repository that takes it holds a byte-identical copy.
 set -euo pipefail
 
 ZERO=0000000000000000000000000000000000000000
