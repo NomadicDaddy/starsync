@@ -1,5 +1,7 @@
 # starsync
 
+<img src="assets/starsync-logo.svg" alt="StarSync" width="160" height="160">
+
 **SAVE YOUR STARRED REPOS BEFORE THEY DISAPPEAR!**
 
 StarSync preserves repositories starred by one GitHub or Codeberg account in a managed local archive. It

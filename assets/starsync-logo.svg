@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+	<title id="title">StarSync</title>
+	<g fill="#2878d4">
+		<path d="M24 44a45 45 0 0 1 80 1" fill="none" stroke="#2878d4" stroke-width="10" stroke-linecap="round"/>
+		<path d="m111.5 61.7-16.6-12.1 18-8.4Z"/>
+		<g transform="rotate(180 64 64)">
+			<path d="M24 44a45 45 0 0 1 80 1" fill="none" stroke="#2878d4" stroke-width="10" stroke-linecap="round"/>
+			<path d="m111.5 61.7-16.6-12.1 18-8.4Z"/>
+		</g>
+	</g>
+	<path fill="#f5bc22" d="m64 37 8.8 17.8 19.7 2.9-14.3 13.9 3.4 19.6L64 81.9l-17.6 9.3 3.4-19.6-14.3-13.9 19.7-2.9Z"/>
+</svg>

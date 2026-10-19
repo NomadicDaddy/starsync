@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Added
 
+- Shared StarSync project logo in the GitHub README, displayed as a contained square.
 - Separate `TARGET_PATH_GITHUB` and `TARGET_PATH_CODEBERG` archive defaults, selected by
   `--host` on every archive command. Positional paths take priority; `TARGET_PATH` remains
   a GitHub-only fallback. Default-path and explicit host/archive mismatches refuse before operating.
