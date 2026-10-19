@@ -37,7 +37,9 @@ import type { Target } from './targets.ts';
 
 import { heldToRecord } from './delivery-check.ts';
 import { groupState, lockDifferences } from './expected.ts';
-import { type Lock, LOCK_FILE, type LockedFiles, readLock } from './lock.ts';
+import { hashShared, isClaim, type Lock, LOCK_FILE, type LockedFiles, readLock } from './lock.ts';
+import { layoutPrefix } from './move.ts';
+import { oldPathFindings } from './old-path.ts';
 import { syncedPathsAt, verifyOrigin } from './origin.ts';
 
 const UNSETTLED = new Set<FindingKind>(['diverged-hook', 'drift', 'uncovered']);
@@ -144,33 +146,57 @@ export function lockFindings(
 		}
 	}
 
-	// A file lost by the record's account and by the lock's own is one lost file, reported once.
 	const recorded = lock.groups[group.name];
+	// A file lost by the record's account and by the lock's own is one lost file, reported once.
 	const inferred = lostPaths(group, target, ownerRoot, lock, recorded);
 	const lost = [...new Set([...inferred, ...held.lost])]
 		.sort()
 		.map((path) => gone(path, held.lost.includes(path) ? entry?.version : lock.version));
+
+	// A lock recording this group in the folder a later release moved it out of is behind, not
+	// drifted: the next write moves its files (move.ts). Its new paths read as a rollout gap
+	// meanwhile, so this is asked before the unsettled files below end the comparison. The old
+	// copies are still judged: one that is gone is lost, and one edited after delivery leaves the
+	// lock describing a file that is not there, which the write refuses to move.
+	const before =
+		recorded === undefined || recorded === null ? null : layoutPrefix(group, recorded);
+	if (before !== null) {
+		const detail =
+			`holds smokestack v${lock.version ?? '(none)'} with this group under ${before || './'}; ` +
+			`this release installs it under ${group.targetRoot}/, and the next write moves it`;
+		const edited = Object.entries(recorded ?? {}).flatMap(([path, delivered]) => {
+			const at = join(target.path, path);
+			if (isClaim(delivered) || !existsSync(at) || hashShared(at) === delivered.sha256)
+				return [];
+			const why = 'it was edited after delivery, so the next write will not move it';
+			return [finding('stale-lock', `${LOCK_FILE} records ${path} as delivered, and ${why}`)];
+		});
+		return [...held.findings, ...lost, ...edited, finding('stale-layout', detail)];
+	}
+	// At the layout this release installs, a script or the group's hook can still name the old one.
+	const reported =
+		recorded === undefined || recorded === null
+			? held.findings
+			: [...held.findings, ...oldPathFindings(group, target, ownerRoot)];
+
 	// Unsettled files leave the lock nothing to agree with yet; a lost delivery is reported anyway.
-	if (lost.length > 0 || found.some(isUnsettled)) return [...held.findings, ...lost];
+	if (lost.length > 0 || found.some(isUnsettled)) return [...reported, ...lost];
 
 	if (recorded === undefined) {
-		return [
-			...held.findings,
-			finding('stale-lock', `${LOCK_FILE} does not declare this group`),
-		];
+		return [...reported, finding('stale-lock', `${LOCK_FILE} does not declare this group`)];
 	}
 	if (recorded === null) {
 		const detail = `${LOCK_FILE} declares this group and records no delivery of it`;
-		return [...held.findings, finding('stale-lock', detail)];
+		return [...reported, finding('stale-lock', detail)];
 	}
 	// The same comparison the target's own gate makes, so the two cannot disagree. It includes the
 	// hook's mode: a lock that agrees with a hook git will not execute agrees with a guard that
 	// is off.
 	const differences = lockDifferences(group, recorded, groupState(group, target.path));
-	if (differences.length === 0) return held.findings;
+	if (differences.length === 0) return reported;
 	const listed = differences.map(({ path, problem }) => `${path} ${problem}`).join('; ');
 	return [
-		...held.findings,
+		...reported,
 		finding('stale-lock', `${LOCK_FILE} disagrees with the files matched here: ${listed}`),
 	];
 }

@@ -19,8 +19,8 @@
 import { posix } from 'node:path';
 
 import { syncedPaths } from './expected.ts';
-import { hashText, isClaim, type Lock, LOCK_FILE } from './lock.ts';
-import { parseManifest } from './manifest.ts';
+import { hashText, installedPath, isClaim, type Lock, LOCK_FILE } from './lock.ts';
+import { parseManifest, type SharedCoreGroup } from './manifest.ts';
 import { sourcesOf } from './owner.ts';
 
 export type Origin =
@@ -182,6 +182,40 @@ function newestTagAbove(ownerRoot: string, version: string): null | string {
 		if (newest === null || newer(candidate, versionOf(newest) ?? [])) newest = tag.trim();
 	}
 	return newest;
+}
+
+/** Each tag's manifest as parsed, remembered like every other answer here. */
+const groupsAt = new Map<string, SharedCoreGroup[]>();
+
+/**
+ * Every path a tagged release of the owner installed `group` at, read from each tag's manifest:
+ * seeded files as well as synced ones, since a move renames a seeded file too, and the most
+ * referenced file in the fleet (run-bash.ts) is seeded. A tag list git cannot read throws rather
+ * than reading as no releases.
+ */
+export function taggedPaths(ownerRoot: string, group: string): Set<string> {
+	const listed = git(ownerRoot, ['tag', '--list', 'v*']);
+	if (listed === null) throw new TagListUnreadable(`git could not read the tags in ${ownerRoot}`);
+	const paths = new Set<string>();
+	for (const tag of listed
+		.toString()
+		.split('\n')
+		.map((line) => line.trim())) {
+		if (versionOf(tag) === null) continue;
+		const key = `${ownerRoot}\n${tag}`;
+		let groups = groupsAt.get(key);
+		if (groups === undefined) {
+			const manifest = showAll(ownerRoot, `refs/tags/${tag}`, [MANIFEST_PATH]).get(
+				MANIFEST_PATH,
+			);
+			groups = manifest === null || manifest === undefined ? [] : parseManifest(manifest);
+			groupsAt.set(key, groups);
+		}
+		const then = groups.find((candidate) => candidate.name === group);
+		if (then === undefined) continue;
+		for (const file of then.files) paths.add(installedPath(then, file));
+	}
+	return paths;
 }
 
 /**

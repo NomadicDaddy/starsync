@@ -161,6 +161,8 @@
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/lock.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/manifest-file.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/manifest.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/move.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/shared-core/old-path.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/origin.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/owner.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/shared-core/reaching.ts" },
@@ -195,6 +197,7 @@
 				{ "disposition": "synced", "source": "scripts/lib/smokestack/config.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/smokestack/env.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/smokestack/gate.ts" },
+				{ "disposition": "synced", "source": "scripts/lib/smokestack/list.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/smokestack/preflight.ts" },
 				{ "disposition": "synced", "source": "scripts/lib/smokestack/spawn.ts" }
 			],

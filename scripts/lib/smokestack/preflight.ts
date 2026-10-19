@@ -56,7 +56,8 @@ function ownerVersion(root: string): string {
 
 /** Decides whether the gate may start in `root`, and makes the check that runs before step one. */
 export function standing(root: string, mode: Mode): Standing {
-	const manifest = loadManifest(join(root, 'scripts'));
+	// The manifest sits two levels above this file (beside the runner), at whatever depth they are.
+	const manifest = loadManifest(join(import.meta.dir, '..', '..'));
 	const lockPresent = existsSync(join(root, LOCK_FILE));
 	const identity = repoIdentity(root);
 	const ownsAGroup = manifest.some((group) => group.owner === identity);

@@ -6,6 +6,8 @@
  *   bun scripts/smokestack.ts           the full gate
  *   bun scripts/smokestack.ts --fast    the fast gate: a named subset, for a commit
  *   bun scripts/smokestack.ts --list    print the steps either would run, and run nothing
+ *   bun scripts/smokestack.ts --list --json
+ *                                       both step lists as JSON, for readers that check a runbook
  *   bun scripts/smokestack.ts --force   run every step, replaying none, and record what passes
  *   bun scripts/smokestack.ts --cache-status
  *                                       say of each step whether it would replay or run, and why,
@@ -15,11 +17,11 @@
  * flag, no config or a bad one, no lock or one this runner cannot check itself against, a cache
  * file git does not ignore); 130 it was interrupted.
  *
- * The root is the repository this file is installed in: the parent of the `scripts` directory it
- * sits in. It is never searched for, and never the directory the command was started from, so a
+ * The root is the repository this file is installed in: the parent of the nearest `scripts`
+ * directory above it, whether it sits in scripts/ or deeper. It is never searched for beyond that, and never the directory the command was started from, so a
  * repository with no config cannot end up running an ancestor's gate.
  */
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { argv, exit } from 'node:process';
 import { parseArgs } from 'node:util';
 
@@ -27,18 +29,21 @@ import { readScripts } from './lib/shared-core/targets.ts';
 import { cacheIgnoreRefusal } from './lib/smokestack/cache-store.ts';
 import { type CacheSession, openCache } from './lib/smokestack/cache.ts';
 import { ConfigError } from './lib/smokestack/config-read.ts';
-import { type Config, readConfig, type Step } from './lib/smokestack/config.ts';
-import { childEnv, describeEnv, type EnvPolicy } from './lib/smokestack/env.ts';
+import { type Config, readConfig, skipReason, type Step } from './lib/smokestack/config.ts';
+import { childEnv, describeEnv } from './lib/smokestack/env.ts';
 import { exitCodeFor, GATE_MARK, type Mode, runGate, summarise } from './lib/smokestack/gate.ts';
+import { printListing, printListingJson } from './lib/smokestack/list.ts';
 import { standing } from './lib/smokestack/preflight.ts';
 
-const USAGE = 'Usage: bun scripts/smokestack.ts [--fast] [--list | --cache-status] [--force]';
+const USAGE =
+	'Usage: bun scripts/smokestack.ts [--fast] [--list [--json] | --cache-status] [--force]';
 const EXIT_CANNOT_START = 2;
 
 export interface RunnerOptions {
 	cacheStatus: boolean;
 	fast: boolean;
 	force: boolean;
+	json: boolean;
 	list: boolean;
 }
 
@@ -50,6 +55,7 @@ export function parseRunnerArgs(args: string[]): RunnerOptions {
 			'cache-status': { type: 'boolean' },
 			fast: { type: 'boolean' },
 			force: { type: 'boolean' },
+			json: { type: 'boolean' },
 			list: { type: 'boolean' },
 		},
 		strict: true,
@@ -58,11 +64,14 @@ export function parseRunnerArgs(args: string[]): RunnerOptions {
 		cacheStatus: values['cache-status'] === true,
 		fast: values.fast === true,
 		force: values.force === true,
+		json: values.json === true,
 		list: values.list === true,
 	};
 	if (options.list && options.cacheStatus) {
 		throw new Error('--list and --cache-status are two answers to two questions; ask one.');
 	}
+	if (options.json && !options.list)
+		throw new Error('--json is a form of --list; it needs --list.');
 	return options;
 }
 
@@ -78,12 +87,17 @@ async function cacheStatus(
 	steps: Step[],
 	mode: Mode,
 	cache: CacheSession | null,
-	env: EnvPolicy | null,
+	config: Config,
 ): Promise<void> {
 	console.info(`smokestack: ${mode}, ${steps.length} step(s), cache status, nothing run`);
-	console.info(describeEnv(env));
+	console.info(describeEnv(config.env));
 	if (cache?.storeNote) console.info(cache.storeNote);
 	for (const step of steps) {
+		const skip = skipReason(step, config.packageName);
+		if (skip !== null) {
+			console.info(`${step.name}\twould-skip\t${skip}`);
+			continue;
+		}
 		const assessed =
 			cache === null || step.cache === null
 				? { reason: 'no cache declared', replay: false }
@@ -99,12 +113,6 @@ function selectSteps(config: Config, mode: Mode): Step[] {
 		throw new ConfigError('smokestack.json: --fast was asked for and no fast gate is defined.');
 	}
 	return config.fast;
-}
-
-function list(steps: Step[], mode: Mode, env: EnvPolicy | null): void {
-	console.info(`smokestack: ${mode}, ${steps.length} step(s), nothing run`);
-	console.info(describeEnv(env));
-	for (const step of steps) console.info(`${step.name}\t${step.run.join(' ')}`);
 }
 
 /** Runs the gate for the repository at `root`. `signal` stops it; see gate.ts. */
@@ -127,11 +135,12 @@ export async function runSmokestack(
 		return EXIT_CANNOT_START;
 	}
 	if (options.list) {
-		list(steps, mode, config.env);
+		if (options.json) printListingJson(config);
+		else printListing(config, steps, mode);
 		return 0;
 	}
 	if (options.cacheStatus) {
-		await cacheStatus(steps, mode, cache, config.env);
+		await cacheStatus(steps, mode, cache, config);
 		return 0;
 	}
 
@@ -168,9 +177,25 @@ export async function runSmokestack(
 	// After the mark is set: a step's environment is built with it (env.ts).
 	const env = childEnv(config.env);
 	const { preflight } = stand;
-	const result = await runGate({ cache, env, mode, preflight, root, signal, steps });
+	const { packageName } = config;
+	const result = await runGate({ cache, env, mode, packageName, preflight, root, signal, steps });
 	summarise(result, mode, config.qc.length, Date.now() - started);
 	return exitCodeFor(result);
+}
+
+/**
+ * The repository this file is delivered into: the parent of the nearest `scripts` directory above
+ * it. Not "one level up", so the answer holds whether the file sits in scripts/ or deeper. With no
+ * such directory it refuses rather than answer the drive root, which would put the whole drive in
+ * scope.
+ */
+function repositoryRoot(dir: string): string {
+	let at = resolve(dir);
+	while (basename(at) !== 'scripts') {
+		if (dirname(at) === at) throw new Error(`no scripts directory above ${resolve(dir)}`);
+		at = dirname(at);
+	}
+	return dirname(at);
 }
 
 if (import.meta.main) {
@@ -182,7 +207,7 @@ if (import.meta.main) {
 		console.error(USAGE);
 		exit(EXIT_CANNOT_START);
 	}
-	const root = resolve(join(dirname(import.meta.path), '..'));
+	const root = repositoryRoot(dirname(import.meta.path));
 	const stop = new AbortController();
 	for (const name of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
 		process.on(name, () => {

@@ -13,6 +13,11 @@
  * The fast gate is a subset of the full gate by name, with named substitutions (a cached lint for
  * the full one, say). It cannot name a step the full gate does not run, so nothing can be checked
  * at commit time that the gate itself never checks.
+ *
+ * A step may carry `onlyIn`, a package name: it runs only in the repository whose package.json
+ * has that name and is skipped, out loud, everywhere else. The Spernakit template's own steps are
+ * the case: a derived app carries the same list, and a template-only step's script need not exist
+ * there, so its script is checked only where it would run.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,7 +26,9 @@ import { assertCacheCoverage, parseStepCache, type StepCache } from './cache-con
 import { asObject, asText, CONFIG_FILE, fail } from './config-read.ts';
 import { type EnvPolicy, parseEnv } from './env.ts';
 
-const RUNNER_ENTRY = 'scripts/smokestack.ts';
+/** The runner's entry, delivered at scripts/smokestack.ts or deeper under scripts/. */
+const RUNNER_ENTRY = /\bscripts\/(?:[\w.-]+\/)*smokestack\.ts\b/u;
+const RUNNER_NAME = 'scripts/smokestack.ts';
 
 /** The version this runner introduces. It also accepts the one before; see ACCEPTED_VERSIONS. */
 const CONFIG_VERSION = 1;
@@ -38,6 +45,8 @@ export interface Step {
 	cache: null | StepCache;
 	description: string;
 	name: string;
+	/** The package name of the one repository this step runs in. Null: it runs everywhere. */
+	onlyIn: null | string;
 	run: string[];
 }
 
@@ -45,7 +54,17 @@ export interface Config {
 	/** What a step is handed. Null: the runner's whole environment, as before (env.ts). */
 	env: EnvPolicy | null;
 	fast: null | Step[];
+	/** package.json's name, which each step's `onlyIn` is matched against. Null: none. */
+	packageName: null | string;
 	qc: Step[];
+}
+
+/** Why `step` does not run in the repository named `packageName`, or null when it does. */
+export function skipReason(step: Step, packageName: null | string): null | string {
+	if (step.onlyIn === null || step.onlyIn === packageName) return null;
+	const here =
+		packageName === null ? 'this repository has no package name' : `this is ${packageName}`;
+	return `only in ${step.onlyIn}; ${here}`;
 }
 
 function asRun(raw: unknown, where: string): string[] {
@@ -58,7 +77,7 @@ function reachesRunner(name: string, scripts: Record<string, string>, seen: Set<
 	const body = scripts[name];
 	if (body === undefined || seen.has(name)) return false;
 	seen.add(name);
-	if (body.includes(RUNNER_ENTRY)) return true;
+	if (RUNNER_ENTRY.test(body)) return true;
 	return [...body.matchAll(/\bbun run ([\w:.-]+)/gu)].some(([, next]) =>
 		reachesRunner(next as string, scripts, seen),
 	);
@@ -73,8 +92,8 @@ function assertScriptExists(
 	step: Pick<Step, 'name' | 'run'>,
 	scripts: null | Record<string, string>,
 ): void {
-	if (step.run.some((part) => part.replaceAll('\\', '/').endsWith(RUNNER_ENTRY))) {
-		fail(`step '${step.name}' runs ${RUNNER_ENTRY}, which is the gate itself.`);
+	if (step.run.some((part) => RUNNER_ENTRY.test(part.replaceAll('\\', '/')))) {
+		fail(`step '${step.name}' runs ${RUNNER_NAME}, which is the gate itself.`);
 	}
 	const [program, verb, script] = step.run;
 	if (program !== 'bun' || verb !== 'run' || script === undefined) return;
@@ -86,23 +105,29 @@ function assertScriptExists(
 	}
 }
 
-function asSteps(raw: unknown, scripts: null | Record<string, string>): Step[] {
+function asSteps(
+	raw: unknown,
+	scripts: null | Record<string, string>,
+	packageName: null | string,
+): Step[] {
 	const qc = asObject(raw, 'qc', ['steps']);
 	const list = qc['steps'];
 	if (!Array.isArray(list) || list.length === 0) fail('qc.steps must be a non-empty list.');
 	const seen = new Set<string>();
 	const steps = list.map((item, index) => {
 		const where = `qc.steps[${index}]`;
-		const object = asObject(item, where, ['cache', 'description', 'name', 'run']);
+		const object = asObject(item, where, ['cache', 'description', 'name', 'onlyIn', 'run']);
 		const step: Step = {
 			cache: object['cache'] === undefined ? null : parseStepCache(object['cache'], where),
 			description: asText(object['description'], `${where}.description`),
 			name: asText(object['name'], `${where}.name`),
+			onlyIn:
+				object['onlyIn'] === undefined ? null : asText(object['onlyIn'], `${where}.onlyIn`),
 			run: asRun(object['run'], `${where}.run`),
 		};
 		if (seen.has(step.name)) fail(`two steps are named '${step.name}'.`);
 		seen.add(step.name);
-		assertScriptExists(step, scripts);
+		if (skipReason(step, packageName) === null) assertScriptExists(step, scripts);
 		return step;
 	});
 	assertCacheCoverage(steps);
@@ -112,7 +137,6 @@ function asSteps(raw: unknown, scripts: null | Record<string, string>): Step[] {
 function asReplacements(
 	raw: unknown,
 	fastNames: string[],
-	scripts: null | Record<string, string>,
 ): Map<string, Pick<Step, 'name' | 'run'>> {
 	const replacements = new Map<string, Pick<Step, 'name' | 'run'>>();
 	if (raw === undefined) return replacements;
@@ -124,13 +148,17 @@ function asReplacements(
 			name: asText(entry['name'], `${where}.name`),
 			run: asRun(entry['run'], `${where}.run`),
 		};
-		assertScriptExists(replacement, scripts);
 		replacements.set(replaced, replacement);
 	}
 	return replacements;
 }
 
-function asFast(raw: unknown, qc: Step[], scripts: null | Record<string, string>): null | Step[] {
+function asFast(
+	raw: unknown,
+	qc: Step[],
+	scripts: null | Record<string, string>,
+	packageName: null | string,
+): null | Step[] {
 	if (raw === undefined) return null;
 	const fast = asObject(raw, 'fast', ['replace', 'steps']);
 	const list = fast['steps'];
@@ -142,13 +170,17 @@ function asFast(raw: unknown, qc: Step[], scripts: null | Record<string, string>
 		if (!byName.has(name)) fail(`fast step '${name}' is not a qc step.`);
 	}
 	// asObject's allow-list is the fast step names, so a replacement for anything else is refused.
-	const replacements = asReplacements(fast['replace'], names, scripts);
+	const replacements = asReplacements(fast['replace'], names);
 	const steps = names.map((name) => {
 		const full = byName.get(name) as Step;
 		const replacement = replacements.get(name);
+		if (replacement === undefined) return full;
 		// A substitute is other work in the step's place, so it never reads or writes the step's
-		// cache entry: its pass says nothing about what the full step would do.
-		return replacement === undefined ? full : { ...full, ...replacement, cache: null };
+		// cache entry: its pass says nothing about what the full step would do. It inherits the
+		// step's onlyIn, so like the step its script is checked only where it would run.
+		const substitute = { ...full, ...replacement, cache: null };
+		if (skipReason(substitute, packageName) === null) assertScriptExists(replacement, scripts);
+		return substitute;
 	});
 	if (new Set(steps.map((step) => step.name)).size !== steps.length) {
 		fail('fast.replace gives two fast steps one name.');
@@ -157,7 +189,11 @@ function asFast(raw: unknown, qc: Step[], scripts: null | Record<string, string>
 }
 
 /** Parses and validates the text of a config. `scripts` is the repository's package.json scripts. */
-function parseConfig(text: string, scripts: null | Record<string, string>): Config {
+function parseConfig(
+	text: string,
+	scripts: null | Record<string, string>,
+	packageName: null | string,
+): Config {
 	let raw: unknown;
 	try {
 		raw = JSON.parse(text);
@@ -172,8 +208,25 @@ function parseConfig(text: string, scripts: null | Record<string, string>): Conf
 				`(${ACCEPTED_VERSIONS.join(', ')}).`,
 		);
 	}
-	const qc = asSteps(root['qc'], scripts);
-	return { env: parseEnv(root['env']), fast: asFast(root['fast'], qc, scripts), qc };
+	const qc = asSteps(root['qc'], scripts, packageName);
+	return {
+		env: parseEnv(root['env']),
+		fast: asFast(root['fast'], qc, scripts, packageName),
+		packageName,
+		qc,
+	};
+}
+
+/** package.json's name at `root`, or null when there is no file, no name, or no valid JSON. */
+function readPackageName(root: string): null | string {
+	try {
+		const parsed = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+			name?: unknown;
+		};
+		return typeof parsed.name === 'string' ? parsed.name : null;
+	} catch {
+		return null;
+	}
 }
 
 /** Reads the config at `root`. A missing file is a ConfigError: nothing says what the gate is. */
@@ -185,5 +238,5 @@ export function readConfig(root: string, scripts: null | Record<string, string>)
 		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
 		fail(`is missing at ${root}, so nothing says what this repository's gate runs.`);
 	}
-	return parseConfig(text, scripts);
+	return parseConfig(text, scripts, readPackageName(root));
 }

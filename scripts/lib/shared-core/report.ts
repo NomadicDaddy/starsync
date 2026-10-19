@@ -17,6 +17,7 @@ import { type Finding, type GroupReport, isFatal } from './check.ts';
 import { deliveredBy, type Deliveries, DELIVERIES_FILE, writeDeliveries } from './deliveries.ts';
 import { type Delivery, planLocks, tagStanding, writeLocks } from './lock-write.ts';
 import { LOCK_FILE } from './lock.ts';
+import { applyMoves, planMoves } from './move.ts';
 import { untrackedSourcesRefusal } from './owner.ts';
 import { reportClean } from './vacuity.ts';
 import { applyFindings, ownershipRefusal, type WriteOutcome } from './write.ts';
@@ -32,6 +33,8 @@ function order(findings: Finding[]): Finding[] {
 		'lost-delivery': 1,
 		'not-applicable': 8,
 		'not-run': 2,
+		'old-path': 1,
+		'stale-layout': 5,
 		'stale-lock': 2,
 		uncovered: 5,
 		unguarded: 3,
@@ -137,6 +140,10 @@ export function reportCheck(
 					'group held there, no write settles it: it is corrected in that repository.',
 			);
 		}
+		if (fatal.some((f) => f.kind === 'old-path')) {
+			const why = 'a script, a hook or a leftover copy still holds where a moved file was';
+			console.error(`\nOLD-PATH: ${why}. No write corrects it; that repository does.`);
+		}
 		if (recordMissing) console.error(`\n${noRecord(fleetRoot)}`);
 		return 1;
 	}
@@ -195,6 +202,10 @@ export function reportWrite(
 		}
 	}
 	const plan = planLocks(owned, groups, manifest, fleetRoot, root, delivery);
+	// A delivered file whose installed path changed (move.ts): planned now, applied after the locks.
+	const directories = plan.targets.map((target) => target.directory);
+	const moves = planMoves(directories, groups, fleetRoot, root);
+	plan.refusals.push(...moves.refusals);
 	if (plan.refusals.length > 0) {
 		for (const refusal of plan.refusals) console.error(`- ${refusal}`);
 		console.error(
@@ -210,10 +221,10 @@ export function reportWrite(
 		outcomes.set(report.group, outcome);
 		// A stale lock is not the file writer's to settle and is not left alone either: the lock
 		// is rewritten below, and reported there. Nor is a lost delivery: the same absent file is
-		// also an `uncovered` finding, which is the one the writer acts on.
-		const skipped = outcome.skipped.filter(
-			(f) => f.kind !== 'stale-lock' && f.kind !== 'lost-delivery',
-		);
+		// also an `uncovered` finding, which is the one the writer acts on. Nor is an old layout: the
+		// moves below clear it.
+		const settledElsewhere = new Set(['lost-delivery', 'stale-layout', 'stale-lock']);
+		const skipped = outcome.skipped.filter((f) => !settledElsewhere.has(f.kind));
 
 		console.info(
 			`\n${report.group} (owner: ${report.owner}) — ${verb} ${outcome.written.length} ` +
@@ -224,11 +235,18 @@ export function reportWrite(
 		for (const f of outcome.blocked) console.info(`  REFUSED     ${f.target}: ${f.detail}`);
 		for (const f of skipped) console.info(`  LEFT ALONE  ${f.target}: ${f.kind} — ${f.detail}`);
 	}
-
 	const locks = writeLocks(plan, outcomes, groups, delivery, dryRun, deliveries ?? {});
 	if (plan.targets.length > 0) console.info(`\n${LOCK_FILE}`);
 	for (const directory of locks.written) console.info(`  ${verb.toUpperCase()} ${directory}`);
 	for (const reason of locks.withheld) console.info(`  WITHHELD    ${reason}`);
+	// Old copies go only where the lock now names the new paths. A withheld lock still names the old
+	// ones, so that target keeps both until a later write settles it. Every withheld reason starts
+	// with its target's directory (lock-write.ts).
+	const held = new Set(locks.withheld.map((reason) => reason.slice(0, reason.indexOf(': '))));
+	moves.moves = moves.moves.filter((move) => !held.has(move.directory));
+	moves.scripts = moves.scripts.filter((edit) => !held.has(edit.directory));
+	const moved = applyMoves(moves, fleetRoot, dryRun);
+	if (moved.length > 0) console.info(`\nmoved\n${moved.map((line) => `  ${line}`).join('\n')}`);
 	// The record follows the locks this run settled, and no others: a lock withheld keeps the
 	// entry of its last good delivery, and a target outside an --only narrowing is not touched.
 	//

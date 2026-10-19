@@ -11,11 +11,12 @@
  *
  * The summary counts what happened. A step is passed only when its process ended with 0, or when
  * the step cache replays a pass recorded over the same key and inputs (cache.ts); a replay is
- * counted with the passes and said to be one.
+ * counted with the passes and said to be one. A step whose `onlyIn` names another repository is
+ * skipped: said so with the reason, counted as skipped and never as passed, and never cached.
  */
 import type { CacheSession } from './cache.ts';
-import type { Step } from './config.ts';
 
+import { skipReason, type Step } from './config.ts';
 import { runProcess } from './spawn.ts';
 
 export type Mode = 'fast' | 'qc';
@@ -33,6 +34,8 @@ export interface GateResult {
 	/** Of the passed, how many were replayed from the cache. */
 	replayed: number;
 	selected: number;
+	/** Steps whose `onlyIn` names another repository: neither passed nor failed. */
+	skipped: number;
 }
 
 /** A check made before the steps and reported as the first of them. */
@@ -49,6 +52,8 @@ export interface GateOptions {
 	/** What every step is handed; undefined for the runner's whole environment (env.ts). */
 	env: Record<string, string> | undefined;
 	mode: Mode;
+	/** package.json's name, which each step's `onlyIn` is matched against. */
+	packageName: null | string;
 	preflight: null | Preflight;
 	root: string;
 	signal: AbortSignal;
@@ -134,6 +139,7 @@ export async function runGate(options: GateOptions): Promise<GateResult> {
 		passed: 0,
 		replayed: 0,
 		selected: steps.length + (preflight === null ? 0 : 1),
+		skipped: 0,
 	};
 	if (preflight !== null) reportPreflight(preflight, result);
 
@@ -143,6 +149,12 @@ export async function runGate(options: GateOptions): Promise<GateResult> {
 			result.interrupted ||= options.signal.aborted;
 			result.notRun = steps.length - index;
 			break;
+		}
+		const skip = skipReason(step, options.packageName);
+		if (skip !== null) {
+			console.info(`[SKIPPED] ${step.name} (${skip})`);
+			result.skipped += 1;
+			continue;
 		}
 		await runOne(step, options, result);
 		if (result.interrupted) {
@@ -167,8 +179,9 @@ export function summarise(result: GateResult, mode: Mode, fullCount: number, ms:
 	const scope =
 		mode === 'fast' ? ` (fast subset of ${fullCount} qc steps, not the full gate)` : '';
 	const replayed = result.replayed > 0 ? ` (${result.replayed} replayed from the cache)` : '';
+	const skipped = result.skipped > 0 ? `, ${result.skipped} skipped` : '';
 	const counts =
-		`${result.selected} selected, ${result.passed} passed${replayed}, ` +
+		`${result.selected} selected, ${result.passed} passed${replayed}${skipped}, ` +
 		`${result.failures.length} failed, ${result.notRun} not run`;
 	if (result.interrupted) {
 		console.error(`smokestack: ${mode} INTERRUPTED${scope}: ${counts} (${seconds(ms)})`);

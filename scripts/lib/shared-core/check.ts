@@ -48,6 +48,8 @@ export type FindingKind =
 	| 'lost-delivery'
 	| 'not-applicable'
 	| 'not-run'
+	| 'old-path'
+	| 'stale-layout'
 	| 'stale-lock'
 	| 'uncovered'
 	| 'unguarded'
@@ -236,7 +238,8 @@ export function checkGroup(
  * that fatal kind is deliberately unwritable. The other two come from a target's lock: files that
  * are current under a lock that does not say so, and a file the lock's delivery included that is
  * gone, which is the one absence that is not a rollout gap. See lock-check.ts. The last is a group
- * whose wiring is its point, held by a repository that does not run it: see wiring.ts.
+ * whose wiring is its point, held by a repository that does not run it: see wiring.ts. And a script
+ * or hook still naming where a moved group used to be: see old-path.ts.
  */
 export function isFatal(finding: Finding): boolean {
 	return (
@@ -244,6 +247,7 @@ export function isFatal(finding: Finding): boolean {
 		finding.kind === 'drift' ||
 		finding.kind === 'lost-delivery' ||
 		finding.kind === 'not-run' ||
+		finding.kind === 'old-path' ||
 		finding.kind === 'stale-lock'
 	);
 }

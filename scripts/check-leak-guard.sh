@@ -10,7 +10,16 @@
 # smokestack; every repository that takes it holds a byte-identical copy.
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+# The repository is the parent of the nearest scripts directory above this file, at any depth.
+scripts_dir="$(cd "$(dirname "$0")" && pwd)"
+while [ "$(basename "$scripts_dir")" != scripts ]; do
+	if [ "$(dirname "$scripts_dir")" = "$scripts_dir" ]; then
+		echo "check-leak-guard: no scripts directory above $0" >&2
+		exit 2
+	fi
+	scripts_dir="$(dirname "$scripts_dir")"
+done
+repo_root="$(dirname "$scripts_dir")"
 hook="$repo_root/.githooks/leak-guard.sh"
 
 tmp="$(mktemp -d)"

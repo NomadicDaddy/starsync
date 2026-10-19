@@ -22,7 +22,7 @@
  *
  *   bun scripts/sync-shared-core.ts --check [--group <name>] [--fleet-root <dir>]
  */
-import { dirname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { argv, cwd, exit } from 'node:process';
 import { parseArgs } from 'node:util';
 
@@ -143,7 +143,8 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 	}
 
 	const root = resolve(cwd());
-	const manifest = loadManifest(join(root, 'scripts'));
+	// The manifest is delivered beside this file, so it is read from here, at whatever depth.
+	const manifest = loadManifest(dirname(import.meta.path));
 	const identity = repoIdentity(root);
 	if (!manifest.some((group) => group.owner === identity)) {
 		return runAsConsumer(options, root, manifest);
