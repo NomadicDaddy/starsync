@@ -4,7 +4,7 @@ const TARGET_ENVIRONMENT = `  TARGET_PATH_GITHUB    GitHub default when no posit
   TARGET_PATH_CODEBERG  Codeberg default when --host codeberg.org selects it.
   TARGET_PATH           GitHub-only fallback if TARGET_PATH_GITHUB is absent.`;
 const TARGET_SELECTION = `A positional path overrides environment defaults and uses the recorded archive host.
-Without --host, default-path selection uses GitHub. An explicit --host must match an
+Without --host, default-path selection uses GitHub. Defaults and explicit --host must match an
 initialized archive's host. Missing or empty paths refuse; Codeberg never uses a GitHub default.`;
 
 export const ROOT_HELP_TEXT = `starsync - archive command suite for GitHub and Codeberg starred repositories.

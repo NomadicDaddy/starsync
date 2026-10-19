@@ -85,8 +85,9 @@ Codeberg never falls back to either GitHub variable. A defined but empty or quot
 host-specific value is an error, even when `TARGET_PATH` is set.
 
 A positional path always takes priority. Without `--host`, its archive's recorded host is used.
-An explicit `--host` must match an initialized archive's recorded host or the command refuses
-before operating. These options select archives; they never move or merge their contents.
+An explicit `--host` or an environment-selected default must match an initialized archive's
+recorded host or the command refuses before operating. These options select archives; they
+never move or merge their contents.
 
 ## Archive contract
 

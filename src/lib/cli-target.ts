@@ -48,6 +48,7 @@ export const resolveArchiveTarget = (
 		throw new Error(`A non-empty target path or ${variable} is required.`);
 	}
 	const target = resolveTargetPath(positional, envTarget);
-	requireMatchingHost(target, selection.host);
+	const selectedHost = selection.host ?? (selection.targetPath === null ? 'github.com' : null);
+	requireMatchingHost(target, selectedHost);
 	return target;
 };

@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file. Format foll
 
 - Separate `TARGET_PATH_GITHUB` and `TARGET_PATH_CODEBERG` archive defaults, selected by
   `--host` on every archive command. Positional paths take priority; `TARGET_PATH` remains
-  a GitHub-only fallback. Explicit host/archive mismatches refuse before operating.
+  a GitHub-only fallback. Default-path and explicit host/archive mismatches refuse before operating.
 - Codeberg archives alongside GitHub archives. `init --host codeberg.org` binds an archive
   to one Codeberg account. Initialization, sync, rename and `verify --force` use
   `CODEBERG_TOKEN` for Codeberg archives and keep identities scoped to that host.

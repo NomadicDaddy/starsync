@@ -156,6 +156,18 @@ describe('host-specific target paths', () => {
 		}
 	});
 
+	test('refuses a default variable pointing at the wrong host before any command runs', () => {
+		const codeberg = makeTarget('codeberg.org');
+		for (const command of ['init', 'sync', 'verify', 'rename', 'dates', 'unlock']) {
+			const result = runCli([command, '--json'], { TARGET_PATH_GITHUB: codeberg });
+			expect(result.exitCode).toBe(2);
+			expect(result.stdout.toString()).toContain('does not match archive host codeberg.org');
+		}
+		expect(() => resolveArchiveTarget(parseArgs([]), { TARGET_PATH: codeberg })).toThrow(
+			'does not match',
+		);
+	});
+
 	test('keeps absent-host archives bound to GitHub and strips quotes from host defaults', () => {
 		const target = makeTarget('github.com');
 		writeFileSync(
