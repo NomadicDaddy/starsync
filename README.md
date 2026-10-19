@@ -71,8 +71,22 @@ Supply the selected token through the current process environment or a credentia
 GITHUB_TOKEN=ghp_your_token_here npx starsync sync D:/archives/stars
 ```
 
-`TARGET_PATH` may supply the archive path when no positional path is given. A positional path has
-priority.
+Set `TARGET_PATH_GITHUB` and `TARGET_PATH_CODEBERG` to keep separate default archive paths:
+
+```dotenv
+TARGET_PATH_GITHUB=D:/github
+TARGET_PATH_CODEBERG=D:/codeberg
+```
+
+Every archive command accepts `--host github.com|codeberg.org` (or `--host=HOST`) to select
+the corresponding default path. Without `--host`, default-path selection uses GitHub.
+An existing `TARGET_PATH` remains a GitHub-only fallback when `TARGET_PATH_GITHUB` is absent;
+Codeberg never falls back to either GitHub variable. A defined but empty or quoted-empty
+host-specific value is an error, even when `TARGET_PATH` is set.
+
+A positional path always takes priority. Without `--host`, its archive's recorded host is used.
+An explicit `--host` must match an initialized archive's recorded host or the command refuses
+before operating. These options select archives; they never move or merge their contents.
 
 ## Archive contract
 
@@ -115,7 +129,8 @@ bunx starsync init --host codeberg.org D:/archives/codeberg-stars
 bunx starsync sync D:/archives/codeberg-stars
 ```
 
-Later commands read the host from the archive. `--host` is accepted only by `init`.
+Later commands read the host from the archive. With `TARGET_PATH_CODEBERG` set, the same
+archive can be selected by `bunx starsync sync --host codeberg.org` without a positional path.
 
 ### Moving from StarSync 1.x
 
@@ -138,8 +153,9 @@ npx starsync dates [--dry-run] [--json] [target-path]
 npx starsync unlock [--force] [--json] [target-path]
 ```
 
-Every command requires either `[target-path]` or `TARGET_PATH`. Missing, empty, or quoted-empty
-input is a usage error and never falls back to the package directory.
+All commands above accept `--host github.com|codeberg.org`. Every command requires either
+`[target-path]` or the selected host's default path. Missing, empty, or quoted-empty input is a
+usage error and never falls back to the package directory.
 
 ### sync
 

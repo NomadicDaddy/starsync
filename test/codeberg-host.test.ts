@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 
 import { parseArchiveConfig } from '../src/lib/archive-config.ts';
-import { parseInitHost } from '../src/lib/cli-host.ts';
+import { parseHostArgs } from '../src/lib/cli-host.ts';
 import { createRepositoryHost } from '../src/lib/repository-host.ts';
 import { parseGitHubRepositorySlug } from '../src/lib/repository-resolution.ts';
 
@@ -83,14 +83,14 @@ describe('Codeberg host contract', () => {
 			'codeberg.org',
 		);
 		expect(() => parseArchiveConfig({ archiveFormat: 2, host: 'evil.test', owner })).toThrow();
-		expect(parseInitHost(['--host', 'codeberg.org', 'archive']).host).toBe('codeberg.org');
-		expect(parseInitHost(['--host=codeberg.org']).host).toBe('codeberg.org');
+		expect(parseHostArgs(['--host', 'codeberg.org', 'archive']).host).toBe('codeberg.org');
+		expect(parseHostArgs(['--host=codeberg.org']).host).toBe('codeberg.org');
 		for (const args of [
 			['--host'],
 			['--host='],
 			['--host=codeberg.org', '--host=github.com'],
 		]) {
-			expect(() => parseInitHost(args)).toThrow();
+			expect(() => parseHostArgs(args)).toThrow();
 		}
 		expect(
 			parseGitHubRepositorySlug('https://github.com/example/repo.git', 'codeberg.org'),

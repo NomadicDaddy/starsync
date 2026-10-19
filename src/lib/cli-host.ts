@@ -3,9 +3,9 @@ import type { ArchiveHost } from './archive-host.ts';
 import { readArchiveConfig } from './archive-config.ts';
 import { hostTokenName, parseArchiveHost } from './archive-host.ts';
 
-export const parseInitHost = (argv: string[]): { argv: string[]; host: ArchiveHost } => {
+export const parseHostArgs = (argv: string[]): { argv: string[]; host: ArchiveHost | null } => {
 	const rest: string[] = [];
-	let host: ArchiveHost = 'github.com';
+	let host: ArchiveHost | null = null;
 	let seen = false;
 	for (let index = 0; index < argv.length; index++) {
 		const arg = argv[index]!;

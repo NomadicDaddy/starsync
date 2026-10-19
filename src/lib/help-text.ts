@@ -1,3 +1,12 @@
+const HOST_OPTION =
+	'  --host HOST       Select github.com or codeberg.org; also accepts --host=HOST';
+const TARGET_ENVIRONMENT = `  TARGET_PATH_GITHUB    GitHub default when no positional path is given.
+  TARGET_PATH_CODEBERG  Codeberg default when --host codeberg.org selects it.
+  TARGET_PATH           GitHub-only fallback if TARGET_PATH_GITHUB is absent.`;
+const TARGET_SELECTION = `A positional path overrides environment defaults and uses the recorded archive host.
+Without --host, default-path selection uses GitHub. An explicit --host must match an
+initialized archive's host. Missing or empty paths refuse; Codeberg never uses a GitHub default.`;
+
 export const ROOT_HELP_TEXT = `starsync - archive command suite for GitHub and Codeberg starred repositories.
 
 Usage:
@@ -14,6 +23,7 @@ Commands:
   unlock     Release an archive operation lock
 
 Options:
+${HOST_OPTION}
   --help, -h        Show help (use after a subcommand for subcommand help)
   --json            Emit one schema-versioned JSON result document on stdout
   --dry-run         Sync/dates: preview without changing the archive
@@ -29,7 +39,9 @@ Options:
 Environment:
   GITHUB_TOKEN      GitHub archive token for init, sync, rename, and verify --force.
   CODEBERG_TOKEN    Codeberg archive token for the same commands.
-  TARGET_PATH       Required if no positional target-path is given.
+${TARGET_ENVIRONMENT}
+
+${TARGET_SELECTION}
 
 Run 'starsync <command> --help' for command-specific options.`;
 
@@ -41,6 +53,7 @@ Usage:
   bunx starsync sync [options] [target-path]
 
 Options:
+${HOST_OPTION}
   --help, -h          Show this help
   --json              Emit one schema-versioned JSON result document on stdout
   --dry-run           Query stars and inspect the archive without cloning, pulling,
@@ -58,9 +71,9 @@ Options:
 Environment:
   GITHUB_TOKEN        Required for GitHub archives (repo + read:user scopes).
   CODEBERG_TOKEN      Required for Codeberg archives.
-  TARGET_PATH         Required if no positional target-path is given.
+${TARGET_ENVIRONMENT}
 
-A positional target-path argument overrides TARGET_PATH.`;
+${TARGET_SELECTION}`;
 
 export const VERIFY_HELP_TEXT = `starsync verify - inspect the archive for Git integrity and identity inconsistencies.
 
@@ -70,6 +83,7 @@ Usage:
   bunx starsync verify [options] [target-path]
 
 Options:
+${HOST_OPTION}
   --help, -h        Show this help
   --json            Emit one schema-versioned JSON result document on stdout
   --force           Replace checkouts that fail Git integrity, contain local changes, or lack
@@ -86,9 +100,9 @@ Options:
 Environment:
   GITHUB_TOKEN      Required with --force for GitHub archives.
   CODEBERG_TOKEN    Required with --force for Codeberg archives.
-  TARGET_PATH       Required if no positional target-path is given.
+${TARGET_ENVIRONMENT}
 
-A positional target-path argument overrides TARGET_PATH.
+${TARGET_SELECTION}
 Without --force, verification is local and read-only. Missing identity can be recovered only from
 a canonical folder. Forced recovery preserves a checkout until its replacement clone passes
 origin, object, owner, and identity validation.`;
@@ -101,6 +115,7 @@ Usage:
   bunx starsync rename [options] [target-path]
 
 Options:
+${HOST_OPTION}
   --help, -h        Show this help
   --json            Emit one schema-versioned JSON result document on stdout
   --apply           Update repository slugs and origins, and safely rename folders
@@ -108,9 +123,9 @@ Options:
 Environment:
   GITHUB_TOKEN      Required for GitHub archives.
   CODEBERG_TOKEN    Required for Codeberg archives.
-  TARGET_PATH       Required if no positional target-path is given.
+${TARGET_ENVIRONMENT}
 
-A positional target-path argument overrides TARGET_PATH.
+${TARGET_SELECTION}
 Without --apply, rename is read-only. Apply requires existing stable checkout identities,
 preserves blocked local work, and reports partial success without temporary state.`;
 
@@ -122,14 +137,15 @@ Usage:
   bunx starsync dates [options] [target-path]
 
 Options:
+${HOST_OPTION}
   --help, -h        Show this help
   --json            Emit one schema-versioned JSON result document on stdout
   --dry-run         Preview timestamp repairs without modifying the archive
 
 Environment:
-  TARGET_PATH       Required if no positional target-path is given.
+${TARGET_ENVIRONMENT}
 
-A positional target-path argument overrides TARGET_PATH.
+${TARGET_SELECTION}
 Archive Date is the newest committer time reachable from any local Git reference.
 Date calculation is local and does not use API tokens or network access.`;
 
@@ -143,15 +159,17 @@ Usage:
 Options:
   --help, -h        Show this help
   --json            Emit one schema-versioned JSON result document on stdout
-  --host HOST       github.com (default) or codeberg.org; also accepts --host=HOST
+${HOST_OPTION}
 
 Environment:
   GITHUB_TOKEN      Required for github.com (repo + read:user scopes).
   CODEBERG_TOKEN    Required for codeberg.org (read:user and read:repository scopes).
-  TARGET_PATH       Required if no positional target-path is given.
+${TARGET_ENVIRONMENT}
+
+${TARGET_SELECTION}
 
 The target directory must already exist and be empty. Each archive belongs to one host and
-account. Later commands use the recorded host; they cannot switch it with --host.`;
+account. Initialization defaults to github.com; later commands use the recorded host.`;
 
 export const UNLOCK_HELP_TEXT = `starsync unlock - release an archive operation lock.
 
@@ -161,12 +179,15 @@ Usage:
   bunx starsync unlock [options] [target-path]
 
 Options:
+${HOST_OPTION}
   --help, -h        Show this help
   --json            Emit one schema-versioned JSON result document on stdout
   --force           Remove a remote or uncertain lock after confirming no operation
                     still uses the archive; never overrides a confirmed live local owner
 
 Environment:
-  TARGET_PATH       Required if no positional target-path is given.
+${TARGET_ENVIRONMENT}
+
+${TARGET_SELECTION}
 
 Confirmed-dead same-host locks are removed without --force.`;
