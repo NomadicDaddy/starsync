@@ -33,6 +33,8 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Fixed
 
+- README rename-preview guidance now distinguishes preserved checkout content from transient
+  operation-lock writes; the lint reference includes unused-disable reporting.
 - Git hooks find Git's Bash by absolute path on Windows, avoiding the unrelated WSL launcher
   when it appears first on `PATH`.
 - Knip discovers package-script entry points itself, so deleting a script can expose its

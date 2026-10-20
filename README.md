@@ -225,7 +225,8 @@ repository identity by numeric ID on the archive's host and reports one of `bloc
 
 Every checkout must already contain a stable repository ID matching the host's resolved ID. Preview
 reports missing or mismatched identity, dirty or unverifiable state, duplicate identities,
-credential-bearing or invalid origins, and destination collisions without writing anything.
+credential-bearing or invalid origins, and destination collisions without changing checkout content.
+Preview still creates and removes the transient operation lock described below.
 
 `rename --apply` additionally authenticates the configured archive owner. For each safe pending
 checkout it updates the stored slug, normalizes `origin`, and moves the folder to
@@ -314,29 +315,29 @@ bun run smoke:live -- <temporary-managed-archive>
 
 ## Scripts
 
-| Script                       | Purpose                                                                     |
-| ---------------------------- | --------------------------------------------------------------------------- |
-| `bun run sync`               | Run the explicit sync command                                               |
-| `bun run start`              | Run any subcommand from source                                              |
-| `bun run build`              | Run `build:bundle`, then `build:types`                                      |
-| `bun run build:bundle`       | Bundle `src/cli.ts` and `src/index.ts` into `dist/` for Node, deps external |
-| `bun run build:types`        | Emit declarations into `dist/types` through `tsconfig.types.json`           |
-| `bun run smoke:qc`           | Run static, dead-code, leak, license, shared-core, and test gates           |
-| `bun run smoke:qc:fast`      | Static gate only: source shape, types, lint, format. No tests               |
-| `bun run smoke:live`         | Run the opt-in read-only smoke against an explicit archive copy             |
-| `bun run check:max-lines`    | Enforce production file size and extracted-function shape limits            |
-| `bun run check:dead-code`    | Knip file and export reachability gate wired into `smoke:qc`                |
-| `bun run check:leak-guard`   | Self-test `.githooks/leak-guard.sh` against synthetic fixtures              |
-| `bun run check:licenses`     | Run both license checks: the shared core, then the attribution documents    |
-| `bun run check:license-core` | Verify the shared license core against the installed dependency graph       |
-| `bun run check:shared-core`  | Verify shared hooks, helpers, manifests, and gates against their owners     |
-| `bun run licenses:generate`  | Rewrite `THIRD_PARTY_LICENSES.md` and `THIRD_PARTY_NOTICES.md`              |
-| `bun run typecheck`          | `tsc --noEmit`                                                              |
-| `bun run lint`               | `eslint src scripts test eslint.config.js --max-warnings 0`                 |
-| `bun run lint:fix`           | The same scope with `--fix`                                                 |
-| `bun run test`               | Run the unit suite                                                          |
-| `bun run format`             | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts" knip.json` |
-| `bun run format:check`       | The same files with `--check`                                               |
+| Script                       | Purpose                                                                                      |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| `bun run sync`               | Run the explicit sync command                                                                |
+| `bun run start`              | Run any subcommand from source                                                               |
+| `bun run build`              | Run `build:bundle`, then `build:types`                                                       |
+| `bun run build:bundle`       | Bundle `src/cli.ts` and `src/index.ts` into `dist/` for Node, deps external                  |
+| `bun run build:types`        | Emit declarations into `dist/types` through `tsconfig.types.json`                            |
+| `bun run smoke:qc`           | Run static, dead-code, leak, license, shared-core, and test gates                            |
+| `bun run smoke:qc:fast`      | Static gate only: source shape, types, lint, format. No tests                                |
+| `bun run smoke:live`         | Run the opt-in read-only smoke against an explicit archive copy                              |
+| `bun run check:max-lines`    | Enforce production file size and extracted-function shape limits                             |
+| `bun run check:dead-code`    | Knip file and export reachability gate wired into `smoke:qc`                                 |
+| `bun run check:leak-guard`   | Self-test `.githooks/leak-guard.sh` against synthetic fixtures                               |
+| `bun run check:licenses`     | Run both license checks: the shared core, then the attribution documents                     |
+| `bun run check:license-core` | Verify the shared license core against the installed dependency graph                        |
+| `bun run check:shared-core`  | Verify shared hooks, helpers, manifests, and gates against their owners                      |
+| `bun run licenses:generate`  | Rewrite `THIRD_PARTY_LICENSES.md` and `THIRD_PARTY_NOTICES.md`                               |
+| `bun run typecheck`          | `tsc --noEmit`                                                                               |
+| `bun run lint`               | ESLint on source, scripts, tests and config, with unused-disable reporting and zero warnings |
+| `bun run lint:fix`           | The same scope with `--fix`                                                                  |
+| `bun run test`               | Run the unit suite                                                                           |
+| `bun run format`             | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts" knip.json`                  |
+| `bun run format:check`       | The same files with `--check`                                                                |
 
 `prepare` and `prepublishOnly` are lifecycle hooks rather than commands to run by hand. `prepare`
 runs the install guard, points `core.hooksPath` at `.githooks/`, seeds the leak-guard pattern file,
