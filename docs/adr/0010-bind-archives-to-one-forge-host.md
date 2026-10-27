@@ -14,9 +14,10 @@ stars, rename lookup, repair and metadata transitions use the selected host. Ren
 stored numeric ID so a removed or reused old slug cannot redirect identity.
 
 GitHub uses Octokit; Codeberg uses its fixed HTTPS Forgejo API with response validation, bounded
-request timeouts and retry handling. Stars are paged until an empty page; a short page alone is
-not exhaustion because servers can cap page sizes. Repeated IDs fail rather than looping or
-silently declaring the archive complete. API redirects are rejected to keep credentials on host.
+request timeouts and retry handling. Codeberg stars are paged until an empty page; a short page
+alone is not exhaustion because servers can cap page sizes. Repeated IDs fail rather than looping or
+silently declaring the archive complete. Codeberg API redirects are rejected to keep credentials on
+host. GitHub star pagination uses Octokit's paginator.
 
 `GITHUB_TOKEN` and `CODEBERG_TOKEN` are selected by the CLI from the archive host. Programmatic
 callers pass the matching token explicitly. Git authentication remains separate. Clone and fetch

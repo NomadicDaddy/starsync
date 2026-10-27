@@ -4,4 +4,4 @@ The managed archive preserves Git history and a usable checkout of each reposito
 
 When Git LFS is installed and its smudge filter fails because an object is no longer served, StarSync retries the operation once with `GIT_LFS_SKIP_SMUDGE=1` so the repository is archived with pointer files rather than lost. The fallback applies to a single failed clone or refresh and is never configured into the checkout, so an archive on a machine with working Git LFS keeps downloading objects normally.
 
-StarSync also excludes GitHub-hosted material outside the primary repository, including issues, pull-request discussion, release assets, wiki content, and workflow artifacts. Exporting those resources would turn the tool into a GitHub account backup system with separate data models, retention rules, and API limits.
+StarSync also excludes material hosted by GitHub or Codeberg outside the primary repository, including issues, pull-request discussion, release assets, wiki content, and workflow artifacts. Exporting those resources would turn the tool into a forge account backup system with separate data models, retention rules, and API limits.
