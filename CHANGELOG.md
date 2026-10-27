@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-27
+
 ### Added
 
 - Shared StarSync project logo in the GitHub README, displayed as a contained square.
@@ -33,6 +35,10 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Fixed
 
+- Forced verification preserves checkouts with foreign or credential-bearing origins, duplicate
+  identities, or mismatched identity metadata instead of replacing them.
+- Rename resolution and forced recovery use the stored repository ID when available, so
+  repository renames and transfers can be resolved on the archive's host.
 - README rename-preview guidance now distinguishes preserved checkout content from transient
   operation-lock writes; the lint reference includes unused-disable reporting.
 - Git hooks find Git's Bash by absolute path on Windows, avoiding the unrelated WSL launcher
@@ -40,8 +46,6 @@ All notable changes to this project will be documented in this file. Format foll
 - Knip discovers package-script entry points itself, so deleting a script can expose its
   orphaned file. Formatting checks now cover `knip.json`, and its CLI discovery explanation
   names the `start` and `sync` scripts that actually reach the source entry point.
-- The delivered runner keeps test-only helpers private, removing the need for its three
-  temporary Knip export exemptions.
 
 ### Security
 
