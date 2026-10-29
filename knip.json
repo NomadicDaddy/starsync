@@ -26,13 +26,14 @@
 	],
 	// Interim, documented exemptions — each tied to an open tracked finding; remove when it lands:
 	//
-	// - scripts/lib/shared-core/** is byte-synced owner core (see scripts/shared-core-manifest.json,
+	// - scripts/smokestack/lib/shared-core/** is byte-synced owner core (see
+	//   scripts/smokestack/shared-core-manifest.json,
 	//   group shared-core-sync, owner smokestack). Unused exports there can only be corrected in the
 	//   owner repository and re-synced; local edits would fail check:shared-core. Tracked by
 	//   audit-dead-code-1786640825-spernakit-owned-shared-core-helpers-expose-five-unused-exports.
 	//   Enforcement for this directory belongs to the owner's own gates.
 	"ignoreIssues": {
-		"scripts/lib/shared-core/**": ["exports", "types"]
+		"scripts/smokestack/lib/shared-core/**": ["exports", "types"]
 	},
 	"project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
 }

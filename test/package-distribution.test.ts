@@ -98,14 +98,15 @@ describe('package distribution', () => {
 		// process whose PATH does not prepend Git's usr/bin. A bare `bash` therefore passes from
 		// Git Bash and fails from PowerShell on the same machine, which reached a release as
 		// prepublishOnly -> smoke:qc -> check:leak-guard dying on execvpe(/bin/bash). Shell
-		// scripts are invoked through scripts/run-bash.ts, which resolves Git's own bash.
+		// scripts use scripts/smokestack/run-bash.ts, which resolves Git's own bash.
 		const bareBash = Object.entries(scripts).filter(([, command]) =>
 			/(?:^|\s|\()bash\s/.test(String(command)),
 		);
 
 		expect(bareBash).toEqual([]);
-		expect(scripts['check:leak-guard']).toContain('scripts/run-bash.ts');
-		expect(scripts['prepare']).toContain('scripts/run-bash.ts');
+		expect(scripts['check:leak-guard']).toContain('scripts/smokestack/run-bash.ts');
+		expect(scripts['prepare']).toContain('scripts/smokestack/run-bash.ts');
+		expect(scripts['prepare']).toContain('git config core.hooksPath scripts/smokestack/hooks');
 	});
 
 	test('builds both entry points for node with dependencies left external', () => {
@@ -164,13 +165,13 @@ describe('package distribution', () => {
 
 		// `check:dead-code` is the gate's name, and `smoke:qc` runs it before the test suite. The
 		// release workflow's quality step is `smoke:qc` itself, which is the smokestack runner, and
-		// what the runner runs is the `qc` step list in smokestack.json, in the order written. So
+		// what the runner runs is the `qc` list in scripts/smokestack/smokestack.json. So
 		// the step and its position are asserted there. The runner goes on after a failed step, so
 		// the detector would now run even behind a failing test; it stays ahead of the suite so the
 		// cheap, static answer comes first and the order this repository chose is not lost by edit.
 		expect(scripts['check:dead-code']).toBe('knip --no-progress');
-		expect(scripts['smoke:qc']).toBe('bun scripts/smokestack.ts');
-		const { steps } = section('smokestack.json', 'qc') as {
+		expect(scripts['smoke:qc']).toBe('bun scripts/smokestack/smokestack.ts');
+		const { steps } = section('scripts/smokestack/smokestack.json', 'qc') as {
 			steps: { name: string; run: string[] }[];
 		};
 		const names = steps.map((step) => step.name);

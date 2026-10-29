@@ -22,10 +22,18 @@
 
 import { join } from 'node:path';
 
-import { collectLockfileClosure, type LockedPackage } from '../license-core/lockfile.ts';
-import { byCodepoint } from '../license-core/order.ts';
+import {
+	collectLockfileClosure,
+	type LockedPackage,
+} from '../../smokestack/lib/license-core/lockfile.ts';
+import { byCodepoint } from '../../smokestack/lib/license-core/order.ts';
+import {
+	readJson,
+	readLicenseText,
+	readNoticeText,
+	resolveVersionedDir,
+} from '../../smokestack/lib/third-party-licenses/resolve.ts';
 import { licenseOf } from './collect.ts';
-import { readJson, readLicenseText, readNoticeText, resolveVersionedDir } from './resolve.ts';
 
 export interface ClosurePackage {
 	license: string;

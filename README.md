@@ -327,7 +327,7 @@ bun run smoke:live -- <temporary-managed-archive>
 | `bun run smoke:live`         | Run the opt-in read-only smoke against an explicit archive copy                              |
 | `bun run check:max-lines`    | Enforce production file size and extracted-function shape limits                             |
 | `bun run check:dead-code`    | Knip file and export reachability gate wired into `smoke:qc`                                 |
-| `bun run check:leak-guard`   | Self-test `.githooks/leak-guard.sh` against synthetic fixtures                               |
+| `bun run check:leak-guard`   | Self-test `scripts/smokestack/hooks/leak-guard.sh` against synthetic fixtures                |
 | `bun run check:licenses`     | Run both license checks: the shared core, then the attribution documents                     |
 | `bun run check:license-core` | Verify the shared license core against the installed dependency graph                        |
 | `bun run check:shared-core`  | Verify shared hooks, helpers, manifests, and gates against their owners                      |
@@ -340,7 +340,7 @@ bun run smoke:live -- <temporary-managed-archive>
 | `bun run format:check`       | The same files with `--check`                                                                |
 
 `prepare` and `prepublishOnly` are lifecycle hooks rather than commands to run by hand. `prepare`
-runs the install guard, points `core.hooksPath` at `.githooks/`, seeds the leak-guard pattern file,
+runs the install guard, points `core.hooksPath` at `scripts/smokestack/hooks/`, seeds the leak-guard pattern file,
 and then builds; `prepublishOnly` runs `smoke:qc`.
 
 Schedule the explicit `sync` command with Task Scheduler, cron, launchd, or another periodic

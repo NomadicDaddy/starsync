@@ -1,0 +1,26 @@
+#!/bin/sh
+# Runs the repository's own hook of this name, kept in .githooks, and nothing else.
+#
+# git runs hooks from one folder. In a repository that takes smokestack's hooks that folder is
+# scripts/smokestack/hooks, so a reference-transaction the repository keeps in .githooks would
+# otherwise stop running. This stub is delivered under that name. A file in .githooks carrying
+# smokestack's ownership line is a delivered copy (in smokestack itself, this file), never the
+# repository's own, and is not run. The repository's own hook stays in .githooks unmoved, so
+# its dirname "$0"-relative paths keep working.
+#
+# Two differences from the post-checkout and post-merge stubs, both because git HONOURS this
+# hook's exit status, unlike those two: a present but non-executable own hook is a defect that
+# must stop the transaction and name the file, not a warning that exits 0; and the own hook's
+# own exit status is the transaction's answer, which exec passes through with the state
+# argument (prepared, committed or aborted) and stdin.
+#
+# smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+# smokestack; every repository that takes it holds a byte-identical copy.
+own_hook=".githooks/$(basename "$0")"
+[ -f "$own_hook" ] || exit 0
+grep -q 'smokestack owns this file' "$own_hook" && exit 0
+if [ ! -x "$own_hook" ]; then
+	echo "$(basename "$0"): $own_hook is present but not executable; refusing to run the transaction. chmod +x it." >&2
+	exit 1
+fi
+exec "$own_hook" "$@"

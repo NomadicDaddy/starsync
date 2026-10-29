@@ -8,8 +8,11 @@
 import { join } from 'node:path';
 import { format, resolveConfig } from 'prettier';
 
-import { licenseIdentifiers, reviewLicenseExpression } from '../license-core/expression.ts';
-import { byCodepoint } from '../license-core/order.ts';
+import {
+	licenseIdentifiers,
+	reviewLicenseExpression,
+} from '../../smokestack/lib/license-core/expression.ts';
+import { byCodepoint } from '../../smokestack/lib/license-core/order.ts';
 import { type DirectDependency, type GraphSummary } from './collect.ts';
 import { NOTICES } from './notices.ts';
 
