@@ -26,6 +26,8 @@ import { dirname, join, relative } from 'node:path';
 import type { Finding } from './check.ts';
 import type { SharedCoreGroup } from './manifest.ts';
 
+import { type Delivery, taggedBatches } from './tag.ts';
+
 export interface WriteOutcome {
 	blocked: Finding[];
 	skipped: Finding[];
@@ -133,8 +135,27 @@ export function applyFindings(
 	findings: Finding[],
 	fleetRoot: string,
 	dryRun: boolean,
+	delivery: Delivery | null = null,
+	ownerRoot: null | string = null,
 ): WriteOutcome {
 	const outcome: WriteOutcome = { blocked: [], skipped: [], written: [] };
+
+	// The bytes come from the tag commit itself, not the working tree: a source that differs
+	// from its blob without git reporting it modified would otherwise ship disk bytes under a
+	// lock naming the tag. `source` is an absolute path on disk; the tag commit addresses it
+	// owner-relative and POSIX, so convert before asking git for the blob. Every writable
+	// finding of this report is answered by ONE cat-file --batch spawn, not one git per file.
+	let tagged: Map<string, null | string> | null = null;
+	if (delivery !== null && ownerRoot !== null) {
+		const wanted = new Map<string, string>();
+		for (const finding of findings) {
+			if (finding.destination === undefined || finding.source === undefined) continue;
+			wanted.set(finding.source, relative(ownerRoot, finding.source).replaceAll('\\', '/'));
+		}
+		if (wanted.size > 0) {
+			tagged = taggedBatches(ownerRoot, delivery.commit, [...wanted.values()]);
+		}
+	}
 
 	for (const finding of findings) {
 		// Not a mistake and not filtered upstream: this is where every non-writable kind lands, and
@@ -165,10 +186,26 @@ export function applyFindings(
 			continue;
 		}
 
+		let body: string;
+		if (tagged !== null) {
+			const taggedPath = relative(ownerRoot ?? '.', finding.source).replaceAll('\\', '/');
+			const bytes = tagged.get(taggedPath) ?? null;
+			if (bytes === null) {
+				outcome.blocked.push({
+					...finding,
+					detail: `git could not read ${taggedPath} at the tag commit ${delivery?.commit ?? '?'}`,
+				});
+				continue;
+			}
+			body = bytes;
+		} else {
+			body = readFileSync(finding.source, 'utf8');
+		}
+
 		let note: null | string = null;
 		if (!dryRun) {
 			mkdirSync(dirname(finding.destination), { recursive: true });
-			writeFileSync(finding.destination, readFileSync(finding.source, 'utf8'));
+			writeFileSync(finding.destination, body);
 			if (finding.executable === true) {
 				note = makeExecutable(targetRoot, relativePath, finding.destination);
 			}

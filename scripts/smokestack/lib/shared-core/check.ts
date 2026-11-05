@@ -46,6 +46,7 @@ export type FindingKind =
 	| 'diverged-hook'
 	| 'drift'
 	| 'foreign-hook'
+	| 'known-drift'
 	| 'local-chain'
 	| 'lost-delivery'
 	| 'not-applicable'

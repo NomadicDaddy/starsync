@@ -1,10 +1,12 @@
 /**
- * Starts one step and waits for it, and can stop it with everything it started.
+ * Starts one step and waits for it, and can stop it with what it started.
  *
  * Every step is `bun run <script>`, so the process doing the work is always a child of the child
  * this starts. Stopping only the child leaves the work running, holding files and ports, after the
  * gate has reported. So a stop takes the whole tree: on Windows by the process tree, elsewhere by
- * the process group the step is started in.
+ * the process group the step is started in. Elsewhere that misses a process started detached, which
+ * has a group of its own and outlives the stop
+ * (runner-stop-reaches-detached-grandchildren-on-posix).
  *
  * A step gets no standard input, in a terminal and in a commit hook alike. A hook has none; a step
  * that read a terminal's would behave one way at the keyboard and another at commit time. A step
@@ -48,7 +50,8 @@ function stopTree(child: ChildProcess): void {
 		return;
 	}
 	try {
-		// Negative: the group the step leads, which holds everything it started.
+		// Negative: the group the step leads, which holds what it started, apart from a process
+		// started detached in a group of its own (runner-stop-reaches-detached-grandchildren-on-posix).
 		kill(-child.pid, 'SIGTERM');
 	} catch {
 		// Already gone.
@@ -56,8 +59,9 @@ function stopTree(child: ChildProcess): void {
 }
 
 /**
- * Runs `run` in `cwd` and resolves when it has ended. When `signal` aborts, the step and everything
- * it started are stopped and the result is `stopped`, whatever exit code the dying process gave.
+ * Runs `run` in `cwd` and resolves when it has ended. When `signal` aborts, the step and what it
+ * started are stopped (on POSIX its process group, which a detached process leaves; see the header)
+ * and the result is `stopped`, whatever exit code the dying process gave.
  * `env` is the whole environment the step is handed; undefined hands it this process's (env.ts),
  * and only then does a bun the runner starts load .env files.
  */
@@ -118,4 +122,27 @@ export function runProcess(
 			}, INTERRUPT_GRACE_MS);
 		});
 	});
+}
+
+/**
+ * Passes an interruption the runner receives to the gate it restarted (smokestack.ts), so the gate
+ * stops its steps and exits 130 as it would on a first start. Not on Windows: there a console
+ * interrupt already reaches the restarted gate itself, and kill() would end it outright, with its
+ * steps left running, before it could stop them. There the runner only stays to report the gate's
+ * exit. Returns a function that removes the listeners.
+ */
+export function relayInterrupts(
+	gate: { kill: (signal: NodeJS.Signals) => void },
+	on: NodeJS.Platform = platform,
+): () => void {
+	const listeners = (['SIGINT', 'SIGTERM', 'SIGHUP'] as const).map((name) => {
+		const listener = (): void => {
+			if (on !== 'win32') gate.kill(name);
+		};
+		process.on(name, listener);
+		return [name, listener] as const;
+	});
+	return () => {
+		for (const [name, listener] of listeners) process.off(name, listener);
+	};
 }

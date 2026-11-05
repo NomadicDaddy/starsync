@@ -41,6 +41,7 @@
 		{
 			"files": [
 				{ "disposition": "synced", "source": "check-leak-guard.sh" },
+				{ "disposition": "synced", "source": "check-leak-guard-cases.sh" },
 				{ "disposition": "seeded", "source": "run-bash.ts" }
 			],
 			"name": "leak-guard-scripts",
@@ -200,8 +201,10 @@
 				{ "disposition": "synced", "source": "lib/shared-core/dispatch.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/eligibility.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/expected.ts" },
+				{ "disposition": "synced", "source": "lib/shared-core/frozen.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/git-hooks.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/hook.ts" },
+				{ "disposition": "synced", "source": "lib/shared-core/known-drift.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/lock-check.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/lock-scope.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/lock-write.ts" },
@@ -224,6 +227,7 @@
 				{ "disposition": "synced", "source": "lib/shared-core/self-check.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/tag.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/targets.ts" },
+				{ "disposition": "synced", "source": "lib/shared-core/test-timeout-leads.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/vacuity.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/wiring.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/write.ts" }
@@ -267,6 +271,15 @@
 				"smoke:qc:fast": "bun scripts/smokestack/smokestack.ts --fast"
 			},
 			"wiringRequired": true
+		},
+		{
+			"files": [{ "disposition": "synced", "source": "test-timeout.ts" }],
+			"name": "test-timeout-preload",
+			"owner": "smokestack",
+			"requiresPackageJson": true,
+			"sourceRoot": "scripts",
+			"targetRoot": "scripts/smokestack",
+			"targets": { "model": "roster", "roster": "test-timeout-targets.json" }
 		},
 		{
 			"files": [{ "disposition": "synced", "source": "pre-commit-leak-guard-only" }],

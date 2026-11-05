@@ -90,14 +90,18 @@ export function importedFiles(root: string, files: readonly string[]): string[] 
 		const loader = loaderOf(file);
 		if (loader === null) continue;
 		for (const specifier of specifiersOf(root, file, loader)) {
-			let resolved: string;
+			// A bundler query or hash (`./page.html?raw`, `./icon.svg?url`) still reads the file
+			// it names, so that file is what the key covers. Bun keeps the suffix on the path it
+			// resolves, which names no file on disk. A leading '#' is a package.json imports
+			// subpath ('#lib/helper.ts'), not a suffix, so the strip starts after the first character.
+			const target = specifier.replace(/(?!^)[?#].*$/, '');
+			let path: null | string;
 			try {
-				resolved = Bun.resolveSync(specifier, dirname(join(root, file)));
+				path = local(Bun.resolveSync(target, dirname(join(root, file))));
 			} catch {
-				if (isBare(specifier)) continue;
+				if (isBare(target)) continue;
 				throw new Error(`${file} imports '${specifier}', which resolves to no file`);
 			}
-			const path = local(resolved);
 			if (path === null || seen.has(path)) continue;
 			seen.add(path);
 			found.push(path);

@@ -19,7 +19,8 @@
 
 import { type GroupReport } from './check.ts';
 
-export function reportClean(reports: GroupReport[], only?: Set<string>): number {
+/** `known` counts the rows a known-drift entry held back (known-drift.ts), which a pass names. */
+export function reportClean(reports: GroupReport[], only?: Set<string>, known = 0): number {
 	const targets = reports.reduce((total, report) => total + report.targets, 0);
 	const files = reports.reduce((total, report) => total + report.matched, 0);
 
@@ -40,8 +41,15 @@ export function reportClean(reports: GroupReport[], only?: Set<string>): number 
 		return 0;
 	}
 
-	console.info(
-		`[OK] Shared core: no drift (${files} file(s) across ${targets} target(s) examined).`,
-	);
+	const examined = `${files} file(s) across ${targets} target(s) examined`;
+	if (known > 0) {
+		// Not "no drift": the known rows still differ, and saying so is the condition of passing them.
+		console.info(
+			`[OK] Shared core: 0 unknown drift and ${known} known (${examined}). Each KNOWN-DRIFT ` +
+				'row above is accepted only until the expiry its entry names, and still needs its fix.',
+		);
+		return 0;
+	}
+	console.info(`[OK] Shared core: no drift (${examined}).`);
 	return 0;
 }

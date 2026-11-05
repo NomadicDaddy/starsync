@@ -28,6 +28,14 @@ import { parseArgs } from 'node:util';
 
 import { checkGroup } from './lib/shared-core/check.ts';
 import { type Deliveries, readDeliveries } from './lib/shared-core/deliveries.ts';
+import { frozenRefusal, loadFrozen } from './lib/shared-core/frozen.ts';
+import {
+	applyKnownDrift,
+	type KnownDrift,
+	knownDriftLines,
+	loadKnownDrift,
+	localToday,
+} from './lib/shared-core/known-drift.ts';
 import { scopeFindings } from './lib/shared-core/lock-scope.ts';
 import { loadManifest, type SharedCoreGroup } from './lib/shared-core/manifest.ts';
 import { reportCheck, reportWrite } from './lib/shared-core/report.ts';
@@ -50,7 +58,9 @@ const USAGE = `sync-shared-core — sync the files this fleet shares between pee
                           the groups this repository owns. Refuses to overwrite uncommitted work.
                           Made only from the annotated tag of this repository's version, with no
                           tracked file modified. Rewrites the smokestack.lock of each target that
-                          has one, once every group that target takes is delivered.
+                          has one, once every group that target takes is delivered. Refused while
+                          frozen-targets.json is missing, names anything and --only is absent, or
+                          --only names a frozen target.
   --dry-run               With --write: run every refusal and report what would be written. Off a
                           tag it warns and goes on.
   --group <name>          Restrict to one manifest group. Repeatable; a subsystem whose files span
@@ -166,6 +176,16 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 	const fleetRoot =
 		options.fleetRoot === undefined ? defaultFleetRoot(root) : resolve(options.fleetRoot);
 	const groups = selectGroups(manifest, options.groups);
+	// The frozen list before any target is read, dry run included (lib/shared-core/frozen.ts). It
+	// is untracked like the rosters, so a branch worktree reads the main checkout's. The wrapper
+	// and the installers apply the same rule; this one holds for a write typed by hand.
+	if (options.write) {
+		const refusal = frozenRefusal(loadFrozen(configRoot(root)), options.only);
+		if (refusal !== null) {
+			console.error(`[FAIL] ${refusal} Nothing was written.`);
+			return 1;
+		}
+	}
 	console.info(`Configuration: rosters and deliveries from ${configRoot(root)}.`);
 	console.info(describeRoots(fleetRoot, loadFleetRoots(fleetRoot)));
 
@@ -193,7 +213,27 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 			root,
 			options.only,
 		);
-		return reportCheck(reports, options.only, deliveries === null, fleetRoot, scope);
+		// Rows already known, with a reason, an owner and an end date (lib/shared-core/known-drift.ts).
+		// Untracked like the rosters, so a branch worktree reads the main checkout's.
+		const today = localToday();
+		let known: KnownDrift[];
+		try {
+			known = loadKnownDrift(configRoot(root), today);
+		} catch (err) {
+			const reason = err instanceof Error ? err.message : String(err);
+			console.error(`[FAIL] The known-drift list could not be read: ${reason}`);
+			return 2;
+		}
+		const held = applyKnownDrift(reports, scope, known, today);
+		const code = reportCheck(
+			held.reports,
+			options.only,
+			deliveries === null,
+			fleetRoot,
+			held.scope,
+		);
+		for (const line of knownDriftLines(held)) console.info(line);
+		return code;
 	}
 	// The whole manifest, not the selection: a narrowed write has to know what else a target takes.
 	return reportWrite(reports, manifest, fleetRoot, root, options.dryRun, deliveries);

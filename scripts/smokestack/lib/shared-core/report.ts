@@ -1,9 +1,7 @@
 /**
  * The reporting half of the shared-core sync — how a run of `--check` or `--write` reads.
  *
- * Split out of sync-shared-core.ts, which sat exactly on the 300-line cap: the next line of
- * behaviour anywhere in it would have failed the gate, and rendering is the part with no claim on
- * the entry point. Nothing here decides anything. `reportCheck` and `reportWrite` consume the
+ * Split out of sync-shared-core.ts at the 300-line cap. `reportCheck` and `reportWrite` consume the
  * findings check.ts already classified and the outcomes write.ts already produced, and their only
  * contribution beyond printing is the exit code the shape of those findings implies.
  *
@@ -20,6 +18,7 @@ import { LOCK_FILE } from './lock.ts';
 import { applyMoves, holdBack, planMoves } from './move.ts';
 import { untrackedSourcesRefusal } from './owner.ts';
 import { type Delivery, tagStanding } from './tag.ts';
+import { testTimeoutLeadLines } from './test-timeout-leads.ts';
 import { reportClean } from './vacuity.ts';
 import { applyFindings, ownershipRefusal, type WriteOutcome } from './write.ts';
 
@@ -31,6 +30,7 @@ function order(findings: Finding[]): Finding[] {
 		'diverged-hook': 1,
 		drift: 0,
 		'foreign-hook': 2,
+		'known-drift': 4,
 		'local-chain': 6,
 		'lost-delivery': 1,
 		'not-applicable': 8,
@@ -153,7 +153,7 @@ export function reportCheck(
 		console.error(noRecord(fleetRoot));
 		return 1;
 	}
-	return reportClean(reports, only);
+	return reportClean(reports, only, findings.filter((f) => f.kind === 'known-drift').length);
 }
 
 /**
@@ -219,7 +219,7 @@ export function reportWrite(
 
 	const outcomes = new Map<string, WriteOutcome>();
 	for (const report of owned) {
-		const outcome = applyFindings(report.findings, fleetRoot, dryRun);
+		const outcome = applyFindings(report.findings, fleetRoot, dryRun, delivery, root);
 		outcomes.set(report.group, outcome);
 		// A stale lock is not the file writer's to settle and is not left alone either: the lock
 		// is rewritten below, and reported there. Nor is a lost delivery: the same absent file is
@@ -248,6 +248,7 @@ export function reportWrite(
 	holdBack(moves, held);
 	const moved = applyMoves(moves, fleetRoot, dryRun);
 	if (moved.length > 0) console.info(`\nmoved\n${moved.map((line) => `  ${line}`).join('\n')}`);
+	for (const line of testTimeoutLeadLines(owned, fleetRoot)) console.info(line);
 	// The record follows the locks this run settled, and no others: a lock withheld keeps the
 	// entry of its last good delivery, and a target outside an --only narrowing is not touched.
 	//

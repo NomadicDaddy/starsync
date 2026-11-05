@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { pid } from 'node:process';
 
 export const CACHE_FILE = '.smokestack-cache.json';
-const STORE_VERSION = 2;
+const STORE_VERSION = 3;
 
 /** Everything besides the inputs that a step's pass depends on. */
 export interface KeyParts {
@@ -22,6 +22,8 @@ export interface KeyParts {
 	bun: string;
 	/** A hash of the values of the environment keys the key includes, and with them .env files. */
 	env: string;
+	/** A hash of PATH and PATHEXT, which decide the program each name a step spawns resolves to. */
+	path: string;
 	/** The commit, for a step keyed on it; otherwise null. */
 	revision: null | string;
 	/** A hash of the runner's own source. */
@@ -56,6 +58,7 @@ function isKey(raw: unknown): raw is KeyParts {
 		key['argv'].every((part) => typeof part === 'string') &&
 		typeof key['bun'] === 'string' &&
 		typeof key['env'] === 'string' &&
+		typeof key['path'] === 'string' &&
 		(key['revision'] === null || typeof key['revision'] === 'string') &&
 		typeof key['runner'] === 'string' &&
 		(key['scripts'] === null || typeof key['scripts'] === 'string')

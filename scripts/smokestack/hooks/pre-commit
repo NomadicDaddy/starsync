@@ -50,8 +50,18 @@ hooks_dir="$(dirname "$0")"
 echo "pre-commit: leak-guard"
 bash "$hooks_dir/leak-guard.sh"
 
+# The gates below run without git's variables for this repository (GIT_DIR, GIT_INDEX_FILE and the
+# rest `git rev-parse --local-env-vars` names). A step that makes scratch repositories would
+# otherwise write into this one: from a linked worktree, a fixture's `git init --bare` made the
+# repository itself bare (smokestack, 2026-11-05). The leak guard above and the staged-file check
+# below keep them, since both read what this commit stages.
+without_repo_env() {
+	# shellcheck disable=SC2046 # one variable name per word, which unset needs split
+	(unset $(git rev-parse --local-env-vars) && "$@")
+}
+
 echo "pre-commit: qc (cached subset of smoke:qc)"
-bun run smoke:qc:fast
+without_repo_env bun run smoke:qc:fast
 
 # The license checks read bun.lock and the installed tree — the third-party inventory is generated
 # FROM the lockfile — so a dependency change can break them without touching a single source file.
@@ -65,7 +75,7 @@ bun run smoke:qc:fast
 staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
 if grep -qE '(^|/)(bun\.lock|package\.json)$' <<<"$staged_files"; then
 	echo "pre-commit: check:licenses (dependency manifest staged)"
-	bun run check:licenses
+	without_repo_env bun run check:licenses
 fi
 
 # The repository's own pre-commit, kept in .githooks, runs after ours. git runs hooks from one

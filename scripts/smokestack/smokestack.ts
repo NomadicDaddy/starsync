@@ -34,13 +34,21 @@ import { cacheIgnoreRefusal } from './lib/smokestack/cache-store.ts';
 import { type CacheSession, openCache } from './lib/smokestack/cache.ts';
 import { ConfigError } from './lib/smokestack/config-read.ts';
 import { type Config, readConfig, skipReason, type Step } from './lib/smokestack/config.ts';
-import { childEnv, describeEnv } from './lib/smokestack/env.ts';
+import {
+	childEnv,
+	describeEnv,
+	gitHookEnvPresent,
+	RESTART_MARK,
+	withoutNames,
+} from './lib/smokestack/env.ts';
 import { exitCodeFor, GATE_MARK, type Mode, runGate, summarise } from './lib/smokestack/gate.ts';
 import { printListing, printListingJson } from './lib/smokestack/list.ts';
 import { standing } from './lib/smokestack/preflight.ts';
+import { relayInterrupts } from './lib/smokestack/spawn.ts';
 
 const USAGE = 'Usage: bun run smoke:qc -- [--fast] [--list [--json] | --cache-status] [--force]';
 const EXIT_CANNOT_START = 2;
+const EXIT_INTERRUPTED = 130;
 
 export interface RunnerOptions {
 	cacheStatus: boolean;
@@ -202,6 +210,37 @@ function repositoryRoot(dir: string): string {
 }
 
 if (import.meta.main) {
+	// Started from a git hook, this process holds git's variables for the repository being
+	// committed (env.ts). Before anything runs git, whether the cache's check-ignore, the
+	// preflight's owner checks or any step, the runner starts itself again without them, so all of
+	// it finds its repository from where it runs. Deleting them here would not do: what
+	// Bun.spawnSync starts does not see a deletion from process.env.
+	const hookEnv = gitHookEnvPresent();
+	if (hookEnv.length > 0) {
+		if (process.env[RESTART_MARK] !== undefined) {
+			console.error(
+				`[FAIL] smokestack will not start: it restarted itself without git's hook variables ` +
+					`and still has ${hookEnv.join(', ')}.`,
+			);
+			exit(EXIT_CANNOT_START);
+		}
+		// The runner restarted as itself gets all it was given but git's hook variables; env.pass
+		// then narrows what each step is handed, exactly as on a first start.
+		const given = { ...process.env }; // allow-env-spread-policy
+		const env = withoutNames(given, hookEnv, process.platform === 'win32');
+		env[RESTART_MARK] = '1';
+		const again = Bun.spawn([process.execPath, import.meta.path, ...argv.slice(2)], {
+			env,
+			stderr: 'inherit',
+			stdin: 'inherit',
+			stdout: 'inherit',
+			windowsHide: true,
+		});
+		// An interruption meant for the gate reaches the gate, which stops its steps and exits 130.
+		relayInterrupts(again);
+		const code = await again.exited;
+		exit(again.signalCode === null ? code : EXIT_INTERRUPTED);
+	}
 	let options: RunnerOptions;
 	try {
 		options = parseRunnerArgs(argv.slice(2));

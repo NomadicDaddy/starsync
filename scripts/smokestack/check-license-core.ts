@@ -1,9 +1,13 @@
 /**
  * smokestack owns this file and delivers it with `bun run shared-core:write` (license-core group).
  *
- * Enforces: every package in the resolved dependency closure has a recognized license and a notice
- * in the generated inventory. No assertion ID: the licence core is shared across repositories whose
- * assertion catalogs differ, and citing one repository's ID would not resolve in the others.
+ * Enforces: the licence core itself works, on this repository. The expression reviewer gives the
+ * expected verdict on a fixed set of licence expressions, the parser builds an AND node, the
+ * installed tree and the lockfile closure both read as non-empty, and one installed package resolves
+ * and has its licence and notice text read. It reviews no dependency's licence and writes no notice
+ * inventory; that is each consumer's generator. No assertion ID: the licence core is shared across
+ * repositories whose assertion catalogs differ, and citing one repository's ID would not resolve in
+ * the others.
  *
  * Change it in smokestack, never in a repository that takes it: a copy edited anywhere else is
  * drift, fails check:shared-core, and is overwritten by the next write. Exports with no caller in

@@ -3,8 +3,9 @@
  * depends on has changed since.
  *
  * What a pass depends on is its key and its inputs. The key is the runner's own source, the Bun
- * version, the step's argument list (and package.json's scripts for a `bun run` step, whose script
- * is what runs), the values of the environment keys the key includes (with
+ * version, the program search path (PATH and PATHEXT, which decide whose bash or git a step's
+ * names reach), the step's argument list (and package.json's scripts for a `bun run` step, whose
+ * script is what runs), the values of the environment keys the key includes (with
  * them the repository's .env files, env.ts), and the commit for a step keyed on it. The inputs are
  * the path and content of every file its cache block resolves to (cache-inputs.ts). A replay also
  * needs the step's declared outputs to be on disk.
@@ -84,6 +85,20 @@ function runnerVersion(): string {
 	return sha256([entry, ...library].flatMap(([name, path]) => [name, readFileSync(path)]));
 }
 
+/** An environment value as a key holds it: unset is the bare name, so unset and empty differ. */
+function keyedValue(name: string): string {
+	const value = process.env[name];
+	return value === undefined ? name : `${name}=${value}`;
+}
+
+/**
+ * The program search path, keyed whatever `env.pass` says: a pass recorded where one bash comes
+ * first on PATH says nothing about a shell where another does.
+ */
+function searchPathKey(): string {
+	return sha256(['PATH', 'PATHEXT'].map(keyedValue));
+}
+
 function revisionOf(root: string): string {
 	const run = Bun.spawnSync(['git', '-C', root, 'rev-parse', 'HEAD'], {
 		stderr: 'pipe',
@@ -109,6 +124,7 @@ function inputChange(was: Record<string, string>, now: Record<string, string>): 
 function difference(was: Snapshot, now: Snapshot): null | string {
 	if (was.key.runner !== now.key.runner) return 'the runner changed';
 	if (was.key.bun !== now.key.bun) return `Bun changed (${was.key.bun} to ${now.key.bun})`;
+	if (was.key.path !== now.key.path) return 'the program search path changed (PATH or PATHEXT)';
 	if (JSON.stringify(was.key.argv) !== JSON.stringify(now.key.argv)) return 'the command changed';
 	if (was.key.scripts !== now.key.scripts) return "package.json's scripts changed";
 	if (was.key.env !== now.key.env)
@@ -123,8 +139,8 @@ export interface CacheOptions {
 	 * The environment keys whose values every key includes: the config's `env.pass`, the whole of
 	 * what a step is handed besides the runner's mark (env.ts). Empty when the config has no list:
 	 * a step then inherits the whole environment, nothing says which of it a result depends on,
-	 * and a step that depends on any of it must be marked uncacheable. Not empty, the key also
-	 * covers the repository's .env files (env.ts).
+	 * and a step that depends on any of it besides the search path (always keyed) must be marked
+	 * uncacheable. Not empty, the key also covers the repository's .env files (env.ts).
 	 */
 	keyedEnv: readonly string[];
 	/** Every qc step, so a step that reads another's outputs can find them. */
@@ -143,17 +159,22 @@ export function openCache(options: CacheOptions): CacheSession {
 	);
 
 	const snapshot = async (step: Step, cache: CachedSpec): Promise<Snapshot> => {
-		// An unset key is its bare name, so unset and set-to-empty are two keys. With a list, the
-		// .env files a step's own processes may load are keyed beside the values (env.ts).
-		const values = options.keyedEnv.map((name) => {
-			const value = process.env[name];
-			return value === undefined ? name : `${name}=${value}`;
-		});
+		// With a list, the .env files a step's own processes may load are keyed beside the values
+		// (env.ts).
+		const values = options.keyedEnv.map(keyedValue);
 		const dotenv = options.keyedEnv.length > 0 ? dotenvState(root) : [];
 		const env = sha256([...values, ...dotenv]);
 		const revision = cache.keyOnRevision ? revisionOf(root) : null;
 		const scripts = scriptsKey(root, step.run);
-		const key = { argv: step.run, bun: Bun.version, env, revision, runner, scripts };
+		const key = {
+			argv: step.run,
+			bun: Bun.version,
+			env,
+			path: searchPathKey(),
+			revision,
+			runner,
+			scripts,
+		};
 		return { inputs: hashFiles(root, await collectInputs(root, cache, producers)), key };
 	};
 	const save = (): void => {

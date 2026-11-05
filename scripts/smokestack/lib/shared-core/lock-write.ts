@@ -2,10 +2,12 @@
  * The two things a write owes a lock: a tagged version to name (tag.ts), and the lock itself.
  *
  * A TAG: a write is made only from the owner's annotated tag, with no tracked file modified or
- * staged and every source file the manifest names tracked, so the bytes delivered are the bytes
- * that commit holds. A source that exists on disk but was never committed would otherwise be
- * delivered from the working tree and its lock read as forged against the tag. Other untracked
- * files do not block it: nothing delivers them. The tag is cut before the write and before any
+ * staged and every source file the manifest names tracked, and the bytes themselves are read from
+ * the tag commit rather than the working tree, so the bytes delivered are the bytes that commit
+ * holds even when a source differs from its blob without git reporting it modified. A source that
+ * exists on disk but was never committed would otherwise be delivered from the working tree and its
+ * lock read as forged against the tag; it is refused instead. Other untracked files do not block
+ * it: nothing delivers them. The tag is cut before the write and before any
  * target's gate has run on those bytes, so it marks a delivery, not a verified one.
  *
  * THE LOCK, written only where a target already has one, and always at LOCK_FILE: a lock still at
