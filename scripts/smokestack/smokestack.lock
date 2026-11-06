@@ -1,15 +1,19 @@
 {
-	"commit": "22f3c664249e21808aa5a8982025396bcc7b0377",
+	"commit": "0e9293d6be8b6dbfc739bd17ecadb7626f22d497",
 	"groups": {
 		"leak-guard-hooks": {
 			"files": {
+				"scripts/smokestack/hooks/leak-guard-decode.sh": {
+					"mode": "100644",
+					"sha256": "464415b5b129caa3e276889e89666118d58a8fa5917a4fb62f8bfdda9bb464a0"
+				},
 				"scripts/smokestack/hooks/leak-guard-setup.sh": {
 					"mode": "100644",
-					"sha256": "6b22777364adc66416caeaeeff320dec330810b55019796ef9365b507b82b883"
+					"sha256": "cc7cc0095a1a5f67d584afadcd0ae7305f301669d30625cacb5f01b3bc521269"
 				},
 				"scripts/smokestack/hooks/leak-guard.sh": {
 					"mode": "100644",
-					"sha256": "118377e28bb0f0418c7d2232def177cf29b2becefab98624307339e1e7ba6c83"
+					"sha256": "8a5f30d9310ceb4e0bfa9c3c1ae5a0f61d1d4d39bdb5d2d546439b48e5df9dae"
 				},
 				"scripts/smokestack/hooks/post-checkout": {
 					"mode": "100755",
@@ -31,13 +35,17 @@
 		},
 		"leak-guard-scripts": {
 			"files": {
+				"scripts/smokestack/check-leak-guard-binary-cases.sh": {
+					"mode": "100644",
+					"sha256": "f9a41ad91c74b9bb430cb2ccd53e2d6ad7463b5b30fcb22558b406f1121124ad"
+				},
 				"scripts/smokestack/check-leak-guard-cases.sh": {
 					"mode": "100644",
-					"sha256": "50f8ad86248a3f7940a8a38691346f0b766115b969c5a53c495127b5efa96d8c"
+					"sha256": "4c0bd66f68a836a29ab80dad6c186c17ea449809ae93097d0ee68d875d5b6b34"
 				},
 				"scripts/smokestack/check-leak-guard.sh": {
 					"mode": "100644",
-					"sha256": "61586861448819a6f94797d1ccee81cbcda61c6c1476c9ae4f1e93c3c785e553"
+					"sha256": "e4e747300f28f14866ef7fa9a5e9ed64377055eae3a2167d829e0159ff064eef"
 				}
 			}
 		},
@@ -77,7 +85,7 @@
 			"files": {
 				"scripts/smokestack/lib/third-party-licenses/resolve.ts": {
 					"mode": "100644",
-					"sha256": "14b381e116501771ac7bff9e93dae74e2977e134ab0a6fa70707eeefcd4271c8"
+					"sha256": "382f686d0cd0ad6ff087950402db3666e6ccaa698f23b6b4361538bc1dfad221"
 				}
 			}
 		},
@@ -97,7 +105,7 @@
 				},
 				"scripts/smokestack/hooks/screenshot-guard.sh": {
 					"mode": "100644",
-					"sha256": "718b589718cb61f00baa0d8e6bdf1e62c998abac28306c28cf82d159fde40e5c"
+					"sha256": "da630857d3db57681802b4d2326205bfd5211df4eea2302e75585fd167abdc61"
 				}
 			}
 		},
@@ -105,59 +113,59 @@
 			"files": {
 				"scripts/smokestack/lib/smokestack/cache-config.ts": {
 					"mode": "100644",
-					"sha256": "ae88014ed624a663a5b4f8e2cc5bae60022c26bc5f05b6db8c43b626e045915e"
+					"sha256": "fe157936f3140f443cbc61980654c6aeae18e0083a53bae2f9fe73cf5adb805f"
 				},
 				"scripts/smokestack/lib/smokestack/cache-imports.ts": {
 					"mode": "100644",
-					"sha256": "bfaec98962b9aaa024e84bb18e9421b0f17810eea4aefe0ed910dc595f873d2d"
+					"sha256": "2e3e517e1ee0bed891d2a89f66b4a789138f399c4e3ba9386bf20b6e4aa63cc6"
 				},
 				"scripts/smokestack/lib/smokestack/cache-inputs.ts": {
 					"mode": "100644",
-					"sha256": "6a0d3969642066e4a6e8e5f29678752b7ae6cda629121250605fb7bfd9a78f6d"
+					"sha256": "1d9542a82a28a9180552014da1c9b2ba13f90ccd76a32106befbe087a6e12327"
 				},
 				"scripts/smokestack/lib/smokestack/cache-prettier.ts": {
 					"mode": "100644",
-					"sha256": "9d70b5e5ddd3e193133fc1b8d7d63b6291bf3b94e6704ef2b894d21176a6ef75"
+					"sha256": "7377d89b58d1cd6771cd39ae62f0c2019bd3fb015054ce7fa8c5cb84cbd98174"
 				},
 				"scripts/smokestack/lib/smokestack/cache-store.ts": {
 					"mode": "100644",
-					"sha256": "3eafa54482cf43a26eac5f6a33fccbeef874b12ee2b2bc5e51c8569d503c4c3b"
+					"sha256": "d895c48fd5aad3df2c42b88d5663f76310887b83cdd0d58f73297616242620d0"
 				},
 				"scripts/smokestack/lib/smokestack/cache.ts": {
 					"mode": "100644",
-					"sha256": "92cf1e0d21be2a3919bbde2af0d9908c0ea51b72bcbb7a332a2b8e08ac3b80d9"
+					"sha256": "14017c72c90fcdc600b73bf8a3d10719d65aa4e3c88f198c899746ec5e7c654e"
 				},
 				"scripts/smokestack/lib/smokestack/config-read.ts": {
 					"mode": "100644",
-					"sha256": "19548c6cf6f86bf637a12d9c84edaef66d9d610df021a80472ac60a5cd2a9156"
+					"sha256": "a6064757e6876ff0515632dd1abd52d1fcfe1f52356371a830c54af5d11c2c9c"
 				},
 				"scripts/smokestack/lib/smokestack/config.ts": {
 					"mode": "100644",
-					"sha256": "27fa811b8d47ce205bc3ad9424285cd4d88233c80ac75dee8b191279f440fc80"
+					"sha256": "8d2bc03ebdb6b9cd15acdccb091d9716fcfe3093fa3c4ceb46740b00bfaade22"
 				},
 				"scripts/smokestack/lib/smokestack/env.ts": {
 					"mode": "100644",
-					"sha256": "68f595e9de5b1854348eb05b2b8a091882dcf80be24b4c2067d8f75229def218"
+					"sha256": "be29ea4a4894408ee80d25413edfca35ca18258e35df9630c867e0a876b9eeb8"
 				},
 				"scripts/smokestack/lib/smokestack/gate.ts": {
 					"mode": "100644",
-					"sha256": "b2cfac35d2951b428673f82216cebd8a3137ac6493f87899b6ee16626c7e903a"
+					"sha256": "a93fc38165eb80ae5272ca4cb4e1ab824e1601d4080cfe1cb1715d398d9500b3"
 				},
 				"scripts/smokestack/lib/smokestack/list.ts": {
 					"mode": "100644",
-					"sha256": "903ef3284b07842b3d47873f4ad49a321363b61c0cbdc25d57e2a930d315b243"
+					"sha256": "cefcd084a31a8cd993f3b298f2ba089af49b9306f7c31b629a21259f9361dc55"
 				},
 				"scripts/smokestack/lib/smokestack/preflight.ts": {
 					"mode": "100644",
-					"sha256": "c421cdaab44911e663fc2865740c858343e418a6313680a9d023ede6a76eb3ae"
+					"sha256": "7c4ca14939ab30f9420438ce3334156c30d7934e93f73f01eb5f7ff4f96c66fd"
 				},
 				"scripts/smokestack/lib/smokestack/spawn.ts": {
 					"mode": "100644",
-					"sha256": "f5a6985f89276da0a76017915228e8356562559eba8dc00ed53566217b2802f7"
+					"sha256": "f02840f2b834082b0768ebeb42475a9ff086e08e0856a896e7847602d6461f05"
 				},
 				"scripts/smokestack/smokestack.ts": {
 					"mode": "100644",
-					"sha256": "c1211c9e5607c00e9e18e09de45bb78cfe04e18ac85bb58329598da7c738fa9c"
+					"sha256": "aadc25c4af9d45c88c8ea2d6954d7f1c1b75bfabf4fb87497008f6444eae5850"
 				}
 			}
 		},
@@ -165,163 +173,167 @@
 			"files": {
 				"scripts/smokestack/lib/shared-core/behind.ts": {
 					"mode": "100644",
-					"sha256": "d229e403922b7443c479509ed0579f23fcc5eefe34b0ecb1ddd6cd11a953f547"
+					"sha256": "d1e25f09859222e8a8c460a3abfbc464f955a914a5cf8a15c45d40dda46aa215"
 				},
 				"scripts/smokestack/lib/shared-core/check.ts": {
 					"mode": "100644",
-					"sha256": "0a4cbef07cf59f6d470dfbc89002d83979a4e952cfc9bd8bf5e23fa9ba5deb8a"
+					"sha256": "376b86df836d389f434303e2e393fa0199fc266046a47c051780511eed9c3475"
 				},
 				"scripts/smokestack/lib/shared-core/deliveries.ts": {
 					"mode": "100644",
-					"sha256": "477a60b805c788ff1a75619231b8c88b19bdc032bfff96b487fea63a94b49c94"
+					"sha256": "46a28b6b5a63f955f2187e143614eb78b7cd9a738eec45eca9e757cb5f100830"
 				},
 				"scripts/smokestack/lib/shared-core/delivery-check.ts": {
 					"mode": "100644",
-					"sha256": "db2f0fb83fc728351de514e845d1ec9b9c9d243fd9186f6ece258df6621c6a79"
+					"sha256": "34b177af84802ab12f86c74934ff8eee5b8b336795dd1f98288fa94a4a1e828f"
 				},
 				"scripts/smokestack/lib/shared-core/dispatch.ts": {
 					"mode": "100644",
-					"sha256": "eb221ea0a1aa2622a17f6ab3c9a184e3da8b1e9ccf7d3036b433225eb797d970"
+					"sha256": "7a9d24696da133e313975888f38bf7a036fae5fa9ff51f8aab47b5f3354f9901"
 				},
 				"scripts/smokestack/lib/shared-core/eligibility.ts": {
 					"mode": "100644",
-					"sha256": "ffd9b5ebcae1edca7c3588dbdb6559c6aee7a689e1e08c64b46f73888019a664"
+					"sha256": "795c68bb6efb32dc8ab4d334626f6dce0875f4a240d6c9ce280634af2b844f3b"
 				},
 				"scripts/smokestack/lib/shared-core/expected.ts": {
 					"mode": "100644",
-					"sha256": "ee6734e12064c3294b2af1bdd26e7a77d153a9fbf766a79104f5eed4c9b5518e"
+					"sha256": "7a0b671ef5ea74f0259b61d028c8891a2707a27b3ad4113467e996a82c68aa41"
 				},
 				"scripts/smokestack/lib/shared-core/frozen.ts": {
 					"mode": "100644",
-					"sha256": "1b2e21299e3f69377690e594618261c47779c07b2420ec31e24c8abd829a3d4f"
+					"sha256": "bdd0dfc40f440462f77cf1bde12dcda75b970739be805df7f661c0556675333d"
 				},
 				"scripts/smokestack/lib/shared-core/git-hooks.ts": {
 					"mode": "100644",
-					"sha256": "21ca7e790a6fc881d6c3387d1bd3e7736c982465d0beed4e2dfd9c1c8aaddc4b"
+					"sha256": "6ca0fad5f1d5204c9286379767a4c65efb3c5aee9df9235bd846d70d1290d840"
 				},
 				"scripts/smokestack/lib/shared-core/hook.ts": {
 					"mode": "100644",
-					"sha256": "98cda35ed01e00e6ceac41f19b713288345493e8d6bfa841c4fc4b5b3a6b516a"
+					"sha256": "be15cb47b2e7bb6c32ba6ba66a82954bdf3da1a83a75413e940a46ade294f05e"
 				},
 				"scripts/smokestack/lib/shared-core/known-drift.ts": {
 					"mode": "100644",
-					"sha256": "ada2ad4c0244173de9bb2896f35e3b0bdffd664e4d94f8307c600c63fde4024f"
+					"sha256": "62139e2969b79472ffcdd4345915b22663b111ff411244b40cdd0b0148f602ef"
 				},
 				"scripts/smokestack/lib/shared-core/lock-check.ts": {
 					"mode": "100644",
-					"sha256": "4fec8f8a12306e923557c0e45f334f5dc30552cecf4c09f03152b7ca0864cc5e"
+					"sha256": "8904ff3266991d0194168f7d48faca15331a9467697568b9f5b8c61cef68d946"
 				},
 				"scripts/smokestack/lib/shared-core/lock-scope.ts": {
 					"mode": "100644",
-					"sha256": "5f85fc892688cda71d241cdea9f560ac40038be5f1d6908d196e887e4362d2d3"
+					"sha256": "4b46efdbacd5815f62f78544932badf1d470a77a4f9b7f089068e79f2a27ff27"
 				},
 				"scripts/smokestack/lib/shared-core/lock-write.ts": {
 					"mode": "100644",
-					"sha256": "6e543e7cf914a9b7adb3d871418e57ee8472ee956aaccb4597414838b3dbe30c"
+					"sha256": "a266b744af29fb6c95d1d95d6788fb2b80f74f3fdbee4a0993317334f2abfe2a"
 				},
 				"scripts/smokestack/lib/shared-core/lock.ts": {
 					"mode": "100644",
-					"sha256": "3eea2d58fe546edd1ef056cf7dddbb94da4626e5a8f44f7e1083d2623cbf75df"
+					"sha256": "ce3bd6b2f5de24fe6b94719b1dff46d26dbcb902ec02e5af3bc525947cab9636"
 				},
 				"scripts/smokestack/lib/shared-core/manifest-file.ts": {
 					"mode": "100644",
-					"sha256": "5b290731a793d7cfd7347d3e3ca3834513ee0cf1aad37e8d72c3dfd01f032bb4"
+					"sha256": "6345181ef42bce4890f5f0bd507b53f1ce8433d94e48f86c715a0c41c18c6a1e"
 				},
 				"scripts/smokestack/lib/shared-core/manifest.ts": {
 					"mode": "100644",
-					"sha256": "79bc85b26031560217ca94250d79b58d9203e95456fcec7c21f7c42a5d0299e6"
+					"sha256": "352295ffe0c33465e28ce3b5e57c85f55e3879839c9638701649a422ac98ebb0"
 				},
 				"scripts/smokestack/lib/shared-core/move-home.ts": {
 					"mode": "100644",
-					"sha256": "e421890e1b6bdd618f90b45ba0e290ef6fa14f966927cf4b2dfcd2a0e94dde14"
+					"sha256": "29063e02eaa085f68fee9c104a6dae1662cee8e607e1ced6fadd7fe38108f021"
 				},
 				"scripts/smokestack/lib/shared-core/move-scripts.ts": {
 					"mode": "100644",
-					"sha256": "6135f856909a000e780e38b1d05d69b2e691b91ab06eac7e3ae091d7807a24ab"
+					"sha256": "cfff7b67c6df360b8b7f68e30a41c4bcd6a4b8e800836d59cfc171e2407dc5bb"
 				},
 				"scripts/smokestack/lib/shared-core/move.ts": {
 					"mode": "100644",
-					"sha256": "01bc61903c4a443160f15d7cd9339cf5131fea0bcaf3bd0b88374c0b1c380e52"
+					"sha256": "f2ec53e0941b1b60eacb2b29604e7e16e5e5d4650dfb4a8b8f0e03e078772618"
 				},
 				"scripts/smokestack/lib/shared-core/old-path.ts": {
 					"mode": "100644",
-					"sha256": "e4595ad8780e104d95878948fc005569cbe9429c5321009b797500276cea195f"
+					"sha256": "69333aff6303192ffb210ac4537bf58da9c1c310d65b73536d5dd1f0109fcaf2"
 				},
 				"scripts/smokestack/lib/shared-core/origin.ts": {
 					"mode": "100644",
-					"sha256": "0e51341b7d6255064c93d77ef8ee737c5ee73cb1ac84a63adda79968b831f1d7"
+					"sha256": "6c30a04d024059a15e955079fd30ed585a9c3ad53e1dc3eeafbda638a8a7bdc1"
 				},
 				"scripts/smokestack/lib/shared-core/owner.ts": {
 					"mode": "100644",
-					"sha256": "7a7193647cbb34ec824707bb23d6fdb48842383e8ecc86224a0533a86ca624f6"
+					"sha256": "eeb3867a983370dd32340abd684b3bb2c4f7e146d3b6548ad805e4e9a8c218a0"
 				},
 				"scripts/smokestack/lib/shared-core/path-words.ts": {
 					"mode": "100644",
-					"sha256": "9839e0c9554835bdb68395498db773908e91bb7b612187b9f81ed216458203a9"
+					"sha256": "48f3ade42afad77bc7cb0d0d1e8506bbe2eab8d6006c0bf77b79b6ca9e80220c"
 				},
 				"scripts/smokestack/lib/shared-core/reaching.ts": {
 					"mode": "100644",
-					"sha256": "e86dbe9837d234cee6b981203bb738fc6c65513e1761e2c0a6774da6f9589ed6"
+					"sha256": "9ea5fc6beb48fa81b6af57383df6486012f81e7d85595c96090a68e8bf3aac9e"
 				},
 				"scripts/smokestack/lib/shared-core/read-text.ts": {
 					"mode": "100644",
-					"sha256": "1f647f808b4af08e09680ab0af6f0d1f66935705b829b8aae9b3c66fdb3aa399"
+					"sha256": "bf42b1dccc5159695755b2537ab8eff1e42c5f29364b59b3ead84a44364fcc36"
 				},
 				"scripts/smokestack/lib/shared-core/references.ts": {
 					"mode": "100644",
-					"sha256": "2e80cbe205e8c3e3f7670be6e30286067d440bd42388ab66f87adef6d600493a"
+					"sha256": "978afe58f4bc136dedb93b43ae5f676553b26955db4a55f9a82052876f3766b1"
 				},
 				"scripts/smokestack/lib/shared-core/report.ts": {
 					"mode": "100644",
-					"sha256": "aed822298855d64b88b4ddbd47d1ac764730b95242511aa7b0666c929495fb86"
+					"sha256": "9274cd7b8c6642167b72297071267bb020e382f8c0e6eb62d1f8c8bdf348ad3e"
 				},
 				"scripts/smokestack/lib/shared-core/requires.ts": {
 					"mode": "100644",
-					"sha256": "d49b37354cf388926628ee10a21b4dea8673ffe91892327465a681cc65c32fe5"
+					"sha256": "d0c41a83c73a4d13eb6c52b4e0cbaf8a33baca2f43546f121993265a9d6ab906"
+				},
+				"scripts/smokestack/lib/shared-core/retire.ts": {
+					"mode": "100644",
+					"sha256": "02fbc9659b2b49a849d191c34195d50cddbe363dcfb79a6ac82b777c58415f69"
 				},
 				"scripts/smokestack/lib/shared-core/roots.ts": {
 					"mode": "100644",
-					"sha256": "0afc4635c23a9ef5be4f5ab7a861c475841d379b649be377b906764e762db8bd"
+					"sha256": "479454a0b1cd43ccce0cce4101e446c3854f2032ef2a5d9f0036d9a47f02756b"
 				},
 				"scripts/smokestack/lib/shared-core/self-check.ts": {
 					"mode": "100644",
-					"sha256": "64eba9f567dfa2fde7325467ea8c1cd7d9e07851d81cedc3b985be4877df2803"
+					"sha256": "89e1fe65bd3011f5137595c52bbd92be1eac9f4bfa7496eff500e6fecf733e26"
 				},
 				"scripts/smokestack/lib/shared-core/tag.ts": {
 					"mode": "100644",
-					"sha256": "7b1e81118f05b378c51e88040f88e8f96a6a7c68ca7ba1c6990471f3b68e2715"
+					"sha256": "c060116c3eada768f61a4afc1f1005ac0f43deda424dc4953f84d20252dc9652"
 				},
 				"scripts/smokestack/lib/shared-core/targets.ts": {
 					"mode": "100644",
-					"sha256": "230b2f77fd970a591b245c5e846798f0b0ba079682e0c26fb3e1662d5eee1810"
+					"sha256": "cc4e68bd1d1c4fdb5b49e0c1fcb5d37b6923cb798ec2d35552b4573511458410"
 				},
 				"scripts/smokestack/lib/shared-core/test-timeout-leads.ts": {
 					"mode": "100644",
-					"sha256": "b22d6f4136176729e69e2794dc73d4197a03729e09f5cfec6ce36e80757d5914"
+					"sha256": "9d20443fc1b3966c0c5b0db637187a80aa2503403ea5f9124976abe420a9a612"
 				},
 				"scripts/smokestack/lib/shared-core/vacuity.ts": {
 					"mode": "100644",
-					"sha256": "db57b764de85d50377e7dd6f8a5eb71eea47dcea88a8909c86bbb383a02e546c"
+					"sha256": "a99cb1dfb425cb8f7800a58ad0e1a9783dab22938ed25f049284fcdc7b303e55"
 				},
 				"scripts/smokestack/lib/shared-core/wiring.ts": {
 					"mode": "100644",
-					"sha256": "5c70b4f4000df9443309c272174b608563ff752743e753c36569bf36e4a83af4"
+					"sha256": "f1d79eea31692c0bf9f65a443c7f5dc872cf6c3e3b2f1988d48fcc2162c8a46f"
 				},
 				"scripts/smokestack/lib/shared-core/write.ts": {
 					"mode": "100644",
-					"sha256": "5344319188bf7d9aff09f0412f572893902304bbbc67e0b5d624e2abd13e3148"
+					"sha256": "6222900d946b57fc688a7d406d86f0d21ed818cb557ee5ab79cbbe96dcae0b5c"
 				},
 				"scripts/smokestack/shared-core-manifest.json": {
 					"mode": "100644",
-					"sha256": "821934e2b224a91d197e09c875fc0e65fac71f44e0bd40c2e9efc203e88292a5"
+					"sha256": "6504ffd676bc419641a73d41b3e7a4b577749170f109010128df8f2b26f1a1b9"
 				},
 				"scripts/smokestack/sync-shared-core.ts": {
 					"mode": "100644",
-					"sha256": "7575b4fa3d88054ebdc6e7bf02c865a5e33b04ce24c4bd23399c2a7b1b582608"
+					"sha256": "2f3d253717fb58f3b47ea962fccb20d09ff9d78cffe183f922020e9c9f968358"
 				}
 			}
 		}
 	},
 	"owner": "smokestack",
-	"version": "0.6.6"
+	"version": "0.6.7"
 }

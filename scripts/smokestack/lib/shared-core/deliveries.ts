@@ -21,6 +21,9 @@
  * A root is identified by its REAL path, compared without regard to case on Windows. A subst
  * drive, a junction or a different spelling of the same directory is the same root, and comparing
  * the strings as typed would silently make it a second one with no record.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -46,6 +49,20 @@ export interface DeliveredTarget {
 
 /** One fleet root's record: target directory to what it was last delivered. */
 export type Deliveries = Record<string, DeliveredTarget>;
+
+/**
+ * The sentence for an owner with no record of deliveries for the fleet root it is running against.
+ * Unconditional: there is no "nothing was delivered yet" case, because the only evidence for one
+ * would be the targets' locks, and a target can delete its lock.
+ */
+export function noRecord(fleetRoot: string): string {
+	return (
+		`[FAIL] There is no record of deliveries for the fleet root ${fleetRoot} in ` +
+		`${DELIVERIES_FILE}. A checkout starts without one, on purpose, and only the adopt ` +
+		'command creates it, from the locks that verify against this repository: ' +
+		'bun run deliveries:adopt (with --fleet-root <dir> for another root).'
+	);
+}
 
 /** The key a fleet root's section is filed under: its real path, folded where the platform folds. */
 export function rootKey(fleetRoot: string): string {
@@ -180,4 +197,35 @@ export function deliveredBy(lock: Lock): DeliveredTarget | null {
 		};
 	}
 	return { commit: lock.commit, groups, version: lock.version };
+}
+
+/**
+ * Brings the record into line with the locks a write settled, and with no others: a lock withheld
+ * keeps the entry of its last good delivery, and a target outside an --only narrowing is not
+ * touched. Returns whether the file changed.
+ *
+ * Only the groups the run delivered and compared are recorded from it. A group the run was
+ * narrowed away from keeps the entry the record already has: copying it out of the target's lock
+ * would write the target's own word into the owner's memory, which is how a hand-made claim was
+ * once recorded by a write narrowed to some other group. Where such a kept entry belongs to another
+ * version than this delivery, nothing is recorded for that target at all, since one entry cannot
+ * name two versions; the unnarrowed write records it.
+ */
+export function recordSettled(
+	ownerRoot: string,
+	fleetRoot: string,
+	deliveries: Deliveries,
+	settled: Map<string, Lock>,
+): boolean {
+	if (settled.size === 0) return false;
+	const section = { ...deliveries };
+	for (const [directory, lock] of settled) {
+		const entry = deliveredBy(lock);
+		if (entry === null) continue;
+		const before = section[directory];
+		const kept = Object.keys(before?.groups ?? {}).some((name) => !(name in entry.groups));
+		if (kept && (before?.version !== entry.version || before.commit !== entry.commit)) continue;
+		section[directory] = { ...entry, groups: { ...before?.groups, ...entry.groups } };
+	}
+	return writeDeliveries(ownerRoot, fleetRoot, section);
 }

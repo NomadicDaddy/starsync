@@ -23,6 +23,9 @@
  *
  * Nothing here opens the owner. The hook's variants and the owner's history are what check.ts uses
  * to tell drift from a diverged hook; a lock is only ever written where that is already settled.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';

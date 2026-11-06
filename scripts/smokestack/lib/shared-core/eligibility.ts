@@ -10,6 +10,9 @@
  * `common` sat excluded-in-prose and reported `uncovered` for two days (punchlist S14), and eleven
  * repositories once read as current because a narrower predicate returned a complete-looking number
  * rather than a smaller one (punchlist C5).
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

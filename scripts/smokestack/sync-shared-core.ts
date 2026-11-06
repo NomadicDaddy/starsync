@@ -8,10 +8,10 @@
  *
  * `--check` compares each manifest group's targets against its owner and reports; `--write` delivers
  * what `--check` found absent or drifted. Neither is the default: running with no arguments does
- * nothing except say so. The write path landed per group, absorbing sync-license-core.ts,
- * install-leak-guard.ts and install-history-guard.ts one at a time, each kept working as a thin
- * delegate to this script. The ownership and safety contract is documented by the types and
- * assertions in `scripts/lib/shared-core/`.
+ * nothing except say so. The write path landed per group, absorbing the license sync script it
+ * replaced, install-leak-guard.ts and install-history-guard.ts one at a time, each kept working
+ * as a thin delegate to this script. The ownership and safety contract is documented by the types
+ * and assertions in `scripts/lib/shared-core/`.
  *
  * OWNER VERSUS RUNNER. This script is itself a shared file present in more than one repository, so
  * it cannot infer ownership from where it is running — that would make whichever repository you
@@ -21,6 +21,9 @@
  * beside it (see lib/shared-core/self-check.ts), and there is no write.
  *
  *   bun scripts/sync-shared-core.ts --check [--group <name>] [--fleet-root <dir>]
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { dirname, resolve } from 'node:path';
 import { argv, cwd, exit } from 'node:process';
@@ -67,6 +70,9 @@ const USAGE = `sync-shared-core — sync the files this fleet shares between pee
                           more than one group is named one group per flag.
   --only <csv>            Restrict to the named target directories. Narrows what the group's target
                           model already resolved; it can never add a target the model rejected.
+  --retire <name>         With --write: a group a target's lock declares and no longer takes, and
+                          the record has forgotten there, leaves it. Its files are removed where
+                          they are exactly as delivered, and the lock drops it. Repeatable.
   --fleet-root <dir>      Directory holding the peer repositories. Defaults to SMOKESTACK_FLEET_ROOT
                           when set, else the parent of this repository's main checkout (from a
                           branch worktree, not the worktree's own parent). Its untracked
@@ -78,8 +84,8 @@ const USAGE = `sync-shared-core — sync the files this fleet shares between pee
 `;
 
 /**
- * Unknown flags are rejected rather than ignored. sync-license-core.ts, which this generalizes,
- * tests only for the presence of --check: every other argument — including --help, and including a
+ * Unknown flags are rejected rather than ignored. The license sync script this generalized tested
+ * only for the presence of --check: every other argument — including --help, and including a
  * typo — falls through to the write path and performs a real four-repository write. That is a trap
  * laid for exactly the person trying to find out what the script does, and it is not carried here.
  */
@@ -90,6 +96,7 @@ export interface SharedCoreOptions {
 	groups: string[];
 	help: boolean;
 	only?: Set<string>;
+	retire: Set<string>;
 	write: boolean;
 }
 
@@ -103,6 +110,7 @@ export function parseSharedCoreArgs(args: string[]): SharedCoreOptions {
 			group: { multiple: true, type: 'string' },
 			help: { short: 'h', type: 'boolean' },
 			only: { multiple: true, type: 'string' },
+			retire: { multiple: true, type: 'string' },
 			write: { type: 'boolean' },
 		},
 		strict: true,
@@ -121,6 +129,7 @@ export function parseSharedCoreArgs(args: string[]): SharedCoreOptions {
 		dryRun: values['dry-run'] === true,
 		groups: values.group ?? [],
 		help: values.help === true,
+		retire: new Set(values.retire ?? []),
 		write: values.write === true,
 	};
 	if (values['fleet-root'] !== undefined) parsed.fleetRoot = values['fleet-root'];
@@ -135,6 +144,9 @@ export function parseSharedCoreArgs(args: string[]): SharedCoreOptions {
 	}
 	if (parsed.dryRun && !parsed.write) {
 		throw new Error('--dry-run only means anything with --write.');
+	}
+	if (parsed.retire.size > 0 && !parsed.write) {
+		throw new Error('--retire only means anything with --write.');
 	}
 	return parsed;
 }
@@ -236,7 +248,7 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 		return code;
 	}
 	// The whole manifest, not the selection: a narrowed write has to know what else a target takes.
-	return reportWrite(reports, manifest, fleetRoot, root, options.dryRun, deliveries);
+	return reportWrite(reports, manifest, fleetRoot, root, options, deliveries);
 }
 
 /**
@@ -267,8 +279,8 @@ function runAsConsumer(
 }
 
 if (import.meta.main) {
-	// A mistyped flag must not fall through to a real fleet-wide write, which is the trap
-	// sync-license-core.ts lays. Bad arguments exit 2, distinct from drift's exit 1.
+	// A mistyped flag must not fall through to a real fleet-wide write, which is the trap the old
+	// license sync script laid. Bad arguments exit 2, distinct from drift's exit 1.
 	let options: SharedCoreOptions;
 	try {
 		options = parseSharedCoreArgs(argv.slice(2));

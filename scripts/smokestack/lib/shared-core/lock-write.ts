@@ -18,6 +18,9 @@
  * file is written rather than leaving a lock that claims one version for files from two. A lock
  * with uncommitted changes is refused at the same point, for the reason the file writer refuses a
  * file with them: the overwrite could not be undone.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -32,6 +35,7 @@ import { unrecordedClaims } from './delivery-check.ts';
 import { groupState, hookModeDefects } from './expected.ts';
 import { isUnsettled } from './lock-check.ts';
 import {
+	installedPath,
 	type Lock,
 	LOCK_FILE,
 	type LockedFiles,
@@ -41,6 +45,7 @@ import {
 } from './lock.ts';
 import { reachingGroups } from './reaching.ts';
 import { describeUnmet, unmetRequirements } from './requires.ts';
+import { idleRetirements, planRetirements, type Retirement } from './retire.ts';
 import { hasUncommittedChanges } from './write.ts';
 
 interface PlannedLock {
@@ -56,6 +61,8 @@ interface PlannedLock {
 export interface LockPlan {
 	/** Reasons no file may be written at all. Empty when the write may go ahead. */
 	refusals: string[];
+	/** Groups leaving a repository on this run's --retire, removed once its lock is rewritten. */
+	retired: Retirement[];
 	targets: PlannedLock[];
 }
 
@@ -65,6 +72,7 @@ export interface LockPlan {
  *
  * `all` is the whole manifest and `selected` the groups this run was narrowed to. A group outside
  * the selection was not compared, so whether it reaches a target is asked of its target model here.
+ * `retiring` holds the groups this run was told to retire where they no longer reach (retire.ts).
  */
 export function planLocks(
 	reports: GroupReport[],
@@ -73,8 +81,10 @@ export function planLocks(
 	fleetRoot: string,
 	ownerRoot: string,
 	delivery: Delivery | null,
+	retiring: Set<string>,
+	deliveries: Deliveries,
 ): LockPlan {
-	const plan: LockPlan = { refusals: [], targets: [] };
+	const plan: LockPlan = { refusals: [], retired: [], targets: [] };
 	const chosen = new Set(selected.map((group) => group.name));
 
 	for (const directory of [...new Set(reports.flatMap((report) => report.reached))].sort()) {
@@ -107,16 +117,29 @@ export function planLocks(
 		}
 
 		const reaching = reachingGroups(directory, reports, all, fleetRoot, ownerRoot);
-		const unreached = Object.keys(lock.groups).filter((name) => !reaching.includes(name));
-		if (unreached.length > 0) {
+		const declared = Object.keys(lock.groups).filter((name) => !reaching.includes(name));
+		// A file a group still taken here installs is that group's now, whichever group it left.
+		const installs = new Set(
+			all
+				.filter((group) => reaching.includes(group.name))
+				.flatMap((group) => group.files.map((file) => installedPath(group, file))),
+		);
+		const leaving = planRetirements(
+			{ declared, directory, entry: deliveries[directory], installs, lock, path },
+			retiring,
+		);
+		plan.refusals.push(...leaving.refusals);
+		if (leaving.unreached.length > 0) {
 			plan.refusals.push(
-				`${directory}: its ${LOCK_FILE} declares ${unreached.join(', ')}, which does not ` +
-					'reach it from here. Writing the lock would drop what that repository declared. ' +
-					'This stops the whole run: to write the other targets, narrow with --only to ' +
-					'leave this one out.',
+				`${directory}: its ${LOCK_FILE} declares ${leaving.unreached.join(', ')}, which ` +
+					'does not reach it from here. Writing the lock would drop what that repository ' +
+					'declared. This stops the whole run: to write the other targets, narrow with ' +
+					'--only to leave this one out. If it is leaving on purpose, forget it there and ' +
+					'write with --retire <group>.',
 			);
-			continue;
 		}
+		if (leaving.refusals.length > 0 || leaving.unreached.length > 0) continue;
+		plan.retired.push(...leaving.retired);
 		// A group delivered without what it requires is a tool that cannot do its first job.
 		const unmet = unmetRequirements(all, reaching);
 		if (unmet.length > 0) {
@@ -144,6 +167,7 @@ export function planLocks(
 		const taken = reaching.filter((name) => chosen.has(name));
 		plan.targets.push({ carried, directory, lock, path, taken });
 	}
+	plan.refusals.push(...idleRetirements(retiring, plan.retired));
 	return plan;
 }
 

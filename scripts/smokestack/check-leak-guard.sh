@@ -53,6 +53,8 @@ make_repo() {
 	git -C "$tmp/$1" init -q
 	git -C "$tmp/$1" -c user.email=t@test -c user.name=t commit -q --allow-empty -m init
 	cp "$hook" "$tmp/$1/$guard"
+	# The guard sources its UTF-16 decoder from its own folder when a binary file is staged.
+	cp "$(dirname "$hook")/leak-guard-decode.sh" "$tmp/$1/$(dirname "$guard")/"
 }
 make_repo repo
 make_repo zzz-synthetic-app
@@ -198,11 +200,14 @@ printf '%s\n' '\bzzz-synthetic-app\b' '\bzzz-sibling-app\b' >"$tmp/patterns-pair
 [ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-synthetic-app somewhere')" = 0 ] || fail 'self pattern survived alongside a sibling pattern'
 guard_repo="$tmp/repo"
 
-# Cases 11 to 18 are in check-leak-guard-cases.sh beside this file. It is sourced so it shares the
-# scratch repositories, helpers and failure count above. shellcheck -x follows it from any
-# directory through SCRIPTDIR; plain shellcheck, which follows no sourced file, skips it (SC1091).
+# Cases 11 to 21 are in check-leak-guard-cases.sh beside this file, and 22 to 38 (binary files) in
+# check-leak-guard-binary-cases.sh. They are sourced so they share the scratch repositories, helpers
+# and failure count above. shellcheck -x follows them from any directory through SCRIPTDIR, and a
+# plain run, which follows no sourced file, skips them (SC1091).
 # shellcheck source-path=SCRIPTDIR source=check-leak-guard-cases.sh disable=SC1091
 . "$self_dir/check-leak-guard-cases.sh"
+# shellcheck source-path=SCRIPTDIR source=check-leak-guard-binary-cases.sh disable=SC1091
+. "$self_dir/check-leak-guard-binary-cases.sh"
 
 if [ "$failures" -gt 0 ]; then
 	# Both streams: a gate harness that captures only one of them still sees the failure. The

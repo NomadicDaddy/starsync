@@ -18,6 +18,9 @@
  *
  * The inference lock-check.ts makes from the lock and the owner's history is left in place beside
  * this. Where both see the same lost file it is reported once.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';

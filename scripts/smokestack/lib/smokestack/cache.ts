@@ -17,6 +17,9 @@
  * A step that fails, or passes over changed inputs, loses its entry. `--force` runs every step and
  * still records what passes. Only steps run here are cached: the check against the lock is made
  * before the steps, by preflight.ts, on every run.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

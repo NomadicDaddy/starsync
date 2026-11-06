@@ -11,6 +11,9 @@
  * All three ask this file, so they cannot disagree about what "without" means: the requirement is
  * met by a set of group names, whatever that set is in the place asking (the groups a lock
  * declares, or the groups that reach a repository).
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import type { SharedCoreGroup } from './manifest.ts';
 

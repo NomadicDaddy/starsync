@@ -18,6 +18,9 @@
  * has that name and is skipped, out loud, everywhere else. The Spernakit template's own steps are
  * the case: a derived app carries the same list, and a template-only step's script need not exist
  * there, so its script is checked only where it would run.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';

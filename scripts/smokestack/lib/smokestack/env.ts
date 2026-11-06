@@ -23,6 +23,9 @@
  *
  * Names are compared without regard to case when looking for a duplicate: Windows treats `PATH` and
  * `Path` as one variable, and a file is meant to mean the same thing on every platform.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

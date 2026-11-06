@@ -9,6 +9,9 @@
  *
  * Patterns are repository-relative with forward slashes, as git writes paths. `**` does not
  * descend into a directory whose name starts with a dot unless the pattern names it.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { asObject, asText, asTextList, fail } from './config-read.ts';
 

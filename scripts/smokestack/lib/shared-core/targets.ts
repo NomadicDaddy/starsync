@@ -17,6 +17,9 @@
  * NO GROUP NAMES A TARGET REPOSITORY. This manifest is tracked in repositories that are published,
  * and a private sibling's name in a tracked file is the exact disclosure leak-guard.sh
  * exists to stop. A roster group names a gitignored FILE; a discovered group names a MARKER.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

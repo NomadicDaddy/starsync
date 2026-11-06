@@ -16,6 +16,9 @@
  * read in full. A consumer's own imports, configs and documents are its lead's to change in the
  * delivery commit, and the write lists every one (references.ts); of those, only a relative import
  * that resolves to an old path no longer on disk is a finding here, because it cannot typecheck.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';

@@ -10,6 +10,9 @@
  * reached yet, the second is a repository running a stale copy of a guard while reporting as
  * covered. Only the second fails the gate. Collapsing them would make this red on day one across a
  * fleet the write path has not been built for, and a gate that is red by construction gets removed.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';

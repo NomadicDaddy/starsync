@@ -24,6 +24,9 @@
  * The root is the repository this file is installed in: the parent of the nearest `scripts`
  * directory above it, whether it sits in scripts/ or deeper. It is never searched for beyond that, and never the directory the command was started from, so a
  * repository with no config cannot end up running an ancestor's gate.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { basename, dirname, resolve } from 'node:path';
 import { argv, exit } from 'node:process';

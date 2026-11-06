@@ -2,6 +2,9 @@
  * The package.json half of a move (move.ts): each script naming a moved file's old path once is
  * rewritten to the new one. A script naming it more than once, or a package.json with uncommitted
  * changes, is refused, because the rewrite could not then be made safely; the lead makes it.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

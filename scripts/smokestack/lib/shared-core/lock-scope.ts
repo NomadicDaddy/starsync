@@ -20,6 +20,9 @@
  *
  * These findings have no group report to sit under, least of all the ones about a group that does
  * not exist, so they are returned on their own and printed in their own section of the report.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';

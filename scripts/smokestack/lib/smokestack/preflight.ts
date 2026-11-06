@@ -23,6 +23,9 @@
  * for it, the manifest names it owner of a group, and it holds no lock. A consumer
  * that renames its package still has its lock, and cannot delete it without the owner's sweep
  * reporting a delivery whose lock is gone.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

@@ -10,6 +10,9 @@
  * three times in this fleet (a scan root naming a directory no app has, an ignore entry for a
  * directory that was never created, and a hook chaining a guard its installer did not deliver).
  * Two of those failed open and read as coverage while covering nothing.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

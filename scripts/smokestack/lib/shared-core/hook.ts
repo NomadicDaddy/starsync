@@ -9,6 +9,9 @@
  *
  * Nothing here opens the owner except `divergedHook`, which has to: a hook that differs is told
  * apart from a stale copy of ours only by the variants and generations the owner holds.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { join } from 'node:path';
 

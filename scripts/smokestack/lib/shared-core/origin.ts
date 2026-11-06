@@ -15,6 +15,9 @@
  * have the tag and has none newer is probably an older checkout: nothing can be verified against
  * it, and nothing is wrong. A tag that exists and does not hold a recorded hash, or a missing tag
  * below one the owner does have, is a lock that is forged or mistaken.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { posix } from 'node:path';
 

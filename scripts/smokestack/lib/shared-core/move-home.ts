@@ -15,6 +15,9 @@
  * (a foreign hook or a local chain the lock recorded at the old folder) still running a file this
  * write moves. Such a hook stays where it is, since the delivered hooks run it from there, and
  * would then fail every commit; the lead rewrites it first.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';

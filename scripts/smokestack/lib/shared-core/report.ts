@@ -8,15 +8,19 @@
  * Both modes stay together rather than splitting one file per mode, because they render the same
  * `Finding` list in the same severity order and a second copy of that ordering is the drift this
  * subsystem exists to catch.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import type { SharedCoreGroup } from './manifest.ts';
 
 import { type Finding, type GroupReport, isFatal } from './check.ts';
-import { deliveredBy, type Deliveries, DELIVERIES_FILE, writeDeliveries } from './deliveries.ts';
+import { type Deliveries, DELIVERIES_FILE, noRecord, recordSettled } from './deliveries.ts';
 import { planLocks, writeLocks } from './lock-write.ts';
 import { LOCK_FILE } from './lock.ts';
 import { applyMoves, holdBack, planMoves } from './move.ts';
 import { untrackedSourcesRefusal } from './owner.ts';
+import { applyRetirements } from './retire.ts';
 import { type Delivery, tagStanding } from './tag.ts';
 import { testTimeoutLeadLines } from './test-timeout-leads.ts';
 import { reportClean } from './vacuity.ts';
@@ -58,20 +62,6 @@ export function printReport(report: GroupReport): void {
 		console.info(`  ${label.padEnd(19)} ${finding.target}: ${finding.detail}`);
 	}
 	for (const skip of report.skipped) console.info(`  ${'SKIPPED'.padEnd(19)} ${skip}`);
-}
-
-/**
- * The sentence for an owner with no record of deliveries for the fleet root it is running against.
- * Unconditional: there is no "nothing was delivered yet" case, because the only evidence for one
- * would be the targets' locks, and a target can delete its lock.
- */
-function noRecord(fleetRoot: string): string {
-	return (
-		`[FAIL] There is no record of deliveries for the fleet root ${fleetRoot} in ` +
-		`${DELIVERIES_FILE}. A checkout starts without one, on purpose, and only the adopt ` +
-		'command creates it, from the locks that verify against this repository: ' +
-		'bun run deliveries:adopt (with --fleet-root <dir> for another root).'
-	);
 }
 
 export function reportCheck(
@@ -139,7 +129,8 @@ export function reportCheck(
 					'disagree about what was last delivered there. The next write from a tagged ' +
 					'version rewrites the lock and the record together. Where the finding is a ' +
 					'group the lock names that does not reach that repository, or a file of such a ' +
-					'group held there, no write settles it: it is corrected in that repository.',
+					'group held there, it is corrected in that repository, or, where the group is ' +
+					'leaving on purpose, forgotten there and retired by a write with --retire <group>.',
 			);
 		}
 		if (fatal.some((f) => f.kind === 'old-path')) {
@@ -168,9 +159,10 @@ export function reportWrite(
 	manifest: SharedCoreGroup[],
 	fleetRoot: string,
 	root: string,
-	dryRun: boolean,
+	write: { dryRun: boolean; retire: Set<string> },
 	deliveries: Deliveries | null,
 ): number {
+	const { dryRun, retire } = write;
 	// Before anything else, a rehearsal included: a write updates the record, and never creates it.
 	if (deliveries === null) {
 		console.error(`${noRecord(fleetRoot)} Nothing was written.`);
@@ -203,7 +195,7 @@ export function reportWrite(
 			return 1;
 		}
 	}
-	const plan = planLocks(owned, groups, manifest, fleetRoot, root, delivery);
+	const plan = planLocks(owned, groups, manifest, fleetRoot, root, delivery, retire, deliveries);
 	// A delivered file whose installed path changed (move.ts): planned now, applied after the locks.
 	const directories = plan.targets.map((target) => target.directory);
 	const moves = planMoves(directories, groups, fleetRoot, root);
@@ -246,33 +238,12 @@ export function reportWrite(
 	// with its target's directory (lock-write.ts).
 	const held = new Set(locks.withheld.map((reason) => reason.slice(0, reason.indexOf(': '))));
 	holdBack(moves, held);
+	for (const line of applyRetirements(plan.retired, held, fleetRoot, dryRun)) console.info(line);
 	const moved = applyMoves(moves, fleetRoot, dryRun);
 	if (moved.length > 0) console.info(`\nmoved\n${moved.map((line) => `  ${line}`).join('\n')}`);
 	for (const line of testTimeoutLeadLines(owned, fleetRoot)) console.info(line);
-	// The record follows the locks this run settled, and no others: a lock withheld keeps the
-	// entry of its last good delivery, and a target outside an --only narrowing is not touched.
-	//
-	// Only the groups this run delivered and compared are recorded from it. A group the run was
-	// narrowed away from keeps the entry the record already has: copying it out of the target's
-	// lock would write the target's own word into the owner's memory, which is how a hand-made
-	// claim was once recorded by a write narrowed to some other group. Where such a kept entry
-	// belongs to another version than this delivery, nothing is recorded for that target at all,
-	// since one entry cannot name two versions; the unnarrowed write records it.
-	if (!dryRun && locks.settled.size > 0) {
-		const section = { ...deliveries };
-		for (const [directory, lock] of locks.settled) {
-			const entry = deliveredBy(lock);
-			if (entry === null) continue;
-			const before = section[directory];
-			const kept = Object.keys(before?.groups ?? {}).some((name) => !(name in entry.groups));
-			if (kept && (before?.version !== entry.version || before.commit !== entry.commit)) {
-				continue;
-			}
-			section[directory] = { ...entry, groups: { ...before?.groups, ...entry.groups } };
-		}
-		if (writeDeliveries(root, fleetRoot, section)) {
-			console.info(`\n${DELIVERIES_FILE}: recorded ${[...locks.settled.keys()].join(', ')}`);
-		}
+	if (!dryRun && recordSettled(root, fleetRoot, deliveries, locks.settled)) {
+		console.info(`\n${DELIVERIES_FILE}: recorded ${[...locks.settled.keys()].join(', ')}`);
 	}
 
 	const wrote = [...outcomes.values()].reduce((sum, o) => sum + o.written.length, 0);

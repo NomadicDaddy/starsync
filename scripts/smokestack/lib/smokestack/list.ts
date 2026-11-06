@@ -6,6 +6,9 @@
  * Spernakit's sync-smoke-docs and check-smoke-steps), which need it in a stable shape. Both read
  * the config exactly as a run would, so a config a run refuses is refused here the same way, and
  * both keep the config's own order, so an unchanged config prints the same bytes.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import type { Config, Step } from './config.ts';
 

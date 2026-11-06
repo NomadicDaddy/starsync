@@ -10,6 +10,9 @@
  * Absent is not an error, for the reason the roster gives: CI and an adopter of this template have
  * no such file, and the gate has to stay green there. The output then says no other root was
  * considered, so the absence is stated rather than mistaken for coverage.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

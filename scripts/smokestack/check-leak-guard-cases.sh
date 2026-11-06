@@ -1,4 +1,4 @@
-# Self-test for leak-guard.sh, cases 11 to 18. Sourced by check-leak-guard.sh, never run alone: it
+# Self-test for leak-guard.sh, cases 11 to 21. Sourced by check-leak-guard.sh, never run alone: it
 # uses that file's scratch repositories, fixtures (synthetic, aws_key, pem_header, b64_run), helpers
 # (run_guard, fail) and failure count, and that file prints the summary and sets the exit code.
 # Split from check-leak-guard.sh so each stays under the 300-line ceiling.
@@ -134,3 +134,39 @@ code=0
 (cd "$guard_repo" && GIT_INDEX_FILE="$tmp/bogus-index" LEAK_GUARD_PATTERNS="$synthetic" bash "$guard") 2>"$tmp/stderr" || code=$?
 [ "$code" = 1 ] || fail 'a failed staged-name listing let a commit through'
 grep -q 'could not list the staged files' "$tmp/stderr" || fail 'a failed listing did not say why it refused'
+
+# 19. A guard that can list the staged names but cannot read what they hold has not checked the
+# content, so it refuses. The names come from the index alone; the patch needs each blob, so a
+# staged blob removed from the object store fails only the patch. This is a repository of its own,
+# since it is left corrupt.
+make_repo unreadable-blob
+printf '%s\n' "key=$aws_key" >"$tmp/unreadable-blob/staged.txt"
+git -C "$tmp/unreadable-blob" add staged.txt
+blob="$(git -C "$tmp/unreadable-blob" rev-parse :staged.txt)"
+rm -f "$tmp/unreadable-blob/.git/objects/${blob:0:2}/${blob:2}"
+code=0
+(cd "$tmp/unreadable-blob" && LEAK_GUARD_PATTERNS="$synthetic" bash "$guard") 2>"$tmp/stderr" || code=$?
+[ "$code" = 1 ] || fail 'a staged blob git could not read let a commit through'
+grep -q 'could not produce the staged changes' "$tmp/stderr" || fail 'an unreadable staged patch did not say why it refused'
+
+# 20. A configured pattern file with no active line (empty, or only comments and blanks) is a private
+# tier that is off, and is refused like a missing one. The per-commit override still lets it through,
+# and says so.
+printf '%s\n' '# comments only' '' '   ' >"$tmp/patterns-inert"
+[ "$(run_guard "$tmp/patterns-inert" 'plain harmless content')" = 1 ] || fail 'a pattern file with no pattern let a commit through'
+grep -q 'local pattern file holds no pattern' "$tmp/stderr" || fail 'an inert pattern file did not say why it refused'
+: >"$tmp/patterns-empty"
+[ "$(run_guard "$tmp/patterns-empty" 'plain harmless content')" = 1 ] || fail 'an empty pattern file let a commit through'
+code=0
+printf '%s\n' 'plain harmless content' >"$guard_repo/staged.txt"
+git -C "$guard_repo" add staged.txt
+(cd "$guard_repo" && LEAK_GUARD_PATTERNS="$tmp/patterns-inert" LEAK_GUARD_ALLOW_NO_PRIVATE=1 bash "$guard") 2>"$tmp/stderr" || code=$?
+[ "$code" = 0 ] || fail 'LEAK_GUARD_ALLOW_NO_PRIVATE=1 did not let a commit through with an inert pattern file'
+grep -q 'generic checks only' "$tmp/stderr" || fail 'the override did not warn that tier 2 was off for an inert pattern file'
+
+# 21. Patterns this repository's own name clears are legitimate, not an inert file: the commit passes
+# and the guard says, once, that every private pattern was cleared here.
+guard_repo="$tmp/zzz-synthetic-app"
+[ "$(run_guard "$synthetic" 'plain harmless content')" = 0 ] || fail 'a repository whose own name clears every pattern was refused'
+grep -q 'every private pattern is cleared for this repository' "$tmp/stderr" || fail 'clearing every pattern was not announced'
+guard_repo="$tmp/repo"

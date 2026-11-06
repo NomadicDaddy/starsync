@@ -3,6 +3,9 @@
  * starts with a UTF-16 byte-order mark, as PowerShell 5's `>` redirect writes one, is decoded as
  * UTF-16, so its NUL bytes neither make it look binary nor hide the paths it names (Morticia, L-4 on
  * e1ff196). A NUL anywhere else still marks a binary file, which names no path a lead edits.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 

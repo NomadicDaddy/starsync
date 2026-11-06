@@ -10,6 +10,9 @@
  * step's own declared outputs, which it writes and so would never hash the same after as before.
  *
  * A declared input that is a script brings in the repository files it imports (cache-imports.ts).
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { readFileSync, statSync } from 'node:fs';
 import { join, sep } from 'node:path';

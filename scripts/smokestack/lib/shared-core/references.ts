@@ -8,6 +8,9 @@
  * own typecheck and a later review found them. So the write lists every reference, in every
  * spelling, for the lead to change, and the check fails on a relative import that resolves to an
  * old path, because that one cannot typecheck.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';

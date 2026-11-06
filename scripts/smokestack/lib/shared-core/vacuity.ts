@@ -15,6 +15,9 @@
  *
  * The two are told apart by whether `--only` was passed at all, because that is the only thing that
  * distinguishes "there was nothing to look at" from "you asked to look at nothing".
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 
 import { type GroupReport } from './check.ts';

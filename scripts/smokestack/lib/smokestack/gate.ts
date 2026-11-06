@@ -14,6 +14,9 @@
  * the step cache replays a pass recorded over the same key and inputs (cache.ts); a replay is
  * counted with the passes and said to be one. A step whose `onlyIn` names another repository is
  * skipped: said so with the reason, counted as skipped and never as passed, and never cached.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import type { CacheSession } from './cache.ts';
 

@@ -9,6 +9,9 @@
  *
  * Prettier is the repository's own, resolved from its root. The runner does not depend on it: a
  * repository that names this collector has Prettier installed, and one that does not is told so.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { join } from 'node:path';
 

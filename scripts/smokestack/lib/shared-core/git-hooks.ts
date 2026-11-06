@@ -5,6 +5,9 @@
  * silently disables it. Every path that moves core.hooksPath asks this first: the write
  * (move-home.ts), the installers (guard-install/delegate.ts), and leak-guard-setup.sh, which repeats
  * the list in shell.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync } from 'node:fs';
 import { join, posix } from 'node:path';

@@ -85,6 +85,7 @@ is_public() {
 }
 
 escape_ere() {
+	# shellcheck disable=SC2016 # a sed expression: its $ is a character to escape, not a shell expansion
 	printf '%s' "$1" | sed 's/[][\.|$(){}?+*^]/\\&/g'
 }
 
@@ -92,6 +93,11 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 workspace="$(dirname "$repo_root")"
 
 mkdir -p "$(dirname "$target")"
+# The file names every private sibling, so it is created readable by this user only: the umask
+# covers its creation, so it is never readable by others even for a moment, and the chmod states
+# the mode for an existing umask that does not. Where the filesystem keeps no POSIX mode (NTFS under
+# Git Bash), the folder's ACL decides instead.
+umask 077
 {
 	echo '# leak-guard private patterns (extended regex, one per line; # = comment).'
 	echo '# Tier 2 of leak-guard.sh - never commit this file.'
@@ -116,6 +122,7 @@ mkdir -p "$(dirname "$target")"
 		printf '\\b%s\\b\n' "$(escape_ere "$user_name")"
 	fi
 } >"$target"
+chmod 600 "$target"
 
 echo "leak-guard: generated $target - review it and add fleet codenames / LAN IPs." >&2
 exit 0

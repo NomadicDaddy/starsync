@@ -17,6 +17,9 @@
  * none missing, none extra, and a file and its entry removed together is as red as either alone.
  * The set is read from tracked things only (expected.ts), so it is the same here whether or not
  * this clone dispatches the group's hook, and the same as the set the owner wrote the lock from.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';

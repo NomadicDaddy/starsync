@@ -16,6 +16,9 @@
  * only its `.example` is tracked, and a branch worktree reads the main checkout's. A missing list
  * means nothing is known, which is the safe reading: every row then fails as it would without it.
  * Only `--check` reads it. A write still replaces a drifted file, known or not.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

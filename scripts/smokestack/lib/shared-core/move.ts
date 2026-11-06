@@ -21,6 +21,9 @@
  * removed up to the target's scripts/, and each script naming an old path once is rewritten. A hook
  * the lock records as the repository's own is not moved: the delivered hooks run it where it is.
  * The lock, the config and core.hooksPath move with the files: move-home.ts.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, rmSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';

@@ -24,6 +24,7 @@
 					"source": "pre-commit"
 				},
 				{ "disposition": "synced", "source": "leak-guard.sh" },
+				{ "disposition": "synced", "source": "leak-guard-decode.sh" },
 				{ "disposition": "synced", "source": "leak-guard-setup.sh" },
 				{ "disposition": "synced", "source": "post-checkout" },
 				{ "disposition": "synced", "source": "post-merge" },
@@ -42,6 +43,7 @@
 			"files": [
 				{ "disposition": "synced", "source": "check-leak-guard.sh" },
 				{ "disposition": "synced", "source": "check-leak-guard-cases.sh" },
+				{ "disposition": "synced", "source": "check-leak-guard-binary-cases.sh" },
 				{ "disposition": "seeded", "source": "run-bash.ts" }
 			],
 			"name": "leak-guard-scripts",
@@ -223,6 +225,7 @@
 				{ "disposition": "synced", "source": "lib/shared-core/references.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/report.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/requires.ts" },
+				{ "disposition": "synced", "source": "lib/shared-core/retire.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/roots.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/self-check.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/tag.ts" },
@@ -280,6 +283,15 @@
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts/smokestack",
 			"targets": { "model": "roster", "roster": "test-timeout-targets.json" }
+		},
+		{
+			"files": [{ "disposition": "synced", "source": "record-release-states.ts" }],
+			"name": "release-states-recorder",
+			"owner": "smokestack",
+			"requiresPackageJson": true,
+			"sourceRoot": "scripts",
+			"targetRoot": "scripts/smokestack",
+			"targets": { "model": "roster", "roster": "release-states-targets.json" }
 		},
 		{
 			"files": [{ "disposition": "synced", "source": "pre-commit-leak-guard-only" }],

@@ -2,6 +2,9 @@
  * The reading of `smokestack.json`'s values, shared by the config and the step cache's part of it.
  * Every refusal names the file and the place in it, and is a ConfigError: the run is refused before
  * any step starts.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 /** The file's name. Where it is read from is config.ts's to say. */
 export const CONFIG_FILE = 'smokestack.json';

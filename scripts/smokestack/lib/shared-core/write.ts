@@ -12,13 +12,17 @@
  * Two guards are the writer's own, because neither is a question `--check` asks:
  *
  *   1. OWNERSHIP. A group is pushed only from the repository that owns it. This generalizes
- *      `isSpernakitItself`, which existed because sync-license-core.ts ships to derived apps and a
- *      run from one of them would have made a copy the source and overwritten every adopter from
- *      it. The manifest names an owner per group, so the check is per group rather than per script.
+ *      `isSpernakitItself`, which existed because the old license sync script shipped to derived
+ *      apps and a run from one of them would have made a copy the source and overwritten every
+ *      adopter from it. The manifest names an owner per group, so the check is per group rather
+ *      than per script.
  *   2. UNCOMMITTED WORK. Overwriting a target's committed divergence is this script's job and git
  *      can recover it. Uncommitted work is different: the write destroys it with no undo and the
  *      only trace is a cheerful "wrote" line. A git inspection that fails is treated as a refusal,
  *      not as a pass, because the script cannot then prove the overwrite is recoverable.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';

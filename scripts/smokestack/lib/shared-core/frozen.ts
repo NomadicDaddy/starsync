@@ -14,6 +14,9 @@
  * A missing list is a refusal too. Absent could mean nothing is frozen or could mean a fresh
  * checkout that was never told, and only the first is safe to write from; an empty array is how a
  * person states the first.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

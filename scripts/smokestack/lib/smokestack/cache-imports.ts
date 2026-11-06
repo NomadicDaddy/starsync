@@ -14,6 +14,9 @@
  * Not followed: dynamic `import()`, `require`, and files read at run time; a step declares those.
  * A file Bun cannot parse imports nothing, since it cannot run: a fixture that is broken on purpose
  * does not make a step that only reads it uncacheable.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';

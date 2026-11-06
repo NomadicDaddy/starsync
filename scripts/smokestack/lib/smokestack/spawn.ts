@@ -11,6 +11,9 @@
  * A step gets no standard input, in a terminal and in a commit hook alike. A hook has none; a step
  * that read a terminal's would behave one way at the keyboard and another at commit time. A step
  * that asks a question reads end-of-file.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { execPath, kill, platform } from 'node:process';

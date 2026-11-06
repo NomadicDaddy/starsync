@@ -8,6 +8,9 @@
  *
  * It is written whole, to a temporary file renamed over it, so an interrupted run leaves the last
  * complete version and never half of one.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

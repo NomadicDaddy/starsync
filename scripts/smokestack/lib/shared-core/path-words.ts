@@ -6,6 +6,9 @@
  * A glob counts only when it holds a `/` and matches the old path but not the new one. One without
  * a `/`, as in an ignore file, matches at any depth and so still covers the moved file; `**` and
  * `*.ts` globs keep covering it too. `scripts/check-*.ts` stops covering it, so that one is listed.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { posix } from 'node:path';
 

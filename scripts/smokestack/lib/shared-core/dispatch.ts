@@ -10,6 +10,9 @@
  * it chains, and a target's dispatcher already states which of ours it calls. Restating either in
  * JSON would create a second copy free to drift from the first, which is the defect this whole
  * subsystem exists to remove one level down.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';

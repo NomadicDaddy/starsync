@@ -7,7 +7,7 @@
 # the Windows user-level value of the same name, else
 # $HOME/.config/leak-guard/patterns (extended regexes, one per line; blank
 # lines and # comments ignored). Seeded by leak-guard-setup.sh beside it
-# (runs via the `prepare` script). A configured file that is missing or
+# (runs via the `prepare` script). A configured file that is missing, empty or
 # unreadable stops the commit unless LEAK_GUARD_ALLOW_NO_PRIVATE=1 is set
 # for it; with nothing configured the guard warns and runs tier 1 only.
 #
@@ -23,29 +23,42 @@
 # here), which tests it.
 set -euo pipefail
 
-# What is scanned: everything staged but this file. Its path is asked of git rather than written
-# here, because one byte-identical copy lives at .githooks/leak-guard.sh in smokestack and at
-# scripts/smokestack/hooks/leak-guard.sh everywhere else, and git answers for a relative or absolute
-# hooks path alike. A copy git does not index is in no staged diff, so it needs no exclusion.
+# grep where exit 1 (nothing selected) is an answer and 2 or more (it could not run) refuses: a
+# failed filter used to leave a tier nothing to scan, and pass. In a $(…) the refusal ends only that
+# subshell, so each content producer adds `|| exit 1`. picks tests a match the same way; it reads a
+# here-string so it runs in this shell, where a refusal cannot be mistaken for "no match".
+pick() {
+	local status=0
+	grep "$@" || status=$?
+	[ "$status" -le 1 ] || { echo "x leak-guard: grep failed ($status), so the staged content was not checked." >&2; exit 1; }
+}
+picks() {
+	local status=0
+	grep -q "$@" || status=$?
+	[ "$status" -le 1 ] || { echo "x leak-guard: grep failed ($status), so the staged content was not checked." >&2; exit 1; }
+	[ "$status" = 0 ]
+}
+
+# What is scanned: everything staged but this file, whose path git gives (.githooks/ here,
+# scripts/smokestack/hooks/ elsewhere). A copy git does not index is in no staged diff.
 self_path="$(git ls-files --full-name -- "$0" 2>/dev/null || true)"
 self_path="${self_path%%$'\n'*}"
 scanned=(.)
 [ -n "$self_path" ] && scanned+=(":(exclude)$self_path")
 
-# Tier 1c: key files by name. A private key that is binary or encrypted (DER inside .key, PKCS#12,
-# PKCS#8, PuTTY, a Java keystore, or a PEM wrapped by gpg, age or similar) has no PEM header for the
-# content scan, and a binary file adds no lines at all, so names are read before that scan can exit.
-# A bare .gpg or .pgp is refused because nothing inside it names what it wraps; a bare .asc is a
-# signature far more often than a key and is allowed. .der stays off: it is as often a public
-# certificate. A deletion is never refused. There is no exemption list (design review #17104).
+# Tier 1c: key files by name. A binary or encrypted key (DER .key, PKCS#12/#8, PuTTY, a keystore, a
+# wrapped PEM) has no header for the content scan. A bare .gpg or .pgp is refused, since nothing in
+# it names what it wraps; .asc (mostly signatures) and .der (as often a public certificate) are not.
+# A deletion is never refused. There is no exemption list (design review #17104).
 key_name_pattern='\.(pem|key|p12|pfx|p8|ppk|jks|keystore)(\.(gpg|asc|pgp|age|enc))?$|\.(gpg|pgp)$'
 # Prints each staged file whose last path segment is key-shaped, NUL-terminated; -z keeps a name
 # with a newline, quotes or non-ASCII whole, and T counts a symlink that became a file.
 key_named_files() {
 	local file
-	while IFS= read -r -d '' file; do
-		if printf '%s\n' "${file##*/}" | grep -qEi -e "$key_name_pattern"; then printf '%s\0' "$file"; fi
-	done < <(git diff --cached --name-only -z --diff-filter=ACMRT -- "${scanned[@]}")
+	# A pipeline, not < <(…): under pipefail a failed listing fails this function, and its caller.
+	git diff --cached --name-only -z --diff-filter=ACMRT -- "${scanned[@]}" | while IFS= read -r -d '' file; do
+		if picks -Ei -e "$key_name_pattern" <<<"${file##*/}"; then printf '%s\0' "$file" || exit 1; fi
+	done
 }
 # The loop above cannot tell an index git could not list from an empty one, so ask first: a guard
 # that cannot read the staged names has not checked them.
@@ -53,25 +66,44 @@ if ! git diff --cached --name-only -z --diff-filter=ACMRT -- "${scanned[@]}" >/d
 	echo "x leak-guard: git could not list the staged files, so key file names were not checked." >&2
 	exit 1
 fi
-key_hits="$(key_named_files | tr '\0' '\n')"
+key_hits="$(key_named_files | tr '\0' '\n')" || exit 1
 
-added="$(git diff --cached --unified=0 --no-color -- "${scanned[@]}" | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+# The staged patch (with $1 lines of context) is read whole and its exit checked, as the listing is
+# above: piped into grep, a patch git could not produce left the tiers nothing, and the guard passed.
+staged_patch() {
+	if ! git diff --cached --unified="$1" --no-color --no-textconv -- "${scanned[@]}"; then
+		echo "x leak-guard: git could not produce the staged changes, so their content was not checked." >&2
+		exit 1
+	fi
+}
+patch="$(staged_patch 0)" || exit 1
+added="$(printf '%s\n' "$patch" | pick -E '^\+' | pick -vE '^\+\+\+')" || exit 1
+# A file git calls binary adds no lines here: leak-guard-decode.sh, beside this one, reads it instead.
+numstat="$(git diff --cached --numstat -- "${scanned[@]}")" || exit 1
+decoded_pem=''
+case $'\n'"$numstat" in *$'\n-\t-\t'*)
+	decoder="$(dirname "$0")/leak-guard-decode.sh"
+	if [ ! -f "$decoder" ]; then
+		echo "x leak-guard: binary files are staged and $decoder is missing, so they were not checked." >&2
+		exit 1
+	fi
+	# shellcheck source-path=SCRIPTDIR source=leak-guard-decode.sh
+	. "$decoder"
+	trap '[ -n "$decoded" ] && rm -rf "$decoded"' EXIT
+	decode_staged_binaries
+	added="$added$decoded_added"
+	;;
+esac
 [ -z "$added$key_hits" ] && exit 0
 
 # Tier 1a: secret formats (case-insensitive like the rest of the scan).
 secret_pattern='AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]{10,}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|\bsk-[A-Za-z0-9_-]{20,}'
 
-# Tier 1a, PEM: the header is checked separately because it is the one secret format whose
-# giveaway string is also a legitimate constant. A config validator compares an incoming key
-# against it and documentation shows the shape a key takes, so the header on its own says
-# "a key goes here", not "a key is here". Blocking it blocks the template that ships those
-# files: `git init && git add -A` stages every one of them as an addition, and a scaffolded
-# project could not make its first commit.
-#
-# The leak is the key material, so that is what has to be present: base64 following the header
-# on the same line (a one-line JSON or .env value) or a whole added line of nothing but base64
-# (a pasted key body). A placeholder remainder like `\n...` or `',` matches neither. The header
-# does not have to belong to this commit; the body is what leaks.
+# Tier 1a, PEM: the header alone is a legitimate constant (validators compare against it, docs show
+# it, and a scaffolded project stages it in its first commit), so it says "a key goes here". The leak
+# is the key material: base64 after the header on its line (a one-line JSON or .env value), or a
+# whole added line of base64 (a pasted body). A placeholder like `\n...` matches neither. The header
+# need not belong to this commit; the body is what leaks.
 pem_header_pattern='-----BEGIN [A-Z ]*PRIVATE KEY-----'
 pem_inline_pattern="${pem_header_pattern}.*[A-Za-z0-9+/]{20,}"
 pem_body_pattern='^\+[A-Za-z0-9+/]{20,}={0,2}[[:space:]]*$'
@@ -81,39 +113,34 @@ pem_body_pattern='^\+[A-Za-z0-9+/]{20,}={0,2}[[:space:]]*$'
 path_pattern='[A-Za-z]:[\\/]+Users[\\/]+[A-Za-z0-9._-]+|/Users/[A-Za-z0-9._-]+/|/home/[a-z0-9._-]+/'
 
 # -e keeps the leading '-----BEGIN …' of the PEM patterns from being parsed as a grep option.
-secret_hits="$(printf '%s\n' "$added" | grep -nEi -e "$secret_pattern" || true)"
-path_hits="$(printf '%s\n' "$added" | grep -nE -e "$path_pattern" || true)"
+secret_hits="$(printf '%s\n' "$added" | pick -nEi -e "$secret_pattern")" || exit 1
+path_hits="$(printf '%s\n' "$added" | pick -nE -e "$path_pattern")" || exit 1
 
-# The PEM walk runs over a diff carrying one line of context rather than over $added, because a key
-# body can be added under a header that is already committed. The header is then not an addition at
-# all, so a scan of additions alone cannot see the pair, and pasting a body under a placeholder
-# header is the likeliest way this leak actually happens. Context lines make the adjacency visible
-# while '+' still marks what this commit is adding.
-#
-# pem_scan reads such a diff on stdin, file headers already removed, and prints one line per key it
-# finds. It is one function because the refusal below has to say which files hold a key by the
-# same rule that refused the commit: counting bare headers there would name a file that only
-# shows the shape a key takes, and send the person cleaning up to the wrong place.
+# The PEM walk reads a diff with one line of context, not $added: a body pasted under a header that
+# is already committed (the likeliest way this leaks) pairs an addition with a context line.
+# pem_scan reads such a diff on stdin and prints one line per key. The refusal below names files by
+# the same function, so it never names a file that only shows the shape a key takes.
 pem_scan() {
 	local pem_diff pem_header_lines pem_line_no pem_pair pem_header_line pem_next_line
-	pem_diff="$(cat)"
-	# Only header lines and the line after each can decide the rule, so the pair-by-pair walk runs
-	# over those few rather than over the whole diff.
-	pem_header_lines="$(printf '%s\n' "$pem_diff" | grep -nEi -e "^[+ ].*${pem_header_pattern}" | cut -d: -f1 || true)"
+	pem_diff="$(cat)" || exit 1
+	# Only header lines and the line after each can decide the rule, so only those few are walked.
+	pem_header_lines="$(printf '%s\n' "$pem_diff" | pick -nEi -e "^[+ ].*${pem_header_pattern}" | cut -d: -f1)" || exit 1
 	for pem_line_no in $pem_header_lines; do
-		pem_pair="$(printf '%s\n' "$pem_diff" | sed -n "${pem_line_no},$((pem_line_no + 1))p")"
-		pem_header_line="$(printf '%s\n' "$pem_pair" | sed -n 1p)"
-		pem_next_line="$(printf '%s\n' "$pem_pair" | sed -n 2p)"
+		pem_pair="$(printf '%s\n' "$pem_diff" | sed -n "${pem_line_no},$((pem_line_no + 1))p")" || exit 1
+		pem_header_line="${pem_pair%%$'\n'*}"
+		pem_next_line=''
+		case "$pem_pair" in *$'\n'*) pem_next_line="${pem_pair#*$'\n'}" ;; esac
 		# Inline material counts only on an ADDED header. A committed header that already carries
 		# key material is not what this commit is leaking, and reporting it would block every later
 		# commit to that file with no way to clear it short of the bypass.
-		if printf '%s\n' "$pem_header_line" | grep -qEi -e "^\+.*${pem_inline_pattern}" ||
-			printf '%s\n' "$pem_next_line" | grep -qE -e "$pem_body_pattern"; then
-			printf 'key\n'
+		if picks -Ei -e "^\+.*${pem_inline_pattern}" <<<"$pem_header_line" ||
+			picks -E -e "$pem_body_pattern" <<<"$pem_next_line"; then
+			printf 'key\n' || exit 1
 		fi
 	done
 }
-pem_hits="$(git diff --cached --unified=1 --no-color -- "${scanned[@]}" | grep -vE '^(\+\+\+|---)' | pem_scan || true)"
+pem_patch="$(staged_patch 1)$decoded_pem" || exit 1
+pem_hits="$(printf '%s\n' "$pem_patch" | pick -vE '^(\+\+\+|---)' | pem_scan)" || exit 1
 
 # Tier 2: private literals from the user-level pattern file.
 #
@@ -140,7 +167,7 @@ configured=0
 [ -n "$patterns_file" ] && configured=1
 patterns_file="${patterns_file:-$HOME/.config/leak-guard/patterns}"
 [ -e "$patterns_file" ] && configured=1
-self_name="$(basename "$(git rev-parse --show-toplevel)")"
+self_name="$(git rev-parse --show-toplevel)" || exit 1; self_name="${self_name##*/}"
 # A public site may advertise sibling products whose names are private everywhere else, and the
 # self-name rule cannot express that. The tracked scripts/smokestack/leak-guard-publishes lists the
 # names this repository is cleared to publish, one per line. It is read from the INDEX, so what
@@ -185,21 +212,27 @@ else
 	grep_status=0
 	active="$(grep -vE '^[[:space:]]*(#|$)' "$patterns_file")" || grep_status=$?
 	[ "$grep_status" -gt 1 ] && tier2_off 'local pattern file could not be read'
-	active="$(printf '%s\n' "$active" | while IFS= read -r pattern; do
+	# A file with no active line is a tier that is off, as surely as a missing file, and it used to
+	# skip the private tier without a word. Patterns this repository's own name or its publishes
+	# list clear are another matter: those are legitimate, and only announced below.
+	[ -z "$active" ] && tier2_off 'local pattern file holds no pattern'
+	# The filter runs in this shell, on a here-string, and keeps each pattern as a grep -e argument, so
+	# no failed printf or subshell can drop one; only a match (status 0) clears a pattern.
+	read_patterns="$active" active='' pattern_args=()
+	while IFS= read -r pattern; do
 		[ -z "$pattern" ] && continue
-		printf '%s\n' "$self_name" | grep -qEi -e "$pattern" 2>/dev/null && continue
-		if [ -n "$publishes" ] && printf '%s\n' "$publishes" | grep -qxEi -e "$pattern" 2>/dev/null; then
-			echo "leak-guard: a private pattern is cleared for this repo by its leak-guard-publishes" >&2
-			continue
-		fi
-		printf '%s\n' "$pattern"
-	done)"
+		cleared=0; grep -qEi -e "$pattern" <<<"$self_name" 2>/dev/null || cleared=$?
+		[ "$cleared" = 0 ] && continue
+		cleared=0; [ -n "$publishes" ] && grep -qxEi -e "$pattern" <<<"$publishes" 2>/dev/null || cleared=$?
+		[ "$cleared" = 0 ] && echo "leak-guard: a private pattern is cleared for this repo by its leak-guard-publishes" >&2 && continue
+		active="$active$pattern"$'\n' && pattern_args+=(-e "$pattern")
+	done <<<"$read_patterns"
+	[ -z "$read_patterns" ] || [ -n "$active" ] || echo "leak-guard: every private pattern is cleared for this repository (its own name or its leak-guard-publishes)" >&2
 	if [ -n "$active" ]; then
-		# grep exits 1 for no match and 2 when it cannot use a pattern. A pattern it cannot compile
-		# is kept above on purpose, so that it stops the commit here: swallowing the error would
-		# report no hits and leave the whole private tier silently off.
+		# grep exits 1 for no match and 2 when it cannot use a pattern; a pattern it cannot compile is
+		# kept above so that it stops the commit here, rather than the private tier going silently off.
 		grep_status=0
-		local_hits="$(printf '%s\n' "$added" | grep -nEi -f <(printf '%s\n' "$active"))" || grep_status=$?
+		local_hits="$(grep -nEi "${pattern_args[@]}" <<<"$added")" || grep_status=$?
 		if [ "$grep_status" -gt 1 ]; then
 			local_hits=''
 			tier2_off 'a private pattern is not a valid expression, so none could be applied'
@@ -216,17 +249,19 @@ fi
 # lines and has never inspected names, so a file named after a secret or a private name is not
 # refused for its name, and git prints that name in its own output regardless.
 count_class() {
-	local class="$1" file="$2"
+	local class="$1" file="$2" dir=''
+	# A decoded UTF-16 file is counted from what was decoded, since git's diff of it holds no lines.
+	[ -n "${decoded:-}" ] && dir="$(decoded_dir_of "$file")"
 	if [ "$class" = pem ]; then
 		# The same walk that refused the commit, so a file is listed only if the rule fired in it.
-		git diff --cached --unified=1 --no-color -- "$file" | grep -vE '^(\+\+\+|---)' | pem_scan | grep -c . || true
+		if [ -n "$dir" ]; then pem_scan <"$dir/pem" | grep -c . || true; return 0; fi
+		git diff --cached --unified=1 --no-color --no-textconv -- "$file" | grep -vE '^(\+\+\+|---)' | pem_scan | grep -c . || true
 		return 0
 	fi
-	git diff --cached --unified=0 --no-color -- "$file" | grep -E '^\+' | grep -vE '^\+\+\+' | case "$class" in
+	{ if [ -n "$dir" ]; then cat "$dir/added"; else git diff --cached --unified=0 --no-color --no-textconv -- "$file" | grep -E '^\+' | grep -vE '^\+\+\+'; fi; } | case "$class" in
 	secret) grep -cEi -e "$secret_pattern" ;;
 	path) grep -cE -e "$path_pattern" ;;
-	# The patterns are handed over afresh for each file: a process substitution is read once.
-	private) grep -cEi -f <(printf '%s\n' "$active") ;;
+	private) grep -cEi "${pattern_args[@]}" ;;
 	esac || true
 }
 report_class() {

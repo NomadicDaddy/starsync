@@ -7,6 +7,9 @@
  *
  * They are split out of check.ts because they ask a different question from everything there.
  * check.ts compares a target against the owner; this file never opens a target at all.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join, posix } from 'node:path';

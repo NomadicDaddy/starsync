@@ -26,6 +26,9 @@
  * All of that is inference from a file the target can rewrite, and some rewrites leave nothing to
  * infer from. So each target is first held to the owner's own record of what it delivered there
  * (delivery-check.ts), and what is inferred here is reported beside it.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
