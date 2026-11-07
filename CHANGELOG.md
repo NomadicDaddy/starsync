@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file. Format foll
 - Aligned ESLint, its sorting and TypeScript plugins, Knip, and Bun type definitions with
   the workspace dependency targets. TypeScript remains pinned to 6.0.3.
 
-## [2.5.0] - 2026-10-27
+## [2.5.0] - Internal build, unshipped
 
 ### Added
 
