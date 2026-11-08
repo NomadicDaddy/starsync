@@ -1,5 +1,5 @@
 {
-	"commit": "e53b49cb360ec382ac5edb0f3c8e77d938dda54c",
+	"commit": "b02e904b03c381a64aec9de2ed6102be521573f3",
 	"groups": {
 		"leak-guard-hooks": {
 			"files": {
@@ -193,7 +193,7 @@
 				},
 				"scripts/smokestack/lib/shared-core/departed.ts": {
 					"mode": "100644",
-					"sha256": "7206736135e8e0e3aedbae1f57605b8a750bb95c557235c7abd161bc4f6df26d"
+					"sha256": "62307d1154b10fbeeb604c12bb0b1ab164282086e54462e0fef9e52fa8e85dfb"
 				},
 				"scripts/smokestack/lib/shared-core/dispatch.ts": {
 					"mode": "100644",
@@ -347,5 +347,5 @@
 		}
 	},
 	"owner": "smokestack",
-	"version": "0.7.0"
+	"version": "0.7.1"
 }

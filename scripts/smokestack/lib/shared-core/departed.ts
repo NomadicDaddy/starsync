@@ -13,6 +13,10 @@
  * between the two leaves the repository departed and still recorded, which grants nothing. Nothing
  * removes a name. adopt creates a root's empty list where there is none.
  *
+ * THIS FILE READS. The writes, adopt's empty list and forget's append, are owner-only and live in
+ * scripts/lib/deliveries/departed-record.ts, which is not delivered. Every repository that takes
+ * this file runs the sweep's read and never writes the list.
+ *
  * FAILS CLOSED. A root with no list here grants no lockless allowance at all: an owner that has
  * never forgotten anything holds an empty list, created by adopt. The file is kept apart from
  * deliveries.json because that file's reader accepts nothing but "roots", and a new key there
@@ -22,7 +26,7 @@
  * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
  * smokestack; every repository that takes it holds a byte-identical copy.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { rootKey } from './deliveries.ts';
@@ -35,7 +39,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Every root's list, by root key. Empty when the file is not there; throws on one it can't read. */
-function readAll(ownerRoot: string): Record<string, string[]> {
+export function readAllDeparted(ownerRoot: string): Record<string, string[]> {
 	const path = join(configRoot(ownerRoot), DEPARTED_FILE);
 	if (!existsSync(path)) return {};
 	let parsed: unknown;
@@ -58,16 +62,9 @@ function readAll(ownerRoot: string): Record<string, string[]> {
 	return all;
 }
 
-function writeAll(ownerRoot: string, all: Record<string, string[]>): void {
-	const roots: Record<string, string[]> = {};
-	for (const key of Object.keys(all).sort()) roots[key] = [...new Set(all[key])].sort();
-	const path = join(configRoot(ownerRoot), DEPARTED_FILE);
-	writeFileSync(path, `${JSON.stringify({ roots }, null, '\t')}\n`);
-}
-
 /** The directories forgotten under `fleetRoot`, or null where the owner keeps no list for it. */
 export function readDeparted(ownerRoot: string, fleetRoot: string): null | Set<string> {
-	const list = readAll(ownerRoot)[rootKey(fleetRoot)];
+	const list = readAllDeparted(ownerRoot)[rootKey(fleetRoot)];
 	return list === undefined ? null : new Set(list);
 }
 
@@ -83,19 +80,4 @@ export function departedOrNone(ownerRoot: string, fleetRoot: string): null | Set
 		console.error(`[WARN] ${reason} No repository takes the lockless allowance.`);
 		return null;
 	}
-}
-
-/** Gives `fleetRoot` an empty list where it has none; leaves an existing list exactly as it is. */
-export function ensureDeparted(ownerRoot: string, fleetRoot: string): void {
-	const all = readAll(ownerRoot);
-	const key = rootKey(fleetRoot);
-	if (all[key] !== undefined) return;
-	writeAll(ownerRoot, { ...all, [key]: [] });
-}
-
-/** Adds `directory` to `fleetRoot`'s list, creating the list where there is none. */
-export function recordDeparted(ownerRoot: string, fleetRoot: string, directory: string): void {
-	const all = readAll(ownerRoot);
-	const key = rootKey(fleetRoot);
-	writeAll(ownerRoot, { ...all, [key]: [...(all[key] ?? []), directory] });
 }

@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Changed
 
+- Updated the smokestack shared-core delivery to v0.7.1, removing unused exports from its
+  departed helper.
 - Updated the smokestack-delivered history guard and shared-core sync files to v0.7.0.
 - Aligned ESLint, its sorting and TypeScript plugins, Knip, and Bun type definitions with
   the workspace dependency targets. TypeScript remains pinned to 6.0.3.
