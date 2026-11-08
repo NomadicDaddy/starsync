@@ -31,6 +31,7 @@ import { parseArgs } from 'node:util';
 
 import { checkGroup } from './lib/shared-core/check.ts';
 import { type Deliveries, readDeliveries } from './lib/shared-core/deliveries.ts';
+import { departedOrNone } from './lib/shared-core/departed.ts';
 import { frozenRefusal, loadFrozen } from './lib/shared-core/frozen.ts';
 import {
 	applyKnownDrift,
@@ -41,6 +42,7 @@ import {
 } from './lib/shared-core/known-drift.ts';
 import { scopeFindings } from './lib/shared-core/lock-scope.ts';
 import { loadManifest, type SharedCoreGroup } from './lib/shared-core/manifest.ts';
+import { holdRecordLockUntilExit } from './lib/shared-core/record-lock.ts';
 import { reportCheck, reportWrite } from './lib/shared-core/report.ts';
 import {
 	configRoot,
@@ -179,9 +181,8 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 		return runAsConsumer(options, root, manifest);
 	}
 
-	// From here this checkout is the owner, and the manifest loader admits one owner, so it is the
-	// owner of every group: the baseline is this checkout wherever the targets live. A foreign
-	// --fleet-root holds no copy of it, and the one on disk here is what a write delivers from.
+	// From here this checkout is the owner of every group (the loader admits one owner): the baseline
+	// is this checkout wherever the targets live, and what a write delivers from.
 	// The rosters and the deliveries record are gitignored, so from a branch worktree they are read
 	// from the main checkout, and the fleet root defaults to that checkout's parent (lib/shared-core/
 	// roots.ts). Saying which were used keeps a worktree run from passing on an empty roster unseen.
@@ -201,19 +202,20 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 	console.info(`Configuration: rosters and deliveries from ${configRoot(root)}.`);
 	console.info(describeRoots(fleetRoot, loadFleetRoots(fleetRoot)));
 
-	// The owner's own record of what it delivered under this fleet root (lib/shared-core/
-	// deliveries.ts). One that cannot be read is exit 2: nothing was learned. One that is not there
-	// is a failure in its own right, reported after the comparison so its findings are still seen.
+	// The owner's record of deliveries (lib/shared-core/deliveries.ts), read under the record lock by a
+	// write. Unreadable is exit 2; missing fails on its own account, after the comparison.
 	let deliveries: Deliveries | null;
 	try {
+		if (options.write) holdRecordLockUntilExit(root);
 		deliveries = readDeliveries(root, fleetRoot);
 	} catch (err) {
 		const reason = err instanceof Error ? err.message : String(err);
 		console.error(`[FAIL] The record of deliveries could not be read: ${reason}`);
 		return 2;
 	}
+	const departed = departedOrNone(root, fleetRoot);
 	const reports = groups.map((group) =>
-		checkGroup(group, fleetRoot, root, options.only, deliveries ?? {}),
+		checkGroup(group, fleetRoot, root, options.only, deliveries, departed),
 	);
 
 	if (options.check) {

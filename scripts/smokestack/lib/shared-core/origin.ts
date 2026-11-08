@@ -116,7 +116,7 @@ export function syncedPathsAt(ownerRoot: string, rev: string): Map<string, strin
  * For every synced installed path the owner delivers at `rev`, the hashes it may hold there: one
  * per declared variant. Null when that revision has no readable manifest.
  */
-function deliveredAt(ownerRoot: string, rev: string): Map<string, Set<string>> | null {
+export function deliveredAt(ownerRoot: string, rev: string): Map<string, Set<string>> | null {
 	const manifest = showAll(ownerRoot, rev, [MANIFEST_PATH]).get(MANIFEST_PATH);
 	if (manifest === null || manifest === undefined) return null;
 

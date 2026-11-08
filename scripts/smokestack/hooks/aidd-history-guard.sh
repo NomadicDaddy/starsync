@@ -10,7 +10,7 @@
 # Reads the pre-push stdin protocol: <local-ref> <local-sha> <remote-ref> <remote-sha> per line.
 #
 # Three checks, in cost order:
-#   1. /.aidd/ is ignored at all.
+#   1. /.aidd/ is ignored at all, wherever a .aidd exists in the work tree.
 #   2. Zero tracked .aidd paths.
 #   3. Zero commits touching .aidd IN THE RANGE BEING PUSHED.
 #
@@ -37,7 +37,13 @@ fi
 # --- Check 1: the blanket rule exists at all -------------------------------------------------
 # --no-index because a TRACKED file is never reported as ignored, which would make this pass
 # vacuously on exactly the repositories that most need it.
-if ! git check-ignore -q --no-index .aidd/probe 2>/dev/null; then
+#
+# Only where a .aidd exists in the work tree. Since 0.6.8 the push guards reach every repository,
+# and one that has never had .aidd has nothing to ignore; asking it for the rule would put a rule
+# for a folder it must never have into it. The moment a .aidd appears, this check runs again,
+# before it can be committed, and checks 2 and 3 run everywhere regardless.
+top=$(git rev-parse --show-toplevel)
+if [ -e "$top/.aidd" ] && ! git check-ignore -q --no-index .aidd/probe 2>/dev/null; then
 	note "no ignore rule covers .aidd/ — add a root-anchored /.aidd/ rule"
 	problems=1
 fi

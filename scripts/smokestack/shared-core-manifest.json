@@ -13,7 +13,7 @@
 			"owner": "smokestack",
 			"sourceRoot": ".githooks",
 			"targetRoot": "scripts/smokestack/hooks",
-			"targets": { "marker": ".aidd", "model": "discovered" }
+			"targets": { "model": "discovered" }
 		},
 		{
 			"files": [
@@ -197,8 +197,11 @@
 				{ "disposition": "synced", "source": "shared-core-manifest.json" },
 				{ "disposition": "synced", "source": "sync-shared-core.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/behind.ts" },
+				{ "disposition": "synced", "source": "lib/shared-core/behind-lockless.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/check.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/deliveries.ts" },
+				{ "disposition": "synced", "source": "lib/shared-core/departed.ts" },
+				{ "disposition": "synced", "source": "lib/shared-core/record-lock.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/delivery-check.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/dispatch.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/eligibility.ts" },

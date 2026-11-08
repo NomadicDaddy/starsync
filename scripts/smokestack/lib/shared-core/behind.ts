@@ -1,6 +1,10 @@
 /**
  * A complete, tag-verified delivery can lag the owner without being locally altered.
  *
+ * A repository with no lock that the writer has never delivered to is judged by behind-lockless.ts.
+ * One the writer has delivered to is held to its lock alone, and one that has lost its lock stays
+ * drift (shared-core-behind "keeps differences fatal when the consumer has no lock").
+ *
  * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
  * smokestack; every repository that takes it holds a byte-identical copy.
  */
@@ -11,6 +15,7 @@ import type { Finding } from './check.ts';
 import type { SharedCoreGroup } from './manifest.ts';
 import type { Target } from './targets.ts';
 
+import { locklessBehind } from './behind-lockless.ts';
 import { gitModes, type GroupState, lockDifferences } from './expected.ts';
 import { hookClaim } from './hook.ts';
 import { hashShared, isClaim, readLock } from './lock.ts';
@@ -37,11 +42,16 @@ function precedesOwner(ownerRoot: string, commit: string): boolean {
 	return before;
 }
 
+/**
+ * `neverDelivered` is true only where the owner's record of deliveries for this fleet root was
+ * read and has no entry for the target (check.ts). It is the one way into the lockless allowance.
+ */
 export function classifyBehind(
 	group: SharedCoreGroup,
 	target: Target,
 	ownerRoot: string,
 	findings: Finding[],
+	neverDelivered: boolean,
 ): Finding[] {
 	if (!findings.some((finding) => finding.kind === 'drift')) return findings;
 	let lock: ReturnType<typeof readLock>;
@@ -51,7 +61,10 @@ export function classifyBehind(
 		// lockFindings reports malformed locks; they never qualify for the rollout allowance.
 		return findings;
 	}
-	if (!lock?.version || !lock.commit) return findings;
+	if (lock === null) {
+		return neverDelivered ? locklessBehind(group, target, ownerRoot, findings) : findings;
+	}
+	if (!lock.version || !lock.commit) return findings;
 	const recorded = lock.groups[group.name];
 	if (!recorded || verifyOrigin(ownerRoot, lock).state !== 'verified') return findings;
 	if (!precedesOwner(ownerRoot, lock.commit)) return findings;

@@ -6,17 +6,18 @@
  * find. Neither can be expressed as the other: a roster cannot arm a repository nobody remembered
  * to add, and discovery cannot express a subset chosen by hand.
  *
- * A discovered group's marker is OPTIONAL, and each group's answer is copied from the installer it
- * replaced rather than chosen here. The history guard is installed into repositories carrying
- * `.aidd`, so its group names that marker. The leak guard is installed into every git repository
- * under the fleet root, so its groups name none. Giving both groups the `.aidd` marker is what made
- * the gate report thirty-two repositories current while the installer had covered fifty-one
- * (punchlist C5): a narrower predicate than the installer's does not report a smaller number, it
- * reports a complete-looking one.
+ * A discovered group's marker is OPTIONAL. Every discovered group today names none: the leak guard
+ * and the push guards are installed into every git repository under the fleet root. The push
+ * guards once named `.aidd`, which left every repository without one with no force-push or
+ * screenshot guard, and `.aidd` is never created to qualify a repository (0.6.8). Giving the leak
+ * guard the `.aidd` marker is what made the gate report thirty-two repositories current while the
+ * installer had covered fifty-one (punchlist C5): a narrower predicate than the installer's does
+ * not report a smaller number, it reports a complete-looking one.
  *
  * NO GROUP NAMES A TARGET REPOSITORY. This manifest is tracked in repositories that are published,
  * and a private sibling's name in a tracked file is the exact disclosure leak-guard.sh
- * exists to stop. A roster group names a gitignored FILE; a discovered group names a MARKER.
+ * exists to stop. A roster group names a gitignored FILE; a discovered group names at most a
+ * MARKER, and none does today.
  *
  * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
  * smokestack; every repository that takes it holds a byte-identical copy.

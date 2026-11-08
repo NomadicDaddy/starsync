@@ -103,10 +103,15 @@ export function checkGroup(
 	fleetRoot: string,
 	ownerRoot: string,
 	only?: Set<string>,
-	// The owner's record of deliveries for this fleet root. Empty where the owner holds none, which
-	// the entry point fails on its own account; a caller comparing files alone passes nothing.
-	deliveries: Deliveries = {},
+	// The owner's record of deliveries for this fleet root. Null where the owner holds none, which
+	// the entry point fails on its own account; a caller comparing files alone passes nothing. Null
+	// also withholds the lockless allowance (behind.ts), which needs the record to say "never".
+	deliveries: Deliveries | null = null,
+	// The directories the owner has forgotten under this root (departed.ts). Null, where it keeps no
+	// list or cannot read it, withholds the lockless allowance as a missing record does.
+	departed: null | Set<string> = null,
 ): GroupReport {
+	const recorded = deliveries ?? {};
 	assertSourcesExist(group, ownerRoot);
 	// After assertSourcesExist, which is what lets this one read both variants without guarding.
 	assertVariantsDiffer(group, ownerRoot);
@@ -223,11 +228,20 @@ export function checkGroup(
 			});
 		}
 
-		const classified = classifyBehind(group, target, ownerRoot, report.findings.slice(first));
+		const entry = recorded[target.directory];
+		const classified = classifyBehind(
+			group,
+			target,
+			ownerRoot,
+			report.findings.slice(first),
+			deliveries !== null &&
+				departed !== null &&
+				entry === undefined &&
+				!departed.has(target.directory),
+		);
 		report.findings.splice(first, report.findings.length - first, ...classified);
 		report.findings.push(...wiringFindings(group, target, scripts));
 		// Last, because it is judged against everything this target was just found to hold.
-		const entry = deliveries[target.directory];
 		report.findings.push(
 			...lockFindings(group, target, ownerRoot, report.findings.slice(first), entry),
 		);
@@ -235,7 +249,7 @@ export function checkGroup(
 
 	// A repository the record says was delivered this group, and which was not reached above.
 	report.findings.push(
-		...departedFindings(group, deliveries, fleetRoot, report.reached, skipReasons, only),
+		...departedFindings(group, recorded, fleetRoot, report.reached, skipReasons, only),
 	);
 	return report;
 }

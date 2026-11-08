@@ -57,9 +57,9 @@ export interface DiscoveredTargets {
 	 * sibling git repository.
 	 *
 	 * A discovered group's predicate must be the one its installer already sweeps by, or the gate
-	 * verifies a different population than the thing it is verifying. `install-history-guard.ts`
-	 * sweeps repositories carrying `.aidd`; `install-leak-guard.ts` sweeps every git repository
-	 * under the fleet root and takes no marker at all. Scoping the leak-guard groups to `.aidd`
+	 * verifies a different population than the thing it is verifying. Both installers read it from
+	 * the group, and both sweep every git repository under the fleet root: no discovered group
+	 * takes a marker today. Scoping the leak-guard groups to `.aidd`
 	 * made the gate blind to nineteen repositories the installer had already covered — it reported
 	 * thirty-two current out of fifty-one, and read as full coverage. Recorded as punchlist C5.
 	 *

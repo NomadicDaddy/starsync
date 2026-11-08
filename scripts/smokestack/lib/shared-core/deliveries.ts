@@ -30,6 +30,7 @@ import { join, resolve } from 'node:path';
 import { platform } from 'node:process';
 
 import { type HookClaim, isClaim, type Lock } from './lock.ts';
+import { withRecordLock } from './record-lock.ts';
 import { configRoot } from './roots.ts';
 
 export const DELIVERIES_FILE = 'deliveries.json';
@@ -218,14 +219,32 @@ export function recordSettled(
 	settled: Map<string, Lock>,
 ): boolean {
 	if (settled.size === 0) return false;
-	const section = { ...deliveries };
-	for (const [directory, lock] of settled) {
-		const entry = deliveredBy(lock);
-		if (entry === null) continue;
-		const before = section[directory];
-		const kept = Object.keys(before?.groups ?? {}).some((name) => !(name in entry.groups));
-		if (kept && (before?.version !== entry.version || before.commit !== entry.commit)) continue;
-		section[directory] = { ...entry, groups: { ...before?.groups, ...entry.groups } };
-	}
-	return writeDeliveries(ownerRoot, fleetRoot, section);
+	// Under the record lock, and merged into the record as it stands now rather than as it stood
+	// when the write began, so an adopt or forget run meanwhile is not undone. `deliveries` is the
+	// write's starting snapshot: a repository, or a group of one, that it held and the record no
+	// longer does was forgotten while the write ran, and the forget stands (Roger #39011).
+	return withRecordLock(ownerRoot, () => {
+		const section = { ...(readDeliveries(ownerRoot, fleetRoot) ?? deliveries) };
+		for (const [directory, lock] of settled) {
+			const delivered = deliveredBy(lock);
+			if (delivered === null) continue;
+			const started = deliveries[directory];
+			const before = section[directory];
+			if (started !== undefined && before === undefined) continue;
+			const forgotten = Object.keys(started?.groups ?? {}).filter(
+				(name) => before?.groups[name] === undefined,
+			);
+			const groups = Object.fromEntries(
+				Object.entries(delivered.groups).filter(([name]) => !forgotten.includes(name)),
+			);
+			if (Object.keys(groups).length === 0) continue;
+			const entry: DeliveredTarget = { ...delivered, groups };
+			const kept = Object.keys(before?.groups ?? {}).some((name) => !(name in entry.groups));
+			if (kept && (before?.version !== entry.version || before.commit !== entry.commit)) {
+				continue;
+			}
+			section[directory] = { ...entry, groups: { ...before?.groups, ...entry.groups } };
+		}
+		return writeDeliveries(ownerRoot, fleetRoot, section);
+	});
 }
