@@ -38,11 +38,18 @@ export function skipReason(
 
 	const declined = declineReason(target.path);
 	if (declined !== null) return `declines: ${declined}`;
-	if (group.requiresPackageJson === true && scripts === null) {
+	if (scripts === null) {
 		// readScripts gives null for both, and they want different fixes.
-		return existsSync(join(target.path, 'package.json'))
-			? 'package.json is not valid JSON'
-			: 'no package.json';
+		const present = existsSync(join(target.path, 'package.json'));
+		if (group.requiresPackageJson === true) {
+			return present ? 'package.json is not valid JSON' : 'no package.json';
+		}
+		// A group whose package.json needs are per file still takes its other files where there is
+		// no package.json at all (check.ts leaves the flagged ones out). A broken one is not "none":
+		// the wiring could not be read, so the repository is told to fix it, as before.
+		if (present && group.files.some((file) => file.requiresPackageJson)) {
+			return 'package.json is not valid JSON';
+		}
 	}
 	return null;
 }

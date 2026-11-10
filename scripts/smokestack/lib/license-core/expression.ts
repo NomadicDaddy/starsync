@@ -190,6 +190,8 @@ function collectIdentifiers(expression: LicenseExpression, result: Set<string>):
  * `license WITH exception` compound. Returns [] when the expression does not parse. Lets a caller
  * attach per-identifier notices to a dependency whose license is a compound expression, instead of
  * keying notices on the raw expression string (which no `NOTICES` table would ever contain).
+ *
+ * @public
  */
 export function licenseIdentifiers(raw: string): string[] {
 	try {

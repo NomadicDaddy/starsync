@@ -37,6 +37,11 @@ export interface SharedCoreFile {
 	disposition: Disposition;
 	/** Installed at the same target when requiresScripts is unmet. */
 	fallbackSource?: string;
+	/**
+	 * Installed only where the target has a package.json, while the rest of the group installs
+	 * without one. Seeded files only: see manifest-file.ts.
+	 */
+	requiresPackageJson?: true;
 	/** package.json script names the target must define for `source` to be installable. */
 	requiresScripts?: string[];
 	/** Relative to the group's sourceRoot, inside the owning repository. */
@@ -168,6 +173,10 @@ function asGroup(raw: unknown, index: number): SharedCoreGroup {
 		fail(`${where} needs at least one file.`);
 	}
 	const files = rawFiles.map((file, i) => asFile(file, `${where} file ${i}`));
+	// One meaning per group: either nothing installs without package.json, or named files don't.
+	if (group['requiresPackageJson'] === true && files.some((f) => f.requiresPackageJson)) {
+		fail(`${where} declares requiresPackageJson on the group and on a file; keep one.`);
+	}
 
 	const hook = group['hook'];
 	if (hook !== undefined) {
@@ -194,7 +203,10 @@ function asGroup(raw: unknown, index: number): SharedCoreGroup {
 		if (wiring === null || typeof wiring !== 'object' || Array.isArray(wiring)) {
 			fail(`${where} wiring must be an object of script name to command.`);
 		}
-		if (group['requiresPackageJson'] !== true) {
+		// Wiring is package.json scripts, so it needs one: on the whole group, or on a file that
+		// installs only beside one. A target without package.json then gets neither that file nor
+		// a wiring finding (wiring.ts reads no scripts there).
+		if (group['requiresPackageJson'] !== true && !files.some((f) => f.requiresPackageJson)) {
 			fail(`${where} declares wiring but not requiresPackageJson: true.`);
 		}
 		for (const [key, required] of Object.entries(wiring as Record<string, unknown>)) {

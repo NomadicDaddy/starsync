@@ -65,6 +65,17 @@ export function asFile(raw: unknown, where: string): SharedCoreFile {
 		}
 	}
 
+	// Only a seeded file may need a package.json of its own. Locks record synced files alone
+	// (expected.ts), so a synced file left out where package.json is absent would make the lock
+	// list a file the check never compares. The one use today is the Bun shim beside shell guards
+	// that run under plain bash.
+	const requiresPackageJson = file['requiresPackageJson'];
+	if (requiresPackageJson !== undefined) {
+		if (requiresPackageJson !== true) fail(`${where} requiresPackageJson must be true.`);
+		if (disposition !== 'seeded') {
+			fail(`${where} requiresPackageJson is for seeded files only.`);
+		}
+	}
 	const target = file['target'];
 	if (target !== undefined && (typeof target !== 'string' || target.length === 0)) {
 		fail(`${where} target must be a non-empty string when present.`);
@@ -78,6 +89,7 @@ export function asFile(raw: unknown, where: string): SharedCoreFile {
 	return {
 		disposition,
 		source,
+		...(requiresPackageJson === true ? { requiresPackageJson: true } : {}),
 		...(typeof target === 'string' ? { target } : {}),
 		...(requiresScripts === undefined
 			? {}

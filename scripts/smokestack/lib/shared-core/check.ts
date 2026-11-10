@@ -160,6 +160,10 @@ export function checkGroup(
 		const locked = lockFileIn(target.path) !== null;
 
 		for (const file of group.files) {
+			// Not this target's: it has no package.json, so the file is neither absent nor written.
+			// Skipping it here keeps it out of the write's worklist too, which is built from these
+			// findings. eligibility.ts has already turned away a package.json that is merely broken.
+			if (file.requiresPackageJson === true && scripts === null) continue;
 			const name = file.target ?? file.source;
 			const standing = standingOf(group, name, dispatch, chained);
 			if (standing === 'unmanaged-dispatch' || (standing === 'not-applicable' && !locked)) {

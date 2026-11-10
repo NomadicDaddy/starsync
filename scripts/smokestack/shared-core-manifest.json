@@ -42,13 +42,13 @@
 		{
 			"files": [
 				{ "disposition": "synced", "source": "check-leak-guard.sh" },
+				{ "disposition": "synced", "source": "check-leak-guard-setup.sh" },
 				{ "disposition": "synced", "source": "check-leak-guard-cases.sh" },
 				{ "disposition": "synced", "source": "check-leak-guard-binary-cases.sh" },
-				{ "disposition": "seeded", "source": "run-bash.ts" }
+				{ "disposition": "seeded", "requiresPackageJson": true, "source": "run-bash.ts" }
 			],
 			"name": "leak-guard-scripts",
 			"owner": "smokestack",
-			"requiresPackageJson": true,
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts/smokestack",
 			"targets": { "model": "discovered" },
