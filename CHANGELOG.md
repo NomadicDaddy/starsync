@@ -7,10 +7,14 @@ All notable changes to this project will be documented in this file. Format foll
 ### Changed
 
 - Updated the smokestack shared-core delivery to v0.7.1, removing unused exports from its
-  departed helper.
+  departed helper. v0.7.2 and v0.7.3 then split the leak guard's setup into its own script and
+  made the self-test's case 19 test the guard's patch step on every git, with the scratch
+  repositories reading no global or system git configuration.
 - Updated the smokestack-delivered history guard and shared-core sync files to v0.7.0.
 - Aligned ESLint, its sorting and TypeScript plugins, Knip, and Bun type definitions with
   the workspace dependency targets. TypeScript remains pinned to 6.0.3.
+- Updated the development dependency toolchain to the approved November fleet targets:
+  knip 6.45.1 and typescript-eslint 8.72.2 (fleet targets 20261111).
 
 ## [2.5.0] - Internal build, unshipped
 
