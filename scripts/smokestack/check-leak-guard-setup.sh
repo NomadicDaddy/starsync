@@ -41,9 +41,23 @@ unset $(git rev-parse --local-env-vars)
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# The scratch repositories read no global or system git configuration either, so a build machine's
+# settings (rename detection, say) cannot change which step of the guard refuses first. Morticia
+# #41245, after case 19 refused for another reason in beazley.org's Cloudflare build. An empty file,
+# not /dev/null, so it reads the same under every git.
+: >"$tmp/gitconfig-none"
+export GIT_CONFIG_GLOBAL="$tmp/gitconfig-none" GIT_CONFIG_NOSYSTEM=1
+
 failures=0
+# A failure also shows what the guard last said. A message check that fails on another platform
+# otherwise says only which message was missing, never which refusal took its place (beazley.org's
+# Cloudflare build, case 19, Auden #41218). The fixtures are synthetic, and case 13 proves a refusal
+# never repeats what it refused, so this prints no real secret. It is the LAST guard run's output,
+# which a check that runs no guard of its own did not produce, so the label says so (Morticia, Roger
+# #41267).
 fail() {
 	echo "check-leak-guard: FAIL - $1" >&2
+	if [ -s "$tmp/stderr" ]; then sed 's/^/check-leak-guard:   last guard run said: /' "$tmp/stderr" >&2; fi
 	failures=$((failures + 1))
 }
 

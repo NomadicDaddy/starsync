@@ -138,12 +138,14 @@ grep -q 'could not list the staged files' "$tmp/stderr" || fail 'a failed listin
 # 19. A guard that can list the staged names but cannot read what they hold has not checked the
 # content, so it refuses. The names come from the index alone; the patch needs each blob, so a
 # staged blob removed from the object store fails only the patch. This is a repository of its own,
-# since it is left corrupt.
+# since it is left corrupt. The working-tree copy goes too: while it still matches the index, git's
+# diff reads it instead of the blob, so the patch succeeded and the guard refused the synthetic key
+# instead. Git for Windows' core.autocrlf had hidden that; beazley.org's Linux build showed it.
 make_repo unreadable-blob
 printf '%s\n' "key=$aws_key" >"$tmp/unreadable-blob/staged.txt"
 git -C "$tmp/unreadable-blob" add staged.txt
 blob="$(git -C "$tmp/unreadable-blob" rev-parse :staged.txt)"
-rm -f "$tmp/unreadable-blob/.git/objects/${blob:0:2}/${blob:2}"
+rm -f "$tmp/unreadable-blob/.git/objects/${blob:0:2}/${blob:2}" "$tmp/unreadable-blob/staged.txt"
 code=0
 (cd "$tmp/unreadable-blob" && LEAK_GUARD_PATTERNS="$synthetic" bash "$guard") 2>"$tmp/stderr" || code=$?
 [ "$code" = 1 ] || fail 'a staged blob git could not read let a commit through'

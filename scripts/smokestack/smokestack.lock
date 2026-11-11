@@ -1,5 +1,5 @@
 {
-	"commit": "5cc62afc4613e320094909bc081cc25136c5c5d3",
+	"commit": "1762f5469219caa7f9622bc51f5fa558629267a3",
 	"groups": {
 		"leak-guard-hooks": {
 			"files": {
@@ -41,11 +41,11 @@
 				},
 				"scripts/smokestack/check-leak-guard-cases.sh": {
 					"mode": "100644",
-					"sha256": "4c0bd66f68a836a29ab80dad6c186c17ea449809ae93097d0ee68d875d5b6b34"
+					"sha256": "7e3d13c6bb53575ee91c4a3d0251171c5ae9cb36bd7d2fe6cd5b038b0fa9903c"
 				},
 				"scripts/smokestack/check-leak-guard-setup.sh": {
 					"mode": "100644",
-					"sha256": "1fc92f167dbbf2f007369ac96532ede69f84c07a5c41e5298835defe8fd5e1f9"
+					"sha256": "1a63ba3bdd65bac52262dd7dd951fb7a5cd8863bfdb8706c0a2da51fa547981c"
 				},
 				"scripts/smokestack/check-leak-guard.sh": {
 					"mode": "100644",
@@ -351,5 +351,5 @@
 		}
 	},
 	"owner": "smokestack",
-	"version": "0.7.2"
+	"version": "0.7.3"
 }
