@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Changed
 
+- Updated ESLint to 10.15.0 and Prettier to 3.10.1.
 - Updated the smokestack shared-core delivery to v0.7.1, removing unused exports from its
   departed helper. v0.7.2 and v0.7.3 then split the leak guard's setup into its own script and
   made the self-test's case 19 test the guard's patch step on every git, with the scratch
