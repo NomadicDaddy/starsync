@@ -31,7 +31,7 @@
  * smokestack; every repository that takes it holds a byte-identical copy.
  */
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import type { Finding, FindingKind } from './check.ts';
 import type { DeliveredTarget } from './deliveries.ts';
@@ -39,7 +39,7 @@ import type { SharedCoreGroup } from './manifest.ts';
 import type { Target } from './targets.ts';
 
 import { heldToRecord } from './delivery-check.ts';
-import { groupState, lockDifferences } from './expected.ts';
+import { groupState, hookModeDefects, lockDifferences } from './expected.ts';
 import {
 	hashShared,
 	isClaim,
@@ -202,8 +202,19 @@ export function lockFindings(
 			? [...held.findings, ...atRoot]
 			: [...held.findings, ...atRoot, ...oldPathFindings(group, target, ownerRoot)];
 
-	// Unsettled files leave the lock nothing to agree with yet; a lost delivery is reported anyway.
-	if (lost.length > 0 || found.some(isUnsettled)) return [...reported, ...lost];
+	// Unsettled files leave the lock nothing to agree with yet; a lost delivery is reported anyway,
+	// and so is a current hook git will not run. That one waited for the group to settle, so one
+	// repository's five hooks at 100644 went unseen beside three drifted ones (Edgar #48251). A
+	// hook the write is about to replace is left out: the write makes it executable.
+	if (lost.length > 0 || found.some(isUnsettled)) {
+		const replaced = new Set(
+			found.flatMap((f) => (f.destination === undefined ? [] : [resolve(f.destination)])),
+		);
+		const unrunnable = hookModeDefects(group, groupState(group, target.path))
+			.filter(({ path }) => !replaced.has(resolve(target.path, path)))
+			.map(({ path, problem }) => finding('stale-lock', `${path} ${problem}`));
+		return [...reported, ...lost, ...unrunnable];
+	}
 
 	if (recorded === undefined) {
 		return [...reported, finding('stale-lock', `${LOCK_FILE} does not declare this group`)];

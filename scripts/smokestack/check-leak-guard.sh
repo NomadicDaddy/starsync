@@ -8,6 +8,12 @@
 #
 # smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
 # smokestack; every repository that takes it holds a byte-identical copy.
+#
+# Four lines below disable SC2154, one for each variable this file reads from
+# check-leak-guard-setup.sh (synthetic, guard, self_dir, failures), at the first line that reads it,
+# which is where ShellCheck reports it. That file is sourced with SC1091 off, so a consumer that lints
+# each file alone would otherwise fail on all four. The disables are kept to those lines, not the
+# whole file, so ShellCheck still reports any other unassigned name, a misspelling included.
 set -euo pipefail
 
 # Everything before case 1 is in check-leak-guard-setup.sh beside this file, sourced first so that
@@ -17,6 +23,7 @@ set -euo pipefail
 . "$(cd "$(dirname "$0")" && pwd)/check-leak-guard-setup.sh"
 
 # 1. Clean content passes.
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
 [ "$(run_guard "$synthetic" 'plain harmless content')" = 0 ] || fail 'clean content was blocked'
 
 # 2. Generic secret shape: runtime-built AWS access key id is blocked.
@@ -65,6 +72,7 @@ grep -q 'no local pattern file' "$tmp/stderr" || fail 'missing pattern file did 
 code=0
 printf '%s\n' 'plain harmless content' >"$guard_repo/staged.txt"
 git -C "$guard_repo" add staged.txt
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
 (cd "$guard_repo" && LEAK_GUARD_PATTERNS="$tmp/does-not-exist" LEAK_GUARD_ALLOW_NO_PRIVATE=1 bash "$guard") 2>"$tmp/stderr" || code=$?
 [ "$code" = 0 ] || fail 'LEAK_GUARD_ALLOW_NO_PRIVATE=1 did not let a clean commit through'
 grep -q 'generic checks only' "$tmp/stderr" || fail 'override did not warn that tier 2 was off'
@@ -149,16 +157,21 @@ guard_repo="$tmp/repo"
 # and failure count above. shellcheck -x follows them from any directory through SCRIPTDIR, and a
 # plain run, which follows no sourced file, skips them (SC1091).
 # shellcheck source-path=SCRIPTDIR source=check-leak-guard-cases.sh disable=SC1091
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
 . "$self_dir/check-leak-guard-cases.sh"
 # shellcheck source-path=SCRIPTDIR source=check-leak-guard-binary-cases.sh disable=SC1091
 . "$self_dir/check-leak-guard-binary-cases.sh"
 
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
 if [ "$failures" -gt 0 ]; then
 	# Both streams: a gate harness that captures only one of them still sees the failure. The
 	# per-case FAIL lines stay on stderr; this summary is the one line a log must not lose
 	# (Morticia I-4: full gates exited 1 with no failure line in their captured output).
 	echo "check-leak-guard: $failures failure(s)"
 	echo "check-leak-guard: $failures failure(s)" >&2
+	# The setup's EXIT trap names an early stop; this run has said why it failed.
+	# shellcheck disable=SC2034 # read by the EXIT trap in check-leak-guard-setup.sh
+	self_test_reported=1
 	exit 1
 fi
 echo 'check-leak-guard: all checks passed'

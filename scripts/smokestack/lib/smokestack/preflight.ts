@@ -17,7 +17,8 @@
  *
  * A group the lock declares with nothing delivered fails the full gate and not the fast one. The
  * fast gate runs for the commit in front of it, and that commit is how a group is asked for: the
- * owner will not deliver over an uncommitted lock.
+ * owner will not deliver over an uncommitted lock. That holds for a first lock too, where every
+ * group is declared and none delivered, so the fast gate passes it having examined no file.
  *
  * Only the owner skips the check, and being the owner takes all three of: the package is named
  * for it, the manifest names it owner of a group, and it holds no lock. A consumer
@@ -91,8 +92,13 @@ export function standing(root: string, mode: Mode): Standing {
 	const examined = examine(root, manifest, lock);
 	const lines = examined.findings.map((finding) => `- ${finding}`);
 	// The drift is every finding that is not a bare declaration.
-	let failed = examined.findings.length > examined.undelivered.length || examined.files === 0;
-	if (examined.files === 0) lines.push(`- ${LOCK_FILE}:0 records no delivered file`);
+	const drifted = examined.findings.length > examined.undelivered.length;
+	// A lock that records no file would pass over nothing. The one the fast gate lets through is a
+	// first lock, every group declared and none delivered: the commit that asks for a first write.
+	const recordsNothing =
+		examined.files === 0 && (mode === 'qc' || examined.undelivered.length === 0);
+	let failed = drifted || recordsNothing;
+	if (recordsNothing) lines.push(`- ${LOCK_FILE}:0 records no delivered file`);
 	if (mode === 'qc' && examined.undelivered.length > 0) failed = true;
 	if (mode === 'fast' && examined.undelivered.length > 0) {
 		lines.push(
@@ -114,7 +120,11 @@ export function standing(root: string, mode: Mode): Standing {
 		}
 	} else if (!failed) {
 		// The files match the lock; whether the lock is what the owner delivered was not checked.
-		lines.push(`[WARN] origin not verified: ${LOCK_OWNER} is not checked out beside this one`);
+		const why =
+			lock.version === undefined
+				? `${LOCK_FILE} names no delivery yet`
+				: `${LOCK_OWNER} is not checked out beside this one`;
+		lines.push(`[WARN] origin not verified: ${why}`);
 	}
 	lines.push(
 		`${examined.files} file(s) in ${Object.keys(lock.groups).length} group(s) held against ${LOCK_FILE}`,

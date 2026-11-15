@@ -29,7 +29,9 @@ problems=0
 
 note() { echo "  $*" >&2; }
 
-# A repository with no push remote is "managed": .aidd/ is tracked on purpose. Nothing to guard.
+# Nothing can be published from a repository with no push remote, so there is nothing to guard at
+# push time. Its .aidd is still untracked like every other repository's (Phillip #21448), and the
+# pre-commit hooks refuse a commit that stages it.
 if ! git remote -v 2>/dev/null | grep -q '(push)'; then
 	exit 0
 fi
@@ -49,10 +51,10 @@ if [ -e "$top/.aidd" ] && ! git check-ignore -q --no-index .aidd/probe 2>/dev/nu
 fi
 
 # --- Check 2: nothing tracked ------------------------------------------------------------------
-tracked=$(git ls-files .aidd | head -5)
+tracked=$(git ls-files ':(icase).aidd' | head -5)
 if [ -n "$tracked" ]; then
-	note "$(git ls-files .aidd | wc -l | tr -d ' ') tracked .aidd path(s); index-only removal required:"
-	note "  git rm --cached -r .aidd"
+	note "$(git ls-files ':(icase).aidd' | wc -l | tr -d ' ') tracked .aidd path(s); index-only removal required:"
+	note "  git rm --cached -r ':(icase).aidd'"
 	problems=1
 fi
 
@@ -67,7 +69,7 @@ rev_list_checked() {
 	local rc=0
 	# Deliberately not a subshell: `problems` and REV_OUT must survive into the caller.
 	set +e
-	REV_OUT=$(git rev-list "$@" -- .aidd 2>&1)
+	REV_OUT=$(git rev-list "$@" -- ':(icase).aidd' 2>&1)
 	rc=$?
 	set -e
 	return "$rc"

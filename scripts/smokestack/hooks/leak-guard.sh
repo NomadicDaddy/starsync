@@ -87,10 +87,12 @@ case $'\n'"$numstat" in *$'\n-\t-\t'*)
 		echo "x leak-guard: binary files are staged and $decoder is missing, so they were not checked." >&2
 		exit 1
 	fi
-	# shellcheck source-path=SCRIPTDIR source=leak-guard-decode.sh
+	# With -x, ShellCheck follows the decoder through SCRIPTDIR; a plain run follows no sourced file.
+	# shellcheck source-path=SCRIPTDIR source=leak-guard-decode.sh disable=SC1091
 	. "$decoder"
 	trap '[ -n "$decoded" ] && rm -rf "$decoded"' EXIT
 	decode_staged_binaries
+	# shellcheck disable=SC2154 # set by decode_staged_binaries in leak-guard-decode.sh
 	added="$added$decoded_added"
 	;;
 esac

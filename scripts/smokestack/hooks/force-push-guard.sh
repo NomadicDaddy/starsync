@@ -4,11 +4,17 @@
 # aidd marks every process that acts for an agent (an external coding CLI it launches, its own
 # bash tool) with AIDD_AGENT=1. Those CLIs run with permission bypass, so aidd's bash deny-list
 # never sees their shell and the prompt's prohibition on force-pushing is advice, not a control.
-# This guard is the enforcement point: git runs it for every push from inside the repository,
-# whichever shell issued the command, and it judges the ref update git is about to perform rather
-# than the spelling of the command, so `+refspec`, `--force-with-lease`, an alias and a deletion
-# are all caught. Outside an agent process the guard exits 0 and the operator's pushes are their
-# own business.
+# This guard is the check this repository adds: git runs it for every push where the hook is
+# installed and not skipped (see below), whichever shell issued the command, and it judges the ref
+# update git is about to perform rather than the spelling of the command, so `+refspec`,
+# `--force-with-lease`, an alias and a deletion are all caught. Outside an agent process the guard
+# exits 0 and the operator's pushes are their own business.
+#
+# It is a hook, so git skips it for `git push --no-verify` and whenever `core.hooksPath` leads
+# elsewhere. aidd's own bash tool refuses both in the command it runs, though not a hooks path
+# written into `.git/config` directly; a CLI running with permission bypass is not stopped by
+# anything in this repository. Only the remote's protection against non-fast-forward pushes (a
+# protected branch, or `receive.denyNonFastForwards`) closes that.
 #
 # Reads the pre-push stdin protocol: <local-ref> <local-sha> <remote-ref> <remote-sha> per line.
 #

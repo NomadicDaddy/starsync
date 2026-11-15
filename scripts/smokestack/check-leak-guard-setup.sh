@@ -33,13 +33,35 @@ hook="$scripts_dir/smokestack/hooks/leak-guard.sh"
 # Where the scratch repositories hold it, as a repository that takes it does.
 guard=scripts/smokestack/hooks/leak-guard.sh
 
+# A command that fails outside a check ends the self-test under `set -e` with no FAIL line and no
+# summary: full gates saw it exit 1 with nothing to say why (Morticia I-4). So the ERR trap records
+# where the last command in the main shell failed, and when the run ends non-zero without having
+# printed its own summary, the EXIT trap names that place on both streams and keeps the status.
+# Only the file and line are printed, never the command: its text can hold fixture pieces.
+set -E
+self_test_failed_at=''
+self_test_reported=''
+# The file name alone, cut at either separator: a full path can hold the user's home directory.
+trap '[ "$BASH_SUBSHELL" -ne 0 ] || self_test_failed_at="${BASH_SOURCE[0]##*[/\\]}:$LINENO"' ERR
+self_test_exit() {
+	local status=$?
+	if [ "$status" -ne 0 ] && [ -z "$self_test_reported" ]; then
+		local where="no failing command was recorded"
+		[ -z "$self_test_failed_at" ] || where="the last failing command was at $self_test_failed_at"
+		echo "check-leak-guard: stopped early with exit $status; $where"
+		echo "check-leak-guard: stopped early with exit $status; $where" >&2
+	fi
+	if [ -n "${tmp:-}" ]; then rm -rf "$tmp"; fi
+	exit "$status"
+}
+trap self_test_exit EXIT
+
 # Run from a hook, git's own environment points at the real repository: a pathspec commit hands
 # its hooks an absolute GIT_INDEX_FILE. The scratch repositories below must not write into it.
 # shellcheck disable=SC2046 # one variable name per word, which unset needs split
 unset $(git rev-parse --local-env-vars)
 
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
 
 # The scratch repositories read no global or system git configuration either, so a build machine's
 # settings (rename detection, say) cannot change which step of the guard refuses first. Morticia

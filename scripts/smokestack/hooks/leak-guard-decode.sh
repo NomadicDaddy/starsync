@@ -18,7 +18,7 @@
 # Design reviewed by Morticia (#35603) and Roger (#35607). smokestack owns this file and delivers
 # it beside leak-guard.sh with `bun run shared-core:write`. Like that file it must run under bash
 # 3.2; it uses od, iconv and diff, which Git for Windows, macOS and Linux all ship.
-# shellcheck shell=bash disable=SC2154 # scanned is set by leak-guard.sh before it sources this file
+# shellcheck shell=bash
 
 
 # Refuses with a reason, for a step whose failure would leave the content tiers nothing to scan.
@@ -124,6 +124,7 @@ decoded_pem=''
 decode_staged_binaries() {
 	local file reading head_reading index=0 dir safe
 	decoded="$(umask 077 && mktemp -d)"
+	# shellcheck disable=SC2154 # scanned is set by leak-guard.sh before it sources this file
 	git diff --cached --numstat -z --no-textconv --diff-filter=ACMRT -- "${scanned[@]}" >"$decoded/numstat" ||
 		decode_refuse 'git could not list the staged binary files'
 	# Written to a file, not read through < <(…), whose failure the loop could not see.

@@ -41,11 +41,27 @@ fi
 # Cleared so a git command run from inside this hook resolves bash for its own hooks afresh.
 unset GITHOOK_BASH_RESOLVED
 
+# From here on this runs under the bash the block above re-executed into. Plain shellcheck reads the
+# #!/bin/sh line and lints the whole file as POSIX sh, so each bash-only line below says so.
+# shellcheck disable=SC3040 # bash, after the re-exec above
 set -euo pipefail
 
 # The guards sit beside this hook: scripts/smokestack/hooks in a repository that takes it, and
 # .githooks in smokestack itself.
 hooks_dir="$(dirname "$0")"
+
+# .aidd stays untracked in every repository (Phillip #21448). A repository with no push remote never
+# runs the pre-push history guard, so this is what stops `git add -f` from tracking it again (#21477).
+# It reads the index, so ignored .aidd files on disk never count, and it refuses only additions and
+# changes: removing .aidd from the index is how a repository untracks it. Read into a variable so a
+# pipe closed early under pipefail cannot skip it.
+staged_aidd=$(git diff --cached --name-only --diff-filter=ACMRT -- ':(icase).aidd')
+if [ -n "$staged_aidd" ]; then
+	echo "x pre-commit: this commit stages .aidd metadata, which stays untracked in every repository:" >&2
+	printf '%s\n' "$staged_aidd" | sed 's/^/    /' >&2
+	echo "  Untrack it with: git rm -r --cached ':(icase).aidd'" >&2
+	exit 1
+fi
 
 echo "pre-commit: leak-guard"
 bash "$hooks_dir/leak-guard.sh"
@@ -73,6 +89,7 @@ without_repo_env bun run smoke:qc:fast
 # can still fail the pipeline when it closes the pipe early and git takes SIGPIPE, which would
 # silently skip the check on exactly the commits that need it.
 staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+# shellcheck disable=SC3011 # bash, after the re-exec above
 if grep -qE '(^|/)(bun\.lock|package\.json)$' <<<"$staged_files"; then
 	echo "pre-commit: check:licenses (dependency manifest staged)"
 	without_repo_env bun run check:licenses

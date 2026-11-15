@@ -1,11 +1,11 @@
 {
-	"commit": "1762f5469219caa7f9622bc51f5fa558629267a3",
+	"commit": "9917197d9f541805cb72f8eef454b3d477836f36",
 	"groups": {
 		"leak-guard-hooks": {
 			"files": {
 				"scripts/smokestack/hooks/leak-guard-decode.sh": {
 					"mode": "100644",
-					"sha256": "464415b5b129caa3e276889e89666118d58a8fa5917a4fb62f8bfdda9bb464a0"
+					"sha256": "4c1c2b21bdd601e20539776188f23d54339eca6977643a00a1543012f816e445"
 				},
 				"scripts/smokestack/hooks/leak-guard-setup.sh": {
 					"mode": "100644",
@@ -13,7 +13,7 @@
 				},
 				"scripts/smokestack/hooks/leak-guard.sh": {
 					"mode": "100644",
-					"sha256": "8a5f30d9310ceb4e0bfa9c3c1ae5a0f61d1d4d39bdb5d2d546439b48e5df9dae"
+					"sha256": "adc59d74cd8101cbeb0bb94835021816cdd602023eb014cffe275cb458c5877d"
 				},
 				"scripts/smokestack/hooks/post-checkout": {
 					"mode": "100755",
@@ -25,7 +25,7 @@
 				},
 				"scripts/smokestack/hooks/pre-commit": {
 					"mode": "100755",
-					"sha256": "64db2414f1ddecb618cf4790b6a15609d0010391c9aec4cda5ead48f9b1cf390"
+					"sha256": "b6a87d672a4abe514cc3800a93b7ee230689db18d779e559771d265152317af5"
 				},
 				"scripts/smokestack/hooks/reference-transaction": {
 					"mode": "100755",
@@ -45,11 +45,11 @@
 				},
 				"scripts/smokestack/check-leak-guard-setup.sh": {
 					"mode": "100644",
-					"sha256": "1a63ba3bdd65bac52262dd7dd951fb7a5cd8863bfdb8706c0a2da51fa547981c"
+					"sha256": "4bbe7733f3e2b19ecffbac9bb6ae46b3ac8e2cbaf91c67528739b7d1c548c327"
 				},
 				"scripts/smokestack/check-leak-guard.sh": {
 					"mode": "100644",
-					"sha256": "c06ba433a442d44aa7f7405e665e980aff323db3e6deab7f30da71ab6946460d"
+					"sha256": "d34d9cc59e447fd412b6a1175cac7a13878d78b870fc6cd70301a33c64694547"
 				}
 			}
 		},
@@ -97,11 +97,11 @@
 			"files": {
 				"scripts/smokestack/hooks/aidd-history-guard.sh": {
 					"mode": "100644",
-					"sha256": "8f45fab666594220231edf9f8b35a951d3f930e8ac721cc592f79c8edefa0dc0"
+					"sha256": "501dda8fc2bd945fe11751ec4ec9822faf4df030f5a78ba5d28c4ef0e5b3a54a"
 				},
 				"scripts/smokestack/hooks/force-push-guard.sh": {
 					"mode": "100644",
-					"sha256": "3336dfd1f7b708e0d61897d897fe720590799b994ff77d192a1cecabb324206a"
+					"sha256": "5045bdbaa6d8aab503365211b39c41b1ba683e53d4235efa1191acfe1fbc707e"
 				},
 				"scripts/smokestack/hooks/pre-push": {
 					"mode": "100755",
@@ -161,7 +161,7 @@
 				},
 				"scripts/smokestack/lib/smokestack/preflight.ts": {
 					"mode": "100644",
-					"sha256": "7c4ca14939ab30f9420438ce3334156c30d7934e93f73f01eb5f7ff4f96c66fd"
+					"sha256": "d01349cdf3da4709d7d62cd01c7dc37d96baf951ced63407687dd2f3431c1c89"
 				},
 				"scripts/smokestack/lib/smokestack/spawn.ts": {
 					"mode": "100644",
@@ -229,7 +229,7 @@
 				},
 				"scripts/smokestack/lib/shared-core/lock-check.ts": {
 					"mode": "100644",
-					"sha256": "8904ff3266991d0194168f7d48faca15331a9467697568b9f5b8c61cef68d946"
+					"sha256": "bdc66c4efa3a530d4eaf8feb8e98bd35775bd30f37c4286358c83551f93b674b"
 				},
 				"scripts/smokestack/lib/shared-core/lock-scope.ts": {
 					"mode": "100644",
@@ -351,5 +351,5 @@
 		}
 	},
 	"owner": "smokestack",
-	"version": "0.7.3"
+	"version": "0.8.0"
 }
