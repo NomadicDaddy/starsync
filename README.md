@@ -13,15 +13,24 @@ newer. Windows, macOS, and Linux are supported.
 
 ## Install
 
-Nothing to install — run the published CLI directly under either runtime:
+Nothing to install — run the published CLI directly under either runtime. For a new archive,
+create an empty directory, supply the selected host's API token as described under
+[Authentication](#authentication), then initialize before the first sync. Choose one runtime:
 
 ```sh
+npx starsync init D:/archives/stars
 npx starsync sync D:/archives/stars
+```
+
+Or with Bun:
+
+```sh
+bunx starsync init D:/archives/stars
 bunx starsync sync D:/archives/stars
 ```
 
 Both resolve `bin` to `dist/cli.js`, a node-target bundle, so Bun isn't required to use StarSync.
-A first run on an empty directory needs `init` and the selected host's API token; see below.
+For an existing format-2 archive, run only `sync` with the same path.
 
 To install it as a command instead:
 
