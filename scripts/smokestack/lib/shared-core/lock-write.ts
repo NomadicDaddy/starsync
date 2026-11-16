@@ -43,9 +43,10 @@ import {
 	readLock,
 	serializeLock,
 } from './lock.ts';
+import { layoutPrefix } from './move.ts';
 import { reachingGroups } from './reaching.ts';
 import { describeUnmet, unmetRequirements } from './requires.ts';
-import { idleRetirements, planRetirements, type Retirement } from './retire.ts';
+import { idleRetirements, planDropped, planRetirements, type Retirement } from './retire.ts';
 import { hasUncommittedChanges } from './write.ts';
 
 interface PlannedLock {
@@ -139,7 +140,30 @@ export function planLocks(
 			);
 		}
 		if (leaving.refusals.length > 0 || leaving.unreached.length > 0) continue;
-		plan.retired.push(...leaving.retired);
+		// A file a reaching group no longer installs anywhere, and is not moving to a new home, is
+		// removed with the rewrite that stops the lock naming it.
+		const moving = new Set(
+			all
+				.filter((group) => reaching.includes(group.name))
+				.flatMap((group) => {
+					const recorded = lock.groups[group.name];
+					const prefix = recorded ? layoutPrefix(group, recorded) : null;
+					return prefix === null
+						? []
+						: group.files.map((file) => `${prefix}${file.source}`);
+				}),
+		);
+		// Only a group this run delivers: a group it was narrowed away from keeps its lock entry.
+		const dropped = planDropped(
+			{ declared, directory, entry: deliveries[directory], installs, lock, path },
+			reaching.filter((name) => chosen.has(name)),
+			moving,
+		);
+		if (dropped.refusals.length > 0) {
+			plan.refusals.push(...dropped.refusals);
+			continue;
+		}
+		plan.retired.push(...leaving.retired, ...dropped.retired);
 		// A group delivered without what it requires is a tool that cannot do its first job.
 		const unmet = unmetRequirements(all, reaching);
 		if (unmet.length > 0) {

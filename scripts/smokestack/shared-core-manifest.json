@@ -233,7 +233,6 @@
 				{ "disposition": "synced", "source": "lib/shared-core/self-check.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/tag.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/targets.ts" },
-				{ "disposition": "synced", "source": "lib/shared-core/test-timeout-leads.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/vacuity.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/wiring.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/write.ts" }
@@ -277,15 +276,6 @@
 				"smoke:qc:fast": "bun scripts/smokestack/smokestack.ts --fast"
 			},
 			"wiringRequired": true
-		},
-		{
-			"files": [{ "disposition": "synced", "source": "test-timeout.ts" }],
-			"name": "test-timeout-preload",
-			"owner": "smokestack",
-			"requiresPackageJson": true,
-			"sourceRoot": "scripts",
-			"targetRoot": "scripts/smokestack",
-			"targets": { "model": "roster", "roster": "test-timeout-targets.json" }
 		},
 		{
 			"files": [{ "disposition": "synced", "source": "record-release-states.ts" }],

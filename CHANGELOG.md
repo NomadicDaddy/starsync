@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Changed
 
+- Accepted smokestack v0.9.0 delivery tooling, which removes unchanged files that a shared
+  group no longer delivers and retires the obsolete test-timeout lead helper.
 - Updated ESLint to 10.15.0 and Prettier to 3.10.1.
 - Updated the smokestack shared-core delivery to v0.7.1, removing unused exports from its
   departed helper. v0.7.2 and v0.7.3 then split the leak guard's setup into its own script and

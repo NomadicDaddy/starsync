@@ -22,7 +22,6 @@ import { applyMoves, holdBack, planMoves } from './move.ts';
 import { untrackedSourcesRefusal } from './owner.ts';
 import { applyRetirements } from './retire.ts';
 import { type Delivery, tagStanding } from './tag.ts';
-import { testTimeoutLeadLines } from './test-timeout-leads.ts';
 import { reportClean } from './vacuity.ts';
 import { applyFindings, ownershipRefusal, type WriteOutcome } from './write.ts';
 
@@ -241,7 +240,6 @@ export function reportWrite(
 	for (const line of applyRetirements(plan.retired, held, fleetRoot, dryRun)) console.info(line);
 	const moved = applyMoves(moves, fleetRoot, dryRun);
 	if (moved.length > 0) console.info(`\nmoved\n${moved.map((line) => `  ${line}`).join('\n')}`);
-	for (const line of testTimeoutLeadLines(owned, fleetRoot)) console.info(line);
 	if (!dryRun && recordSettled(root, fleetRoot, deliveries, locks.settled)) {
 		console.info(`\n${DELIVERIES_FILE}: recorded ${[...locks.settled.keys()].join(', ')}`);
 	}

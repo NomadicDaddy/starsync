@@ -1,5 +1,5 @@
 {
-	"commit": "9917197d9f541805cb72f8eef454b3d477836f36",
+	"commit": "6e25ba42913182b6e9320451c8a716e5ec40263d",
 	"groups": {
 		"leak-guard-hooks": {
 			"files": {
@@ -237,7 +237,7 @@
 				},
 				"scripts/smokestack/lib/shared-core/lock-write.ts": {
 					"mode": "100644",
-					"sha256": "a266b744af29fb6c95d1d95d6788fb2b80f74f3fdbee4a0993317334f2abfe2a"
+					"sha256": "e71f1d71dab4b5b073690e27412faa9e4c6060c88a8fce32e47a6ae05632d471"
 				},
 				"scripts/smokestack/lib/shared-core/lock.ts": {
 					"mode": "100644",
@@ -297,7 +297,7 @@
 				},
 				"scripts/smokestack/lib/shared-core/report.ts": {
 					"mode": "100644",
-					"sha256": "9274cd7b8c6642167b72297071267bb020e382f8c0e6eb62d1f8c8bdf348ad3e"
+					"sha256": "dc60236a4880ce4b9afa190c4dec02c6f27056b56233f60e5b793b26e9f3d315"
 				},
 				"scripts/smokestack/lib/shared-core/requires.ts": {
 					"mode": "100644",
@@ -305,7 +305,7 @@
 				},
 				"scripts/smokestack/lib/shared-core/retire.ts": {
 					"mode": "100644",
-					"sha256": "02fbc9659b2b49a849d191c34195d50cddbe363dcfb79a6ac82b777c58415f69"
+					"sha256": "36450445df46c3d2ea687b45140594b6fa386577771db9f6702be5275db9bd19"
 				},
 				"scripts/smokestack/lib/shared-core/roots.ts": {
 					"mode": "100644",
@@ -323,10 +323,6 @@
 					"mode": "100644",
 					"sha256": "91dd600b8fb45ae9eeb6cd5af79fedb625f2bee56f674892bb0fc2bb4e3172c3"
 				},
-				"scripts/smokestack/lib/shared-core/test-timeout-leads.ts": {
-					"mode": "100644",
-					"sha256": "9d20443fc1b3966c0c5b0db637187a80aa2503403ea5f9124976abe420a9a612"
-				},
 				"scripts/smokestack/lib/shared-core/vacuity.ts": {
 					"mode": "100644",
 					"sha256": "a99cb1dfb425cb8f7800a58ad0e1a9783dab22938ed25f049284fcdc7b303e55"
@@ -341,7 +337,7 @@
 				},
 				"scripts/smokestack/shared-core-manifest.json": {
 					"mode": "100644",
-					"sha256": "67596af7e2d784de7eb1d2469b9c16999fc6202dc85e800046a43abad8b42042"
+					"sha256": "a5ef5529bb8138e70fd34870b98033f2965c239dd4a24c5eec2eed1288ee0874"
 				},
 				"scripts/smokestack/sync-shared-core.ts": {
 					"mode": "100644",
@@ -351,5 +347,5 @@
 		}
 	},
 	"owner": "smokestack",
-	"version": "0.8.0"
+	"version": "0.9.0"
 }

@@ -26,7 +26,7 @@ import { join } from 'node:path';
 
 import type { DeliveredTarget } from './deliveries.ts';
 
-import { hashShared, isClaim, type Lock, LOCK_FILE } from './lock.ts';
+import { hashShared, isClaim, type Lock, LOCK_FILE, type LockedFile } from './lock.ts';
 import { hasUncommittedChanges } from './write.ts';
 
 /**
@@ -50,11 +50,35 @@ function trackedMode(root: string, installed: string): string | undefined {
 	return tab === -1 || record.slice(tab + 1) !== installed ? undefined : record.slice(0, 6);
 }
 
-/** One group leaving one repository: the installed paths the write removes, relative to it. */
+/**
+ * One group leaving one repository, or a group dropping files it delivered to a repository it still
+ * reaches: the installed paths the write removes, relative to it.
+ */
 export interface Retirement {
 	directory: string;
+	/** True when the group still reaches the repository and only these files left it. */
+	dropped: boolean;
 	files: string[];
 	group: string;
+}
+
+/**
+ * Why the delivered copy at `installed` cannot be removed, or null when it can. A copy that is not
+ * there needs no removal and is left to the caller.
+ */
+function removalBlocker(path: string, installed: string, locked: LockedFile): null | string {
+	if (isClaim(locked)) return `${installed} is a hook kept as a ${locked.claim}, not the owner's`;
+	// Uncommitted work first: a mode staged or changed on disk is work in progress there. Then the
+	// file has to be tracked, with the committed mode the lock records. A file untracked and ignored
+	// is clean to git status, but its delivered state is gone and git history no longer holds what a
+	// removal would delete.
+	const mode = trackedMode(path, installed);
+	if (hashShared(join(path, installed)) !== locked.sha256)
+		return `${installed} differs from what was delivered`;
+	if (hasUncommittedChanges(path, installed)) return `${installed} has uncommitted changes`;
+	if (mode === undefined) return `${installed} is not tracked there`;
+	if (mode !== locked.mode) return `${installed} is committed as ${mode}, not ${locked.mode}`;
+	return null;
 }
 
 interface RetirementPlan {
@@ -107,27 +131,10 @@ export function planRetirements(
 		const files: string[] = [];
 		for (const [installed, locked] of Object.entries(lock.groups[group] ?? {})) {
 			if (installs.has(installed)) continue;
-			if (isClaim(locked)) {
-				unfit.push(`${installed} is a hook kept as a ${locked.claim}, not the owner's`);
-				continue;
-			}
-			if (!existsSync(join(path, installed))) continue;
-			// Uncommitted work first: a mode staged or changed on disk is work in progress there.
-			// Then the file has to be tracked, with the committed mode the lock records. A file
-			// untracked and ignored is clean to git status, but its delivered state is gone and git
-			// history no longer holds what a removal would delete.
-			const mode = trackedMode(path, installed);
-			if (hashShared(join(path, installed)) !== locked.sha256) {
-				unfit.push(`${installed} differs from what was delivered`);
-			} else if (hasUncommittedChanges(path, installed)) {
-				unfit.push(`${installed} has uncommitted changes`);
-			} else if (mode === undefined) {
-				unfit.push(`${installed} is not tracked there`);
-			} else if (mode !== locked.mode) {
-				unfit.push(`${installed} is committed as ${mode}, not ${locked.mode}`);
-			} else {
-				files.push(installed);
-			}
+			if (!isClaim(locked) && !existsSync(join(path, installed))) continue;
+			const blocker = removalBlocker(path, installed, locked);
+			if (blocker === null) files.push(installed);
+			else unfit.push(blocker);
 		}
 		if (unfit.length > 0) {
 			plan.refusals.push(
@@ -136,7 +143,47 @@ export function planRetirements(
 			);
 			continue;
 		}
-		plan.retired.push({ directory, files, group });
+		plan.retired.push({ directory, dropped: false, files, group });
+	}
+	return plan;
+}
+
+/**
+ * The files a group still reaching the repository recorded there and no longer installs: a file
+ * taken out of the group in the manifest (shared-core-write-removes-files-a-reaching-group-drops).
+ * The rewritten lock stops naming such a file, so a copy left on disk would be one no lock or sweep
+ * sees. It goes under the rules a retirement keeps, and the manifest change is the decision: unlike
+ * a group leaving, the repository still takes the group, so there is no departure to acknowledge.
+ *
+ * `reaching` names the groups still reaching it, and `moving` every recorded path move.ts moves to
+ * a new home. A path another reaching group installs is that group's now, and is kept.
+ */
+export function planDropped(
+	repository: LockedRepository,
+	reaching: string[],
+	moving: Set<string>,
+): { refusals: string[]; retired: Retirement[] } {
+	const { directory, installs, lock, path } = repository;
+	const plan: { refusals: string[]; retired: Retirement[] } = { refusals: [], retired: [] };
+	for (const group of reaching) {
+		const unfit: string[] = [];
+		const files: string[] = [];
+		for (const [installed, locked] of Object.entries(lock.groups[group] ?? {})) {
+			if (installs.has(installed) || moving.has(installed)) continue;
+			if (!isClaim(locked) && !existsSync(join(path, installed))) continue;
+			const blocker = removalBlocker(path, installed, locked);
+			if (blocker === null) files.push(installed);
+			else unfit.push(blocker);
+		}
+		if (unfit.length > 0) {
+			plan.refusals.push(
+				`${directory}: ${group} no longer delivers what its ${LOCK_FILE} records there, and ` +
+					`removing it would remove that repository's own work (${unfit.join('; ')}). ` +
+					'Nothing was removed. Settle it there and run again.',
+			);
+		} else if (files.length > 0) {
+			plan.retired.push({ directory, dropped: true, files, group });
+		}
 	}
 	return plan;
 }
@@ -174,16 +221,21 @@ export function applyRetirements(
 	dryRun: boolean,
 ): string[] {
 	const lines: string[] = [];
-	for (const { directory, files, group } of retired) {
+	for (const { directory, dropped, files, group } of retired) {
 		if (held.has(directory)) continue;
 		const verb = dryRun ? 'WOULD REMOVE' : 'REMOVED';
+		const why = dropped ? `${group} no longer delivers it` : `${group} retired`;
 		for (const installed of files) {
 			if (!dryRun) rmSync(join(fleetRoot, directory, installed));
-			lines.push(`  ${verb} ${directory}: ${installed} (${group} retired)`);
+			lines.push(`  ${verb} ${directory}: ${installed} (${why})`);
 		}
+		const named = files.length > 0 ? files.join(', ') : 'it';
+		const what = dropped
+			? `${group} no longer delivers ${named} there`
+			: `${group} is retired there`;
 		lines.push(
-			`LEAD ${directory}: ${group} is retired there. Commit the removal and the new ` +
-				`${LOCK_FILE}, and drop any reference to ${files.length > 0 ? files.join(', ') : 'it'}.`,
+			`LEAD ${directory}: ${what}. Commit the removal and the new ${LOCK_FILE}, and drop any ` +
+				`reference to ${named}.`,
 		);
 	}
 	return lines;
