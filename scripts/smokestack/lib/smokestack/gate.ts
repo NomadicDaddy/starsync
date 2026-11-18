@@ -21,6 +21,8 @@
 import type { CacheSession } from './cache.ts';
 
 import { skipReason, type Step } from './config.ts';
+import { HEAVY_HELD, type HeavyPolicy } from './heavy-config.ts';
+import { describeBlocking, takeSlot } from './heavy.ts';
 import { runProcess } from './spawn.ts';
 
 export type Mode = 'fast' | 'qc';
@@ -55,6 +57,8 @@ export interface GateOptions {
 	cache: CacheSession | null;
 	/** What every step is handed; undefined for the runner's whole environment (env.ts). */
 	env: Record<string, string> | undefined;
+	/** How heavy steps wait for other gates' heavy steps (heavy.ts). */
+	heavy: HeavyPolicy;
 	mode: Mode;
 	/** package.json's name, which each step's `onlyIn` is matched against. */
 	packageName: null | string;
@@ -94,6 +98,30 @@ function reportPreflight(preflight: Preflight, result: GateResult): void {
 	result.failures.push({ detail: 'see above', name: preflight.name });
 }
 
+/**
+ * Runs the step. A step holding a heavy slot is told which, so a gate it starts (test fixtures run
+ * the runner) does not wait on the slot its own parent holds, and the slot records the step's pid,
+ * so it stays held while the step runs even if this runner is killed.
+ */
+function runHolding(
+	step: Step,
+	options: GateOptions,
+	held: { recordChild: (pid: number) => void; slot: string } | null,
+) {
+	if (held === null) return runProcess(step.run, options.root, options.env, options.signal);
+	const { recordChild, slot } = held;
+	if (options.env !== undefined) {
+		const env = { ...options.env, [HEAVY_HELD]: slot };
+		return runProcess(step.run, options.root, env, options.signal, recordChild);
+	}
+	process.env[HEAVY_HELD] = slot;
+	return runProcess(step.run, options.root, undefined, options.signal, recordChild).finally(
+		() => {
+			delete process.env[HEAVY_HELD];
+		},
+	);
+}
+
 async function runOne(step: Step, options: GateOptions, result: GateResult): Promise<void> {
 	const { cache } = options;
 	const assessed = cache === null || step.cache === null ? null : await cache.assess(step);
@@ -106,8 +134,29 @@ async function runOne(step: Step, options: GateOptions, result: GateResult): Pro
 	console.info(`==> ${step.name}`);
 	console.info(`    ${step.run.join(' ')}`);
 	if (assessed !== null) console.info(`    cache: runs, ${assessed.reason}`);
+	const taken = step.heavy
+		? await takeSlot(options.heavy, options.root, step.name, options.signal)
+		: null;
+	if (taken?.kind === 'aborted') {
+		result.interrupted = true;
+		console.error(`[STOPPED] ${step.name} (while waiting for a heavy slot)`);
+		return;
+	}
+	if (taken?.kind === 'timed-out') {
+		const waited = `${Math.round(taken.waitedMs / 60_000)}m`;
+		const by = describeBlocking(taken.blocking, true);
+		console.error(`[FAIL] ${step.name} (waited ${waited} for a heavy slot, held by ${by})`);
+		result.failures.push({ detail: `waited ${waited} for a heavy slot`, name: step.name });
+		return;
+	}
 	const started = Date.now();
-	const ended = await runProcess(step.run, options.root, options.env, options.signal);
+	const held =
+		taken?.kind === 'free' && taken.slot !== null
+			? { recordChild: taken.recordChild, slot: taken.slot }
+			: null;
+	const ended = await runHolding(step, options, held).finally(() => {
+		if (taken?.kind === 'free') taken.release();
+	});
 	const took = seconds(Date.now() - started);
 	if (ended.state === 'stopped') {
 		result.interrupted = true;

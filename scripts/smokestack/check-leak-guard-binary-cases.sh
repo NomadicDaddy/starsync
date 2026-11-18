@@ -1,7 +1,8 @@
-# Self-test for leak-guard.sh, cases 22 to 38: files git calls binary, read by leak-guard-decode.sh.
-# Sourced by check-leak-guard.sh after check-leak-guard-cases.sh, never run alone: it uses that
-# file's scratch repositories, fixtures (synthetic, aws_key, pem_header, b64_run, win_path), helpers
-# (run_guard, fail) and failure count, and that file prints the summary and sets the exit code.
+# Self-test for leak-guard.sh, cases 22 to 41: files git calls binary, read by leak-guard-decode.sh,
+# and added lines that look like diff headers. Sourced by check-leak-guard.sh in a lane of its own,
+# never run alone: it uses the setup's scratch repositories, fixtures (synthetic, aws_key,
+# pem_header, b64_run, win_path), helpers (run_guard, fail) and failure count, and
+# check-leak-guard.sh prints the summary and sets the exit code.
 # Split from check-leak-guard-cases.sh so each stays under the 300-line ceiling.
 #
 # smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
@@ -171,3 +172,39 @@ grep -q 'diff failed' "$tmp/stderr" || fail 'a failed diff did not say why it re
 grep -q 'git could not read' "$tmp/stderr" || fail 'a failed blob read did not say why it refused'
 git -C "$guard_repo" rm -q --cached text.utf16
 rm -f "$guard_repo/text.utf16"
+
+# 39. Added content starting ++ or -- is scanned like any other line. In a staged patch it reads
+# `+++…` or `+--…`, and it used to be dropped as if it were a file header, unscanned (Morticia, 7f2bc58):
+# in text, in a PEM key body, and in UTF-16, which the binary reader diffs itself.
+[ "$(run_guard "$synthetic" "++key=$aws_key")" = 1 ] || fail 'a secret on an added ++ line was not refused'
+[ "$(run_guard "$synthetic" "--key=$aws_key")" = 1 ] || fail 'a secret on an added -- line was not refused'
+[ "$(run_guard "$synthetic" "$(printf '%s\n%s' "$pem_header" "++$b64_run")")" = 1 ] ||
+	fail 'a PEM key body line starting ++ was not refused'
+[ "$(run_guard_utf16 le "++key=$aws_key")" = 1 ] || fail 'a UTF-16 secret on a ++ line was not refused'
+# 39b. The binary reader's header strip that cannot run refuses, rather than reading nothing.
+utf16_bytes le "key=$aws_key" >"$guard_repo/text.utf16"
+git -C "$guard_repo" add text.utf16
+[ "$(run_guard_failing 'sed() { return 2; }')" = 1 ] || fail 'a failed header strip let a UTF-16 secret through'
+grep -q 'sed failed' "$tmp/stderr" || fail 'a failed header strip did not say why it refused'
+git -C "$guard_repo" rm -q --cached text.utf16
+rm -f "$guard_repo/text.utf16"
+
+# 40. A key body pasted under a committed PEM header, in place of a line starting --, is refused. The
+# removed line reads `---…`; the PEM walk drops every removed line, so the header pairs with the body
+# that follows it in the staged file. Last because it commits, like case 11.
+[ "$(run_guard "$synthetic" "$(printf '%s\n%s' "$pem_header" '--placeholder')")" = 0 ] ||
+	fail 'a committed PEM header over a -- line was blocked before the commit'
+git -C "$guard_repo" -c user.email=t@test -c user.name=t commit -q -m 'header over a -- line'
+[ "$(run_guard "$synthetic" "$(printf '%s\n%s' "$pem_header" "$b64_run")")" = 1 ] ||
+	fail 'a body replacing a -- line under a committed PEM header was not refused'
+
+# 41. The same with no final newline: git puts its "\ No newline at end of file" marker between the
+# removed line and the body, and the PEM walk drops it too, as diff metadata (Roger, 887d656).
+printf '%s\n%s' "$pem_header" 'placeholder' >"$guard_repo/staged.txt"
+git -C "$guard_repo" add staged.txt
+git -C "$guard_repo" -c user.email=t@test -c user.name=t commit -q -m 'header over a last line'
+printf '%s\n%s' "$pem_header" "$b64_run" >"$guard_repo/staged.txt"
+git -C "$guard_repo" add staged.txt
+code=0
+(cd "$guard_repo" && LEAK_GUARD_PATTERNS="$synthetic" bash "$guard") 2>"$tmp/stderr" || code=$?
+[ "$code" = 1 ] || fail 'a body replacing a last line with no newline under a committed PEM header was not refused'

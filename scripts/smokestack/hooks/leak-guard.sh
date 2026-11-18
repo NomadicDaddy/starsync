@@ -55,29 +55,29 @@ key_name_pattern='\.(pem|key|p12|pfx|p8|ppk|jks|keystore)(\.(gpg|asc|pgp|age|enc
 # with a newline, quotes or non-ASCII whole, and T counts a symlink that became a file.
 key_named_files() {
 	local file
-	# A pipeline, not < <(…): under pipefail a failed listing fails this function, and its caller.
-	git diff --cached --name-only -z --diff-filter=ACMRT -- "${scanned[@]}" | while IFS= read -r -d '' file; do
+	# A pipeline, not < <(…): under pipefail a failed listing fails this function, and its caller. The
+	# loop cannot tell an unlistable index from an empty one, so the listing itself refuses.
+	{
+		git diff --cached --name-only -z --diff-filter=ACMRT -- "${scanned[@]}" ||
+			{ echo "x leak-guard: git could not list the staged files, so key file names were not checked." >&2; exit 1; }
+	} | while IFS= read -r -d '' file; do
 		if picks -Ei -e "$key_name_pattern" <<<"${file##*/}"; then printf '%s\0' "$file" || exit 1; fi
 	done
 }
-# The loop above cannot tell an index git could not list from an empty one, so ask first: a guard
-# that cannot read the staged names has not checked them.
-if ! git diff --cached --name-only -z --diff-filter=ACMRT -- "${scanned[@]}" >/dev/null; then
-	echo "x leak-guard: git could not list the staged files, so key file names were not checked." >&2
-	exit 1
-fi
 key_hits="$(key_named_files | tr '\0' '\n')" || exit 1
 
-# The staged patch (with $1 lines of context) is read whole and its exit checked, as the listing is
-# above: piped into grep, a patch git could not produce left the tiers nothing, and the guard passed.
+# The staged patch is read whole and its exit checked: piped, a failed one left the tiers nothing.
 staged_patch() {
 	if ! git diff --cached --unified="$1" --no-color --no-textconv -- "${scanned[@]}"; then
 		echo "x leak-guard: git could not produce the staged changes, so their content was not checked." >&2
 		exit 1
 	fi
 }
-patch="$(staged_patch 0)" || exit 1
-added="$(printf '%s\n' "$patch" | pick -E '^\+' | pick -vE '^\+\+\+')" || exit 1
+# Headers run from `diff --git` to the first `@@` and are the only lines dropped: content starting ++
+# reads `+++…`, and was dropped unscanned with them (Morticia, 7f2bc58). One patch, one context line.
+hunks() { awk '/^diff --git /{h=1} h&&/^@@/{h=0} !h' || exit 1; }
+patch="$(staged_patch 1)" || exit 1
+added="$(printf '%s\n' "$patch" | hunks | pick -E '^\+')" || exit 1
 # A file git calls binary adds no lines here: leak-guard-decode.sh, beside this one, reads it instead.
 numstat="$(git diff --cached --numstat -- "${scanned[@]}")" || exit 1
 decoded_pem=''
@@ -118,13 +118,13 @@ path_pattern='[A-Za-z]:[\\/]+Users[\\/]+[A-Za-z0-9._-]+|/Users/[A-Za-z0-9._-]+/|
 secret_hits="$(printf '%s\n' "$added" | pick -nEi -e "$secret_pattern")" || exit 1
 path_hits="$(printf '%s\n' "$added" | pick -nE -e "$path_pattern")" || exit 1
 
-# The PEM walk reads a diff with one line of context, not $added: a body pasted under a header that
-# is already committed (the likeliest way this leaks) pairs an addition with a context line.
-# pem_scan reads such a diff on stdin and prints one line per key. The refusal below names files by
-# the same function, so it never names a file that only shows the shape a key takes.
+# The PEM walk reads a diff with one line of context, not $added: a body pasted under a committed
+# header (the likeliest leak) pairs an addition with a context line. pem_scan prints one per key.
 pem_scan() {
 	local pem_diff pem_header_lines pem_line_no pem_pair pem_header_line pem_next_line
-	pem_diff="$(cat)" || exit 1
+	# Removed lines and "\ No newline" markers are not in the staged file, so the next line kept is
+	# the one after the header there (Roger, 887d656).
+	pem_diff="$(pick -vE '^(-|\\)')" || exit 1
 	# Only header lines and the line after each can decide the rule, so only those few are walked.
 	pem_header_lines="$(printf '%s\n' "$pem_diff" | pick -nEi -e "^[+ ].*${pem_header_pattern}" | cut -d: -f1)" || exit 1
 	for pem_line_no in $pem_header_lines; do
@@ -141,8 +141,8 @@ pem_scan() {
 		fi
 	done
 }
-pem_patch="$(staged_patch 1)$decoded_pem" || exit 1
-pem_hits="$(printf '%s\n' "$pem_patch" | pick -vE '^(\+\+\+|---)' | pem_scan)" || exit 1
+pem_patch="$patch$decoded_pem"
+pem_hits="$(printf '%s\n' "$pem_patch" | hunks | pem_scan)" || exit 1
 
 # Tier 2: private literals from the user-level pattern file.
 #
@@ -163,8 +163,7 @@ if [ -z "$patterns_file" ] && command -v reg.exe >/dev/null 2>&1; then
 	patterns_file="$(MSYS_NO_PATHCONV=1 reg.exe query 'HKCU\Environment' /v LEAK_GUARD_PATTERNS 2>/dev/null |
 		tr -d '\r' | sed -nE 's/^[[:space:]]*LEAK_GUARD_PATTERNS[[:space:]]+REG_(EXPAND_)?SZ[[:space:]]+//p' || true)"
 fi
-# Configured means someone chose a pattern file: named it, or seeded the default. A machine where
-# neither happened (a scaffolded project, which carries no seeder) keeps the old tier-1-only warning.
+# Configured: a pattern file was named or seeded. Neither (a scaffolded project) only warns, tier 1.
 configured=0
 [ -n "$patterns_file" ] && configured=1
 patterns_file="${patterns_file:-$HOME/.config/leak-guard/patterns}"
@@ -177,14 +176,9 @@ self_name="$(git rev-parse --show-toplevel)" || exit 1; self_name="${self_name##
 # cleared only when it matches a listed name in full (-x), so one concatenated entry cannot clear
 # two patterns. It clears tier 2 only; secret formats and home paths are never exempt, and each use
 # is announced.
-#
-# The second read is the file's home before v0.6.0, kept for v0.6.0 only so a repository is not left
-# unguarded between taking this file and moving its list. The release after v0.6.0 removes it.
 publishes="$(
-	{
-		git show :scripts/smokestack/leak-guard-publishes 2>/dev/null || true
-		git show :.githooks/leak-guard-publishes 2>/dev/null || true
-	} | tr -d '\r' | grep -vE '^[[:space:]]*(#|$)' || true
+	{ git show :scripts/smokestack/leak-guard-publishes 2>/dev/null || true; } |
+		tr -d '\r' | grep -vE '^[[:space:]]*(#|$)' || true
 )"
 local_hits=''
 # A configured tier the guard cannot read is a guard that is off, and it used to say so in one stderr
@@ -219,16 +213,22 @@ else
 	# list clear are another matter: those are legitimate, and only announced below.
 	[ -z "$active" ] && tier2_off 'local pattern file holds no pattern'
 	# The filter runs in this shell, on a here-string, and keeps each pattern as a grep -e argument, so
-	# no failed printf or subshell can drop one; only a match (status 0) clears a pattern.
-	read_patterns="$active" active='' pattern_args=()
+	# no failed printf or subshell can drop one; only a match (status 0) clears a pattern. One grep of
+	# all settles the usual case, none cleared (exit 1); any other answer walks them one at a time.
+	read_patterns="$active" active='' pattern_args=() cleared=0
 	while IFS= read -r pattern; do
+		if [ -n "$pattern" ]; then active="$active$pattern"$'\n' && pattern_args+=(-e "$pattern"); fi
+	done <<<"$read_patterns"
+	grep -qEi "${pattern_args[@]}" <<<"$self_name" 2>/dev/null || cleared=$?
+	if [ "$cleared" = 1 ] && [ -n "$publishes" ]; then cleared=0; grep -qxEi "${pattern_args[@]}" <<<"$publishes" 2>/dev/null || cleared=$?; fi
+	[ "$cleared" = 1 ] || { active='' pattern_args=(); while IFS= read -r pattern; do
 		[ -z "$pattern" ] && continue
 		cleared=0; grep -qEi -e "$pattern" <<<"$self_name" 2>/dev/null || cleared=$?
 		[ "$cleared" = 0 ] && continue
 		cleared=0; [ -n "$publishes" ] && grep -qxEi -e "$pattern" <<<"$publishes" 2>/dev/null || cleared=$?
 		[ "$cleared" = 0 ] && echo "leak-guard: a private pattern is cleared for this repo by its leak-guard-publishes" >&2 && continue
 		active="$active$pattern"$'\n' && pattern_args+=(-e "$pattern")
-	done <<<"$read_patterns"
+	done <<<"$read_patterns"; }
 	[ -z "$read_patterns" ] || [ -n "$active" ] || echo "leak-guard: every private pattern is cleared for this repository (its own name or its leak-guard-publishes)" >&2
 	if [ -n "$active" ]; then
 		# grep exits 1 for no match and 2 when it cannot use a pattern; a pattern it cannot compile is
@@ -257,10 +257,10 @@ count_class() {
 	if [ "$class" = pem ]; then
 		# The same walk that refused the commit, so a file is listed only if the rule fired in it.
 		if [ -n "$dir" ]; then pem_scan <"$dir/pem" | grep -c . || true; return 0; fi
-		git diff --cached --unified=1 --no-color --no-textconv -- "$file" | grep -vE '^(\+\+\+|---)' | pem_scan | grep -c . || true
+		git diff --cached --unified=1 --no-color --no-textconv -- "$file" | hunks | pem_scan | grep -c . || true
 		return 0
 	fi
-	{ if [ -n "$dir" ]; then cat "$dir/added"; else git diff --cached --unified=0 --no-color --no-textconv -- "$file" | grep -E '^\+' | grep -vE '^\+\+\+'; fi; } | case "$class" in
+	{ if [ -n "$dir" ]; then cat "$dir/added"; else git diff --cached --unified=0 --no-color --no-textconv -- "$file" | hunks | grep -E '^\+'; fi; } | case "$class" in
 	secret) grep -cEi -e "$secret_pattern" ;;
 	path) grep -cE -e "$path_pattern" ;;
 	private) grep -cEi "${pattern_args[@]}" ;;

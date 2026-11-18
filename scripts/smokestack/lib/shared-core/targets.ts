@@ -28,6 +28,7 @@ import { join } from 'node:path';
 import type { SharedCoreGroup } from './manifest.ts';
 
 import { lockFileIn } from './lock.ts';
+import { worktreeFor } from './pending.ts';
 import { configRoot } from './roots.ts';
 
 export interface Target {
@@ -77,9 +78,14 @@ function rosterTargets(group: SharedCoreGroup, fleetRoot: string, ownerRoot: str
 					'directory must be one sibling directory name.',
 			);
 		}
+		// A linked worktree of the named repository stands in for it when no folder has its name: a
+		// worktree is named for its task (pending.ts). The package name is still the roster's.
+		const folder = existsSync(join(fleetRoot, directory))
+			? directory
+			: (worktreeFor(fleetRoot, directory) ?? directory);
 		return {
-			directory,
-			path: join(fleetRoot, directory),
+			directory: folder,
+			path: join(fleetRoot, folder),
 			...(typeof packageName === 'string' ? { packageName } : {}),
 		};
 	});

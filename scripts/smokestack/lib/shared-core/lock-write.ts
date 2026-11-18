@@ -62,6 +62,8 @@ interface PlannedLock {
 export interface LockPlan {
 	/** Reasons no file may be written at all. Empty when the write may go ahead. */
 	refusals: string[];
+	/** In a rehearsal, targets refused here whose lock is readable, still planned further on. */
+	rehearsed: string[];
 	/** Groups leaving a repository on this run's --retire, removed once its lock is rewritten. */
 	retired: Retirement[];
 	targets: PlannedLock[];
@@ -74,6 +76,8 @@ export interface LockPlan {
  * `all` is the whole manifest and `selected` the groups this run was narrowed to. A group outside
  * the selection was not compared, so whether it reaches a target is asked of its target model here.
  * `retiring` holds the groups this run was told to retire where they no longer reach (retire.ts).
+ * A write stops a target at its first refusal; a `rehearsal` (a dry run) asks every later question
+ * too, so one dry run names every blocker (delivery-dry-run-reports-every-blocker).
  */
 export function planLocks(
 	reports: GroupReport[],
@@ -84,9 +88,12 @@ export function planLocks(
 	delivery: Delivery | null,
 	retiring: Set<string>,
 	deliveries: Deliveries,
+	rehearsal = false,
 ): LockPlan {
-	const plan: LockPlan = { refusals: [], retired: [], targets: [] };
+	const plan: LockPlan = { refusals: [], rehearsed: [], retired: [], targets: [] };
 	const chosen = new Set(selected.map((group) => group.name));
+	// What a --retire matched (idleRetirements); only a target not refused retires (Roger, 3d44a8d).
+	const matched: Retirement[] = [];
 
 	for (const directory of [...new Set(reports.flatMap((report) => report.reached))].sort()) {
 		const path = join(fleetRoot, directory);
@@ -98,6 +105,13 @@ export function planLocks(
 			continue;
 		}
 		if (lock === null) continue;
+		// Records refusals; a write stops at the first, a rehearsal asks on to name every blocker.
+		let refused = false;
+		const refuse = (reasons: string[]): boolean => {
+			plan.refusals.push(...reasons);
+			refused ||= reasons.length > 0;
+			return refused && !rehearsal;
+		};
 
 		// Before the first file, not after: found afterwards, a lock with work in it kept its old
 		// contents beside files that had already been replaced. Staged or not, tracked or not.
@@ -108,14 +122,11 @@ export function planLocks(
 			plan.refusals.push(err instanceof Error ? err.message : String(err));
 			continue;
 		}
-		if (dirty) {
-			plan.refusals.push(
-				`${directory}: its ${LOCK_FILE} has uncommitted changes, which rewriting it would ` +
-					'destroy. Commit or discard them there. To write the other targets meanwhile, ' +
-					'narrow with --only to leave this one out.',
-			);
-			continue;
-		}
+		const dirtyLock =
+			`${directory}: its ${LOCK_FILE} has uncommitted changes, which rewriting it would ` +
+			'destroy. Commit or discard them there. To write the other targets meanwhile, ' +
+			'narrow with --only to leave this one out.';
+		if (refuse(dirty ? [dirtyLock] : [])) continue;
 
 		const reaching = reachingGroups(directory, reports, all, fleetRoot, ownerRoot);
 		const declared = Object.keys(lock.groups).filter((name) => !reaching.includes(name));
@@ -129,17 +140,17 @@ export function planLocks(
 			{ declared, directory, entry: deliveries[directory], installs, lock, path },
 			retiring,
 		);
-		plan.refusals.push(...leaving.refusals);
-		if (leaving.unreached.length > 0) {
-			plan.refusals.push(
-				`${directory}: its ${LOCK_FILE} declares ${leaving.unreached.join(', ')}, which ` +
-					'does not reach it from here. Writing the lock would drop what that repository ' +
-					'declared. This stops the whole run: to write the other targets, narrow with ' +
-					'--only to leave this one out. If it is leaving on purpose, forget it there and ' +
-					'write with --retire <group>.',
-			);
-		}
-		if (leaving.refusals.length > 0 || leaving.unreached.length > 0) continue;
+		const unreached =
+			leaving.unreached.length === 0
+				? []
+				: [
+						`${directory}: its ${LOCK_FILE} declares ${leaving.unreached.join(', ')}, which ` +
+							'does not reach it from here. Writing the lock would drop what that repository ' +
+							'declared. This stops the whole run: to write the other targets, narrow with ' +
+							'--only to leave this one out. If it is leaving on purpose, forget it there and ' +
+							'write with --retire <group>.',
+					];
+		if (refuse([...leaving.refusals, ...unreached])) continue;
 		// A file a reaching group no longer installs anywhere, and is not moving to a new home, is
 		// removed with the rewrite that stops the lock naming it.
 		const moving = new Set(
@@ -159,39 +170,36 @@ export function planLocks(
 			reaching.filter((name) => chosen.has(name)),
 			moving,
 		);
-		if (dropped.refusals.length > 0) {
-			plan.refusals.push(...dropped.refusals);
-			continue;
-		}
-		plan.retired.push(...leaving.retired, ...dropped.retired);
+		if (refuse(dropped.refusals)) continue;
+		const removals = [...leaving.retired, ...dropped.retired];
+		if (!refused) matched.push(...removals);
 		// A group delivered without what it requires is a tool that cannot do its first job.
 		const unmet = unmetRequirements(all, reaching);
-		if (unmet.length > 0) {
-			plan.refusals.push(
-				`${directory}: ${unmet.map(describeUnmet).join('; ')}, which does not reach it. ` +
-					'Nothing is written there until it takes both. To write the other targets ' +
-					'meanwhile, narrow with --only to leave this one out.',
-			);
-			continue;
-		}
+		const unmetRefusal =
+			`${directory}: ${unmet.map(describeUnmet).join('; ')}, which does not reach it. ` +
+			'Nothing is written there until it takes both. To write the other targets ' +
+			'meanwhile, narrow with --only to leave this one out.';
+		if (refuse(unmet.length > 0 ? [unmetRefusal] : [])) continue;
 		const carried = reaching.filter((name) => !chosen.has(name));
 		const current =
 			delivery !== null &&
 			lock.version === delivery.version &&
 			lock.commit === delivery.commit;
-		if (carried.length > 0 && !current) {
-			plan.refusals.push(
-				`${directory}: this write is narrowed with --group and does not deliver ` +
-					`${carried.join(', ')}, which that repository also takes. Its ${LOCK_FILE} would ` +
-					'name one version for files from two. Write every group it takes instead: ' +
-					`bun run shared-core:write --only ${directory}`,
-			);
+		const narrowed =
+			`${directory}: this write is narrowed with --group and does not deliver ` +
+			`${carried.join(', ')}, which that repository also takes. Its ${LOCK_FILE} would ` +
+			'name one version for files from two. Write every group it takes instead: ' +
+			`bun run shared-core:write --only ${directory}`;
+		if (refuse(carried.length > 0 && !current ? [narrowed] : [])) continue;
+		if (refused) {
+			plan.rehearsed.push(directory);
 			continue;
 		}
+		plan.retired.push(...removals);
 		const taken = reaching.filter((name) => chosen.has(name));
 		plan.targets.push({ carried, directory, lock, path, taken });
 	}
-	plan.refusals.push(...idleRetirements(retiring, plan.retired));
+	plan.refusals.push(...idleRetirements(retiring, matched));
 	return plan;
 }
 

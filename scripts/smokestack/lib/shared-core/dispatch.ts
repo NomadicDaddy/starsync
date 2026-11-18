@@ -20,13 +20,14 @@ import { join, resolve } from 'node:path';
 import type { SharedCoreGroup } from './manifest.ts';
 
 import { GIT_HOOKS } from './git-hooks.ts';
+import { runCache } from './run-cache.ts';
 
-const configuredHooks = new Map<string, string>();
+const configuredHooks = runCache<string, string>();
 
 /**
  * The single value git dispatches hooks from. An empty string means unset, in which case git runs
  * .git/hooks and a file written to the group's targetRoot would never execute. Read once per
- * repository per process: every group with a hook asks it of every target, and a sweep does not
+ * repository per run: every group with a hook asks it of every target, and a sweep does not
  * change a repository's config.
  */
 export function hooksPath(repoPath: string): string {

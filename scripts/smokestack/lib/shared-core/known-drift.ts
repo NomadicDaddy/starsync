@@ -17,6 +17,14 @@
  * means nothing is known, which is the safe reading: every row then fails as it would without it.
  * Only `--check` reads it. A write still replaces a drifted file, known or not.
  *
+ * OWN GATE. One standing case is not drift waiting on a fix, so it has no end date: a repository
+ * that holds a group whose wiring is required, the runner, and by a decision of Phillip's keeps
+ * its own gate instead (the first by #16339 and #52755). own-gate.json names each such
+ * repository, group, reason and decision. Only that group's NOT-RUN rows for that repository
+ * become OWN-GATE, which does not fail; its files stay delivered and drift-checked like any other,
+ * and every other repository and kind still fails. Untracked and read from the main checkout,
+ * like this list.
+ *
  * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
  * smokestack; every repository that takes it holds a byte-identical copy.
  */
@@ -173,4 +181,97 @@ export function knownDriftLines(applied: KnownDriftApplied): string[] {
 				'remove it once its row is fixed.',
 		),
 	];
+}
+
+export const OWN_GATE_FILE = 'own-gate.json';
+
+export interface OwnGate {
+	/** The decision that keeps this repository's own gate, such as a room message number. */
+	decision: string;
+	group: string;
+	reason: string;
+	repo: string;
+}
+
+/** The own-gate list, or [] when this checkout has none. Throws on one it cannot read. */
+export function loadOwnGate(root: string): OwnGate[] {
+	const path = join(root, OWN_GATE_FILE);
+	if (!existsSync(path)) return [];
+	const parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+	if (!Array.isArray(parsed)) throw new Error(`${path}: expected an array of entries.`);
+	return parsed.map((raw: unknown, index) => {
+		const where = `${path} entry ${index + 1}`;
+		if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+			throw new Error(`${where}: expected an object.`);
+		}
+		const entry = raw as Record<string, unknown>;
+		return {
+			decision: text(entry, 'decision', where),
+			group: text(entry, 'group', where),
+			reason: text(entry, 'reason', where),
+			repo: text(entry, 'repo', where),
+		};
+	});
+}
+
+/** The reports with each listed repository's NOT-RUN rows in its listed group made OWN-GATE. */
+export function applyOwnGate(
+	reports: GroupReport[],
+	entries: OwnGate[],
+): { reports: GroupReport[]; unused: OwnGate[] } {
+	const used = new Set<OwnGate>();
+	const keep = (finding: Finding): Finding => {
+		if (finding.kind !== 'not-run') return finding;
+		const entry = entries.find(
+			(candidate) =>
+				candidate.group === finding.group &&
+				candidate.repo.toLowerCase() === finding.target.toLowerCase(),
+		);
+		if (entry === undefined) return finding;
+		used.add(entry);
+		const why = `keeps its own gate: ${entry.reason} (${entry.decision})`;
+		return { ...finding, detail: `${finding.detail}; ${why}`, kind: 'own-gate' };
+	};
+	return {
+		reports: reports.map((report) => ({ ...report, findings: report.findings.map(keep) })),
+		unused: entries.filter((entry) => !used.has(entry)),
+	};
+}
+
+/**
+ * Both lists applied, for `--check`: the own-gate rows first, then the known drift. Returns the
+ * reports, the lock-scope findings and the lines to print after them, or a message naming the list
+ * that could not be read and why.
+ */
+export function holdListedRows(
+	root: string,
+	reports: GroupReport[],
+	scope: Finding[],
+	today: string,
+): { lines: string[]; reports: GroupReport[]; scope: Finding[] } | string {
+	const reason = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+	let known: KnownDrift[];
+	let own: OwnGate[];
+	try {
+		known = loadKnownDrift(root, today);
+	} catch (err) {
+		return `The known-drift list could not be read: ${reason(err)}`;
+	}
+	try {
+		own = loadOwnGate(root);
+	} catch (err) {
+		return `The own-gate list could not be read: ${reason(err)}`;
+	}
+	const kept = applyOwnGate(reports, own);
+	const held = applyKnownDrift(kept.reports, scope, known, today);
+	const unusedOwn = kept.unused.map(
+		(entry) =>
+			`[INFO] ${OWN_GATE_FILE}: the entry for ${entry.repo} (${entry.group}) held back nothing ` +
+			'in this run; remove it if that repository now runs the group.',
+	);
+	return {
+		lines: [...knownDriftLines(held), ...unusedOwn],
+		reports: held.reports,
+		scope: held.scope,
+	};
 }

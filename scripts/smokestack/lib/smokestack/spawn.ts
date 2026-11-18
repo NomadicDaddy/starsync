@@ -67,12 +67,14 @@ function stopTree(child: ChildProcess): void {
  * and the result is `stopped`, whatever exit code the dying process gave.
  * `env` is the whole environment the step is handed; undefined hands it this process's (env.ts),
  * and only then does a bun the runner starts load .env files.
+ * `onStart` is told the step's pid once it is running (a heavy slot records it; heavy.ts).
  */
 export function runProcess(
 	run: string[],
 	cwd: string,
 	env: Record<string, string> | undefined,
 	signal: AbortSignal,
+	onStart?: (pid: number) => void,
 ): Promise<Ended> {
 	const [program, ...args] = run;
 	if (program === undefined) {
@@ -102,6 +104,17 @@ export function runProcess(
 			stopTree(child);
 		};
 		signal.addEventListener('abort', onAbort, { once: true });
+		// Told only once the step is supervised, and never allowed to throw past it: a throw here
+		// would leave a running step with nothing waiting on it (Roger 5Q-2, Morticia #53274).
+		if (child.pid !== undefined && onStart !== undefined) {
+			try {
+				onStart(child.pid);
+			} catch (err) {
+				console.error(
+					`    [WARN] could not record the step's pid (${err instanceof Error ? err.message : String(err)})`,
+				);
+			}
+		}
 		const settle = (ended: Ended): void => {
 			signal.removeEventListener('abort', onAbort);
 			resolve(signal.aborted ? { state: 'stopped' } : ended);

@@ -27,22 +27,15 @@
  */
 import { dirname, resolve } from 'node:path';
 import { argv, cwd, exit } from 'node:process';
-import { parseArgs } from 'node:util';
 
 import { checkGroup } from './lib/shared-core/check.ts';
-import { type Deliveries, readDeliveries } from './lib/shared-core/deliveries.ts';
+import { noRecord } from './lib/shared-core/deliveries.ts';
 import { departedOrNone } from './lib/shared-core/departed.ts';
-import { frozenRefusal, loadFrozen } from './lib/shared-core/frozen.ts';
-import {
-	applyKnownDrift,
-	type KnownDrift,
-	knownDriftLines,
-	loadKnownDrift,
-	localToday,
-} from './lib/shared-core/known-drift.ts';
+import { frozenRefusal, loadOwnerFrozen } from './lib/shared-core/frozen.ts';
+import { holdListedRows, localToday } from './lib/shared-core/known-drift.ts';
 import { scopeFindings } from './lib/shared-core/lock-scope.ts';
 import { loadManifest, type SharedCoreGroup } from './lib/shared-core/manifest.ts';
-import { holdRecordLockUntilExit } from './lib/shared-core/record-lock.ts';
+import { holdRecordLock, holdRecordLockUntilExit } from './lib/shared-core/record-lock.ts';
 import { reportCheck, reportWrite } from './lib/shared-core/report.ts';
 import {
 	configRoot,
@@ -50,108 +43,11 @@ import {
 	describeRoots,
 	loadFleetRoots,
 } from './lib/shared-core/roots.ts';
+import { forgetRunAnswers } from './lib/shared-core/run-cache.ts';
 import { runSelfCheck } from './lib/shared-core/self-check.ts';
+import { parseSharedCoreArgs, type SharedCoreOptions, USAGE } from './lib/shared-core/sync-args.ts';
+import { runRecord, type RunRecord } from './lib/shared-core/worktree-record.ts';
 import { repoIdentity } from './lib/shared-core/write.ts';
-
-const USAGE = `sync-shared-core — sync the files this fleet shares between peer repositories.
-
-  --check                 In the owner: compare every group's targets against it and report. In
-                          any other repository: check this repository against its own
-                          smokestack.lock, and nothing else. Read-only. The flags below this one
-                          belong to the owner and are refused elsewhere.
-  --write                 Deliver and replace the files --check reports as absent or drifted, for
-                          the groups this repository owns. Refuses to overwrite uncommitted work.
-                          Made only from the annotated tag of this repository's version, with no
-                          tracked file modified. Rewrites the smokestack.lock of each target that
-                          has one, once every group that target takes is delivered. Refused while
-                          frozen-targets.json is missing, names anything and --only is absent, or
-                          --only names a frozen target.
-  --dry-run               With --write: run every refusal and report what would be written. Off a
-                          tag it warns and goes on.
-  --group <name>          Restrict to one manifest group. Repeatable; a subsystem whose files span
-                          more than one group is named one group per flag.
-  --only <csv>            Restrict to the named target directories. Narrows what the group's target
-                          model already resolved; it can never add a target the model rejected.
-  --retire <name>         With --write: a group a target's lock declares and no longer takes, and
-                          the record has forgotten there, leaves it. Its files are removed where
-                          they are exactly as delivered, and the lock drops it. Repeatable.
-  --fleet-root <dir>      Directory holding the peer repositories. Defaults to SMOKESTACK_FLEET_ROOT
-                          when set, else the parent of this repository's main checkout (from a
-                          branch worktree, not the worktree's own parent). Its untracked
-                          .shared-core-roots.json names the other repo-holding roots this does not
-                          sweep, each with its reason.
-  --help                  This text.
-
---check and --write are exclusive. Neither is the default; with no mode this script does nothing.
-`;
-
-/**
- * Unknown flags are rejected rather than ignored. The license sync script this generalized tested
- * only for the presence of --check: every other argument — including --help, and including a
- * typo — falls through to the write path and performs a real four-repository write. That is a trap
- * laid for exactly the person trying to find out what the script does, and it is not carried here.
- */
-export interface SharedCoreOptions {
-	check: boolean;
-	dryRun: boolean;
-	fleetRoot?: string;
-	groups: string[];
-	help: boolean;
-	only?: Set<string>;
-	retire: Set<string>;
-	write: boolean;
-}
-
-export function parseSharedCoreArgs(args: string[]): SharedCoreOptions {
-	const { values } = parseArgs({
-		args,
-		options: {
-			check: { type: 'boolean' },
-			'dry-run': { type: 'boolean' },
-			'fleet-root': { type: 'string' },
-			group: { multiple: true, type: 'string' },
-			help: { short: 'h', type: 'boolean' },
-			only: { multiple: true, type: 'string' },
-			retire: { multiple: true, type: 'string' },
-			write: { type: 'boolean' },
-		},
-		strict: true,
-	});
-	// parseArgs takes the token after a value-taking flag as its value even when that token is
-	// itself a flag, so `--group --check` would name a group nothing matches and quietly run zero
-	// groups against a fleet the caller believed it had just checked.
-	for (const [name, value] of Object.entries(values)) {
-		const given = Array.isArray(value) ? value : [value];
-		if (given.some((v) => typeof v === 'string' && (v.trim() === '' || v.startsWith('-')))) {
-			throw new Error(`--${name} needs a value.`);
-		}
-	}
-	const parsed: SharedCoreOptions = {
-		check: values.check === true,
-		dryRun: values['dry-run'] === true,
-		groups: values.group ?? [],
-		help: values.help === true,
-		retire: new Set(values.retire ?? []),
-		write: values.write === true,
-	};
-	if (values['fleet-root'] !== undefined) parsed.fleetRoot = values['fleet-root'];
-	if (values.only !== undefined) {
-		parsed.only = new Set(values.only.flatMap((v) => v.split(',').map((s) => s.trim())));
-	}
-	// Exclusive rather than "write wins" or "check wins": both readings are defensible, which is
-	// precisely why neither should be guessed on a command that overwrites files in other people's
-	// repositories.
-	if (parsed.check && parsed.write) {
-		throw new Error('--check and --write are exclusive. Pick one.');
-	}
-	if (parsed.dryRun && !parsed.write) {
-		throw new Error('--dry-run only means anything with --write.');
-	}
-	if (parsed.retire.size > 0 && !parsed.write) {
-		throw new Error('--retire only means anything with --write.');
-	}
-	return parsed;
-}
 
 function selectGroups(groups: SharedCoreGroup[], names: string[]): SharedCoreGroup[] {
 	if (names.length === 0) return groups;
@@ -162,7 +58,21 @@ function selectGroups(groups: SharedCoreGroup[], names: string[]): SharedCoreGro
 	return groups.filter((g) => names.includes(g.name));
 }
 
-export function runSharedCoreSync(options: SharedCoreOptions): number {
+/**
+ * Where a run happens. The command line runs here, from `cwd()` with the manifest beside this
+ * file, and a write holds the record lock until the process exits. An in-process caller names a
+ * repository and its manifest folder instead, and its write's lock goes in `releases`, which
+ * `runSharedCoreCli` empties in a `finally` (test-suite-lanes-stage-two; Morticia #55075).
+ */
+export interface SyncPlace {
+	manifestDir: string;
+	releases?: (() => void)[];
+	root: string;
+}
+
+const HERE: SyncPlace = { manifestDir: dirname(import.meta.path), root: resolve(cwd()) };
+
+export function runSharedCoreSync(options: SharedCoreOptions, place: SyncPlace = HERE): number {
 	if (options.help) {
 		console.info(USAGE);
 		return 0;
@@ -173,9 +83,11 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 		return 0;
 	}
 
-	const root = resolve(cwd());
-	// The manifest is delivered beside this file, so it is read from here, at whatever depth.
-	const manifest = loadManifest(dirname(import.meta.path));
+	// No earlier run's answers carry into this one (lib/shared-core/run-cache.ts).
+	forgetRunAnswers();
+	const root = resolve(place.root);
+	// The manifest is delivered beside this file, so it is read from there, at whatever depth.
+	const manifest = loadManifest(place.manifestDir);
 	const identity = repoIdentity(root);
 	if (!manifest.some((group) => group.owner === identity)) {
 		return runAsConsumer(options, root, manifest);
@@ -189,11 +101,11 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 	const fleetRoot =
 		options.fleetRoot === undefined ? defaultFleetRoot(root) : resolve(options.fleetRoot);
 	const groups = selectGroups(manifest, options.groups);
-	// The frozen list before any target is read, dry run included (lib/shared-core/frozen.ts). It
-	// is untracked like the rosters, so a branch worktree reads the main checkout's. The wrapper
-	// and the installers apply the same rule; this one holds for a write typed by hand.
+	// The frozen list before any target is read, dry run included (lib/shared-core/frozen.ts),
+	// through the same loader as the wrapper and the installers; this one holds for a write typed
+	// by hand.
 	if (options.write) {
-		const refusal = frozenRefusal(loadFrozen(configRoot(root)), options.only);
+		const refusal = frozenRefusal(loadOwnerFrozen(root), options.only);
 		if (refusal !== null) {
 			console.error(`[FAIL] ${refusal} Nothing was written.`);
 			return 1;
@@ -203,16 +115,23 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 	console.info(describeRoots(fleetRoot, loadFleetRoots(fleetRoot)));
 
 	// The owner's record of deliveries (lib/shared-core/deliveries.ts), read under the record lock by a
-	// write. Unreadable is exit 2; missing fails on its own account, after the comparison.
-	let deliveries: Deliveries | null;
+	// write. Unreadable is exit 2; missing fails on its own account, after the comparison. A target
+	// that is a linked worktree is read against its canonical checkout (lib/shared-core/worktree-
+	// record.ts), and one whose canonical checkout has no record is refused, naming that root.
+	let run: RunRecord;
 	try {
-		if (options.write) holdRecordLockUntilExit(root);
-		deliveries = readDeliveries(root, fleetRoot);
+		if (options.write && place.releases) place.releases.push(holdRecordLock(root));
+		else if (options.write) holdRecordLockUntilExit(root);
+		run = runRecord(root, fleetRoot);
 	} catch (err) {
 		const reason = err instanceof Error ? err.message : String(err);
 		console.error(`[FAIL] The record of deliveries could not be read: ${reason}`);
 		return 2;
 	}
+	for (const canonical of run.unrecorded)
+		console.error(`${noRecord(canonical)} Nothing was written.`);
+	if (run.unrecorded.length > 0 && !(options.write && options.dryRun)) return 1;
+	const { deliveries } = run;
 	const departed = departedOrNone(root, fleetRoot);
 	const reports = groups.map((group) =>
 		checkGroup(group, fleetRoot, root, options.only, deliveries, departed),
@@ -227,18 +146,14 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 			root,
 			options.only,
 		);
-		// Rows already known, with a reason, an owner and an end date (lib/shared-core/known-drift.ts).
-		// Untracked like the rosters, so a branch worktree reads the main checkout's.
-		const today = localToday();
-		let known: KnownDrift[];
-		try {
-			known = loadKnownDrift(configRoot(root), today);
-		} catch (err) {
-			const reason = err instanceof Error ? err.message : String(err);
-			console.error(`[FAIL] The known-drift list could not be read: ${reason}`);
+		// Rows already known (an end date) and repositories that keep their own gate (a decision),
+		// from lib/shared-core/known-drift.ts. Untracked like the rosters, so a branch worktree reads
+		// the main checkout's.
+		const held = holdListedRows(configRoot(root), reports, scope, localToday());
+		if (typeof held === 'string') {
+			console.error(`[FAIL] ${held}`);
 			return 2;
 		}
-		const held = applyKnownDrift(reports, scope, known, today);
 		const code = reportCheck(
 			held.reports,
 			options.only,
@@ -246,11 +161,12 @@ export function runSharedCoreSync(options: SharedCoreOptions): number {
 			fleetRoot,
 			held.scope,
 		);
-		for (const line of knownDriftLines(held)) console.info(line);
+		for (const line of held.lines) console.info(line);
 		return code;
 	}
 	// The whole manifest, not the selection: a narrowed write has to know what else a target takes.
-	return reportWrite(reports, manifest, fleetRoot, root, options, deliveries);
+	const code = reportWrite(reports, manifest, fleetRoot, root, options, run);
+	return run.unrecorded.length > 0 ? Math.max(code, 1) : code;
 }
 
 /**
@@ -280,21 +196,33 @@ function runAsConsumer(
 	return runSelfCheck(root, manifest);
 }
 
-if (import.meta.main) {
-	// A mistyped flag must not fall through to a real fleet-wide write, which is the trap the old
-	// license sync script laid. Bad arguments exit 2, distinct from drift's exit 1.
+/**
+ * The command line as a function: parse, run, and turn a throw into `[FAIL]` and exit 1, as the
+ * script does. A mistyped flag must not fall through to a real fleet-wide write, which is the trap
+ * the old license sync script laid, so bad arguments exit 2, distinct from drift's exit 1. Given a
+ * place with a `releases` list, every record lock its run took is released before this returns,
+ * on a throw too.
+ */
+export function runSharedCoreCli(args: string[], place: SyncPlace = HERE): number {
+	const fail = (err: unknown): void => {
+		console.error(`[FAIL] ${err instanceof Error ? err.message : String(err)}`);
+	};
 	let options: SharedCoreOptions;
 	try {
-		options = parseSharedCoreArgs(argv.slice(2));
+		options = parseSharedCoreArgs(args);
 	} catch (err) {
-		console.error(`[FAIL] ${err instanceof Error ? err.message : String(err)}`);
+		fail(err);
 		console.error(USAGE);
-		exit(2);
+		return 2;
 	}
 	try {
-		exit(runSharedCoreSync(options));
+		return runSharedCoreSync(options, place);
 	} catch (err) {
-		console.error(`[FAIL] ${err instanceof Error ? err.message : String(err)}`);
-		exit(1);
+		fail(err);
+		return 1;
+	} finally {
+		for (const release of place.releases?.splice(0) ?? []) release();
 	}
 }
+
+if (import.meta.main) exit(runSharedCoreCli(argv.slice(2)));

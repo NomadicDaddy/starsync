@@ -9,9 +9,9 @@
 # smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
 # smokestack; every repository that takes it holds a byte-identical copy.
 #
-# Four lines below disable SC2154, one for each variable this file reads from
-# check-leak-guard-setup.sh (synthetic, guard, self_dir, failures), at the first line that reads it,
-# which is where ShellCheck reports it. That file is sourced with SC1091 off, so a consumer that lints
+# Lines below disable SC2154 for each variable this file reads from check-leak-guard-setup.sh
+# (synthetic, guard, self_dir, failures, aws_key, pem_header, b64_run, win_path), at the first line
+# that reads it, which is where ShellCheck reports it. That file is sourced with SC1091 off, so a consumer that lints
 # each file alone would otherwise fail on all four. The disables are kept to those lines, not the
 # whole file, so ShellCheck still reports any other unassigned name, a misspelling included.
 set -euo pipefail
@@ -22,24 +22,54 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=check-leak-guard-setup.sh disable=SC1091
 . "$(cd "$(dirname "$0")" && pwd)/check-leak-guard-setup.sh"
 
+# Cases 11 to 21 (check-leak-guard-cases.sh) and 22 to 41 (check-leak-guard-binary-cases.sh, binary
+# files) run as two lanes beside cases 1 to 10, each in its own scratch folder and repositories
+# (lane_begin), so the self-test takes about as long as its slowest lane rather than all three in
+# turn. A lane's output is held in $lanes and printed after case 10, in case order, and its failure
+# count is added to this one; a lane that wrote no count or exited non-zero is a failure too.
+lanes="$(mktemp -d)"
+cases_lane() {
+	lane_out="$lanes/cases" && lane_begin
+	# shellcheck source-path=SCRIPTDIR source=check-leak-guard-cases.sh disable=SC1091,SC2154
+	. "$self_dir/check-leak-guard-cases.sh"
+	# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
+	echo "$failures" >"$lane_out.failures"
+}
+binary_lane() {
+	lane_out="$lanes/binary" && lane_begin
+	# shellcheck source-path=SCRIPTDIR source=check-leak-guard-binary-cases.sh disable=SC1091
+	. "$self_dir/check-leak-guard-binary-cases.sh"
+	echo "$failures" >"$lane_out.failures"
+}
+# Under set -m each lane starts as its own process group, which an early stop signals whole (the
+# setup's EXIT trap). Bash turns job control off inside the lane, so what it runs stays in its group.
+# Job control also stops bash giving a background job /dev/null as its stdin, so the lanes are given
+# it here: a case that read stdin would otherwise block on a gate's pipe for ever (Morticia, 0fa5a3b).
+set -m
+cases_lane </dev/null >"$lanes/cases.out" 2>"$lanes/cases.err" &
+lane_pids="$!"
+binary_lane </dev/null >"$lanes/binary.out" 2>"$lanes/binary.err" &
+lane_pids="$lane_pids $!"
+set +m
+
 # 1. Clean content passes.
 # shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
 [ "$(run_guard "$synthetic" 'plain harmless content')" = 0 ] || fail 'clean content was blocked'
 
 # 2. Generic secret shape: runtime-built AWS access key id is blocked.
-aws_key="AKIA$(printf 'A%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)"
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
 [ "$(run_guard "$synthetic" "key=$aws_key")" = 1 ] || fail 'synthetic AWS key was not blocked'
 
 # 3. A PEM header carrying no key material is NOT blocked. Config validators compare an incoming
 # key against this constant and documentation shows the shape a key takes, so the header alone
 # says "a key goes here". Blocking it blocks the template that ships those files: a scaffolded
 # project stages every one of them as an addition and could not make its first commit.
-pem_header="-----BEGIN RSA $(printf 'PRIVATE') KEY-----"
-b64_run="$(printf 'A%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24)"
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
 [ "$(run_guard "$synthetic" "expectedHeader: '$pem_header',")" = 0 ] || fail 'bare PEM header was blocked'
 
 # 3b. The same header with a pasted key body on the next line IS blocked. This is the shape the
 # rule exists for, and cases 3/3d are only safe because this one holds.
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
 [ "$(run_guard "$synthetic" "$(printf '%s\n%s' "$pem_header" "$b64_run")")" = 1 ] || fail 'pasted PEM key body was not blocked'
 
 # 3c. Key material after the header on the same line IS blocked: a one-line JSON or .env value
@@ -50,8 +80,7 @@ b64_run="$(printf 'A%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 
 [ "$(run_guard "$synthetic" "\"tlsKey\": \"${pem_header}\\n...\"")" = 0 ] || fail 'PEM placeholder in docs was blocked'
 
 # 4. Home-directory path (runtime-built backslashes) is blocked.
-bs="$(printf '\134')"
-win_path="C:${bs}Users${bs}someone${bs}project"
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
 [ "$(run_guard "$synthetic" "path=$win_path")" = 1 ] || fail 'home-directory path was not blocked'
 
 # 5. Private literal from the pattern file is blocked.
@@ -147,22 +176,16 @@ guard_repo="$tmp/zzz-synthetic-app"
 
 # 10. Dropping the self-pattern must not disarm the rest: a sibling's name is still blocked in the
 # same repo, which is the whole reason tier 2 exists.
-printf '%s\n' '\bzzz-synthetic-app\b' '\bzzz-sibling-app\b' >"$tmp/patterns-pair"
 [ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 1 ] || fail 'sibling pattern was dropped along with the self pattern'
 [ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-synthetic-app somewhere')" = 0 ] || fail 'self pattern survived alongside a sibling pattern'
 guard_repo="$tmp/repo"
 
-# Cases 11 to 21 are in check-leak-guard-cases.sh beside this file, and 22 to 38 (binary files) in
-# check-leak-guard-binary-cases.sh. They are sourced so they share the scratch repositories, helpers
-# and failure count above. shellcheck -x follows them from any directory through SCRIPTDIR, and a
+# The lanes started above, in case order: their output, then their failures and exit status
+# (lane_collect). shellcheck -x follows the case files from any directory through SCRIPTDIR, and a
 # plain run, which follows no sourced file, skips them (SC1091).
-# shellcheck source-path=SCRIPTDIR source=check-leak-guard-cases.sh disable=SC1091
-# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
-. "$self_dir/check-leak-guard-cases.sh"
-# shellcheck source-path=SCRIPTDIR source=check-leak-guard-binary-cases.sh disable=SC1091
-. "$self_dir/check-leak-guard-binary-cases.sh"
+lane_collect cases
+lane_collect binary
 
-# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
 if [ "$failures" -gt 0 ]; then
 	# Both streams: a gate harness that captures only one of them still sees the failure. The
 	# per-case FAIL lines stay on stderr; this summary is the one line a log must not lose

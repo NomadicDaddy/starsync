@@ -45,6 +45,7 @@ import {
 	withoutNames,
 } from './lib/smokestack/env.ts';
 import { exitCodeFor, GATE_MARK, type Mode, runGate, summarise } from './lib/smokestack/gate.ts';
+import { heavyForRun } from './lib/smokestack/heavy-config.ts';
 import { printListing, printListingJson } from './lib/smokestack/list.ts';
 import { standing } from './lib/smokestack/preflight.ts';
 import { relayInterrupts } from './lib/smokestack/spawn.ts';
@@ -187,12 +188,24 @@ export async function runSmokestack(
 		);
 	}
 	if (cache?.storeNote) console.info(cache.storeNote);
+	const heavy = heavyForRun(config.heavy, steps.filter((step) => step.heavy).length, process.env);
+	if (heavy === null) return EXIT_CANNOT_START;
 	const started = Date.now();
 	// After the mark is set: a step's environment is built with it (env.ts).
 	const env = childEnv(config.env);
 	const { preflight } = stand;
 	const { packageName } = config;
-	const result = await runGate({ cache, env, mode, packageName, preflight, root, signal, steps });
+	const result = await runGate({
+		cache,
+		env,
+		heavy,
+		mode,
+		packageName,
+		preflight,
+		root,
+		signal,
+		steps,
+	});
 	summarise(result, mode, config.qc.length, Date.now() - started);
 	return exitCodeFor(result);
 }

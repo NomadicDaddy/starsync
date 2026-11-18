@@ -37,6 +37,7 @@ import { hookClaim } from './hook.ts';
 import { hashShared, LOCK_FILE, PREVIOUS_LOCK_FILE } from './lock.ts';
 import { deliveredAt, syncedPathsAt } from './origin.ts';
 import { readShared } from './owner.ts';
+import { runCache } from './run-cache.ts';
 
 function git(root: string, args: string[]): null | string {
 	const result = Bun.spawnSync(['git', '-C', root, ...args], {
@@ -54,7 +55,7 @@ function lines(text: null | string): string[] {
 		.filter((line) => line !== '');
 }
 
-const previousTags = new Map<string, null | string>();
+const previousTags = runCache<string, null | string>();
 
 /** The release before the one being checked (see the header), or null where there is none. */
 export function previousReleaseTag(ownerRoot: string): null | string {
@@ -71,7 +72,7 @@ export function previousReleaseTag(ownerRoot: string): null | string {
 	return previous;
 }
 
-const lockHistory = new Map<string, boolean>();
+const lockHistory = runCache<string, boolean>();
 
 /**
  * Whether the repository's own history has ever tracked a lock, at either path. Asked once per

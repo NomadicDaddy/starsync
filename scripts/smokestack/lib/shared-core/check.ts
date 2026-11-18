@@ -55,6 +55,7 @@ export type FindingKind =
 	| 'not-applicable'
 	| 'not-run'
 	| 'old-path'
+	| 'own-gate'
 	| 'stale-layout'
 	| 'stale-lock'
 	| 'uncovered'

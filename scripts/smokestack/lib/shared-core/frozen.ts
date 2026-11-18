@@ -9,7 +9,10 @@
  *
  * One rule, read in three places: the sync's own write (sync-shared-core.ts, owner path only, so
  * a consumer never reads the list), the sanctioned `shared-core:write` wrapper, and both fleet
- * installers before they prepare dispatch (guard-install/preflight.ts).
+ * installers before they prepare dispatch (guard-install/delegate.ts). All three read it through
+ * `loadOwnerFrozen`, so from a linked worktree, which never has the untracked file, each obeys the
+ * main checkout's list. The wrapper and the installers once read the worktree's own and refused
+ * every run from one.
  *
  * A missing list is a refusal too. Absent could mean nothing is frozen or could mean a fresh
  * checkout that was never told, and only the first is safe to write from; an empty array is how a
@@ -21,7 +24,17 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { configRoot } from './roots.ts';
+
 const FROZEN_FILE = 'frozen-targets.json';
+
+/**
+ * The frozen list an owner run obeys: the one in the main checkout that `root` belongs to, which is
+ * `root` itself unless `root` is a linked worktree (roots.ts). Null when there is none.
+ */
+export function loadOwnerFrozen(root: string): null | string[] {
+	return loadFrozen(configRoot(root));
+}
 
 /** The frozen list, or null when this checkout has none. Throws on a list it cannot read. */
 export function loadFrozen(root: string): null | string[] {

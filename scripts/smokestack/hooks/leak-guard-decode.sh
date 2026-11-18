@@ -97,12 +97,14 @@ read_blob() {
 # Writes the diff, with $1 lines of context, of files $2 and $3 to $4 without its file headers. Hunk
 # headers stay, so lines from two hunks are never read as adjacent. diff exits 1 when the files
 # differ, the expected case; 2 is a failure, and refuses. Called in this shell and never in a
-# pipeline, so that the refusal stops the guard.
+# pipeline, so that the refusal stops the guard. The headers are the first two lines (the two files
+# are the guard's own), and only those are dropped: dropping every line starting +++ or --- also
+# dropped added content starting ++ or --, unscanned (Morticia, 7f2bc58).
 added_diff() {
 	local status=0
 	diff -U"$1" "$2" "$3" >"$4.raw" || status=$?
 	[ "$status" -gt 1 ] && decode_refuse 'diff failed on a staged binary file'
-	select_lines -vE '^(\+\+\+|---)' "$4.raw" >"$4"
+	sed '1,2d' "$4.raw" >"$4" || decode_refuse 'sed failed on a staged binary file'
 }
 
 # grep, where exit 1 (no line selected) is an answer and 2 (it could not read) refuses. Called in

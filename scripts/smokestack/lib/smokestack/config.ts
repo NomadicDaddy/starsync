@@ -19,6 +19,9 @@
  * the case: a derived app carries the same list, and a template-only step's script need not exist
  * there, so its script is checked only where it would run.
  *
+ * A step may carry `heavy: true`: it waits for a free heavy slot shared by every gate on the machine
+ * before it runs (heavy.ts), and the top-level `heavy` object sets the limit and the longest wait.
+ *
  * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
  * smokestack; every repository that takes it holds a byte-identical copy.
  */
@@ -28,6 +31,7 @@ import { dirname, join, relative } from 'node:path';
 import { assertCacheCoverage, parseStepCache, type StepCache } from './cache-config.ts';
 import { asObject, asText, CONFIG_FILE, fail } from './config-read.ts';
 import { type EnvPolicy, parseEnv } from './env.ts';
+import { type HeavyConfig, parseHeavy } from './heavy-config.ts';
 
 /** The folder the runner is installed in: two above this file, beside smokestack.ts. */
 const RUNNER_DIR = join(import.meta.dir, '..', '..');
@@ -62,6 +66,8 @@ export interface Step {
 	/** What the step reads, for the step cache. Null: never replayed and never recorded. */
 	cache: null | StepCache;
 	description: string;
+	/** Waits for a free heavy slot before it runs (heavy.ts). False unless the config says true. */
+	heavy: boolean;
 	name: string;
 	/** The package name of the one repository this step runs in. Null: it runs everywhere. */
 	onlyIn: null | string;
@@ -72,6 +78,7 @@ export interface Config {
 	/** What a step is handed. Null: the runner's whole environment, as before (env.ts). */
 	env: EnvPolicy | null;
 	fast: null | Step[];
+	heavy: HeavyConfig;
 	/** package.json's name, which each step's `onlyIn` is matched against. Null: none. */
 	packageName: null | string;
 	qc: Step[];
@@ -83,6 +90,12 @@ export function skipReason(step: Step, packageName: null | string): null | strin
 	const here =
 		packageName === null ? 'this repository has no package name' : `this is ${packageName}`;
 	return `only in ${step.onlyIn}; ${here}`;
+}
+
+function asFlag(raw: unknown, where: string): boolean {
+	if (raw === undefined) return false;
+	if (typeof raw !== 'boolean') fail(`${where} must be true or false.`);
+	return raw;
 }
 
 function asRun(raw: unknown, where: string): string[] {
@@ -134,10 +147,18 @@ function asSteps(
 	const seen = new Set<string>();
 	const steps = list.map((item, index) => {
 		const where = `qc.steps[${index}]`;
-		const object = asObject(item, where, ['cache', 'description', 'name', 'onlyIn', 'run']);
+		const object = asObject(item, where, [
+			'cache',
+			'description',
+			'heavy',
+			'name',
+			'onlyIn',
+			'run',
+		]);
 		const step: Step = {
 			cache: object['cache'] === undefined ? null : parseStepCache(object['cache'], where),
 			description: asText(object['description'], `${where}.description`),
+			heavy: asFlag(object['heavy'], `${where}.heavy`),
 			name: asText(object['name'], `${where}.name`),
 			onlyIn:
 				object['onlyIn'] === undefined ? null : asText(object['onlyIn'], `${where}.onlyIn`),
@@ -218,7 +239,7 @@ function parseConfig(
 	} catch (err) {
 		fail(`is not JSON (${err instanceof Error ? err.message : String(err)}).`);
 	}
-	const root = asObject(raw, 'the file', ['env', 'fast', 'qc', 'version']);
+	const root = asObject(raw, 'the file', ['env', 'fast', 'heavy', 'qc', 'version']);
 	const version = root['version'];
 	if (typeof version !== 'number' || !ACCEPTED_VERSIONS.includes(version)) {
 		fail(
@@ -230,6 +251,7 @@ function parseConfig(
 	return {
 		env: parseEnv(root['env']),
 		fast: asFast(root['fast'], qc, scripts, packageName),
+		heavy: parseHeavy(root['heavy']),
 		packageName,
 		qc,
 	};

@@ -12,10 +12,13 @@
  * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
  * smokestack; every repository that takes it holds a byte-identical copy.
  */
+import { join } from 'node:path';
+
 import type { SharedCoreGroup } from './manifest.ts';
 
 import { type Finding, type GroupReport, isFatal } from './check.ts';
-import { type Deliveries, DELIVERIES_FILE, noRecord, recordSettled } from './deliveries.ts';
+import { type Deliveries, DELIVERIES_FILE, noRecord } from './deliveries.ts';
+import { hooksPath } from './dispatch.ts';
 import { planLocks, writeLocks } from './lock-write.ts';
 import { LOCK_FILE } from './lock.ts';
 import { applyMoves, holdBack, planMoves } from './move.ts';
@@ -23,6 +26,7 @@ import { untrackedSourcesRefusal } from './owner.ts';
 import { applyRetirements } from './retire.ts';
 import { type Delivery, tagStanding } from './tag.ts';
 import { reportClean } from './vacuity.ts';
+import { type RunRecord, settleRun } from './worktree-record.ts';
 import { applyFindings, ownershipRefusal, type WriteOutcome } from './write.ts';
 
 function order(findings: Finding[]): Finding[] {
@@ -39,6 +43,7 @@ function order(findings: Finding[]): Finding[] {
 		'not-applicable': 8,
 		'not-run': 2,
 		'old-path': 1,
+		'own-gate': 4,
 		'stale-layout': 5,
 		'stale-lock': 2,
 		uncovered: 5,
@@ -159,14 +164,18 @@ export function reportWrite(
 	fleetRoot: string,
 	root: string,
 	write: { dryRun: boolean; retire: Set<string> },
-	deliveries: Deliveries | null,
+	run: RunRecord,
 ): number {
 	const { dryRun, retire } = write;
-	// Before anything else, a rehearsal included: a write updates the record, and never creates it.
+	const { deliveries } = run;
+	// A write updates the record and never creates it, so with none it stops before anything else.
+	// A rehearsal says so and goes on against an empty record, to name every other blocker too.
+	let refusedBeforeFiles = deliveries === null;
 	if (deliveries === null) {
 		console.error(`${noRecord(fleetRoot)} Nothing was written.`);
-		return 1;
+		if (!dryRun) return 1;
 	}
+	const record: Deliveries = deliveries ?? {};
 	const byName = new Map(manifest.map((g) => [g.name, g]));
 	const verb = dryRun ? 'would write' : 'wrote';
 	const owned = reports.filter((report) => {
@@ -186,6 +195,9 @@ export function reportWrite(
 		if ('delivery' in standing) delivery = standing.delivery;
 		else if (dryRun) {
 			console.warn(`[WARN] A write from here would be refused: ${standing.refusal}.`);
+			// Off the tag a write names only the tag; a rehearsal names untracked sources as well.
+			if (untracked !== null && standing.refusal !== untracked)
+				console.warn(`[WARN] A write from here would also be refused: ${untracked}.`);
 		} else {
 			console.error(
 				`[FAIL] A write is made only from a tagged version, and ${standing.refusal}. ` +
@@ -194,9 +206,20 @@ export function reportWrite(
 			return 1;
 		}
 	}
-	const plan = planLocks(owned, groups, manifest, fleetRoot, root, delivery, retire, deliveries);
+	const plan = planLocks(
+		owned,
+		groups,
+		manifest,
+		fleetRoot,
+		root,
+		delivery,
+		retire,
+		record,
+		dryRun,
+	);
 	// A delivered file whose installed path changed (move.ts): planned now, applied after the locks.
-	const directories = plan.targets.map((target) => target.directory);
+	// A rehearsal plans the targets refused above too, so their hooks path is reported as well.
+	const directories = [...plan.targets.map((target) => target.directory), ...plan.rehearsed];
 	const moves = planMoves(directories, groups, fleetRoot, root);
 	plan.refusals.push(...moves.refusals);
 	if (plan.refusals.length > 0) {
@@ -205,7 +228,14 @@ export function reportWrite(
 			`[FAIL] ${plan.refusals.length} target(s) would be left with a ${LOCK_FILE} that does ` +
 				'not describe them. Nothing was written.',
 		);
-		return 1;
+		if (!dryRun) return 1;
+		refusedBeforeFiles = true;
+	}
+	if (dryRun) {
+		for (const directory of [...directories].sort()) {
+			const configured = hooksPath(join(fleetRoot, directory));
+			console.info(`  HOOKS       ${directory}: core.hooksPath ${configured || 'unset'}`);
+		}
 	}
 
 	const outcomes = new Map<string, WriteOutcome>();
@@ -228,7 +258,7 @@ export function reportWrite(
 		for (const f of outcome.blocked) console.info(`  REFUSED     ${f.target}: ${f.detail}`);
 		for (const f of skipped) console.info(`  LEFT ALONE  ${f.target}: ${f.kind} — ${f.detail}`);
 	}
-	const locks = writeLocks(plan, outcomes, groups, delivery, dryRun, deliveries ?? {});
+	const locks = writeLocks(plan, outcomes, groups, delivery, dryRun, record);
 	if (plan.targets.length > 0) console.info(`\n${LOCK_FILE}`);
 	for (const directory of locks.written) console.info(`  ${verb.toUpperCase()} ${directory}`);
 	for (const reason of locks.withheld) console.info(`  WITHHELD    ${reason}`);
@@ -240,9 +270,8 @@ export function reportWrite(
 	for (const line of applyRetirements(plan.retired, held, fleetRoot, dryRun)) console.info(line);
 	const moved = applyMoves(moves, fleetRoot, dryRun);
 	if (moved.length > 0) console.info(`\nmoved\n${moved.map((line) => `  ${line}`).join('\n')}`);
-	if (!dryRun && recordSettled(root, fleetRoot, deliveries, locks.settled)) {
-		console.info(`\n${DELIVERIES_FILE}: recorded ${[...locks.settled.keys()].join(', ')}`);
-	}
+	const recorded = dryRun ? [] : settleRun(root, fleetRoot, run, locks.settled);
+	if (recorded.length > 0) console.info(`\n${DELIVERIES_FILE}: recorded ${recorded.join(', ')}`);
 
 	const wrote = [...outcomes.values()].reduce((sum, o) => sum + o.written.length, 0);
 	const blocked = [...outcomes.values()].reduce((sum, o) => sum + o.blocked.length, 0);
@@ -259,7 +288,7 @@ export function reportWrite(
 				'describes the delivery before this one. Settle what is named above and run again.',
 		);
 	}
-	if (blocked > 0 || locks.withheld.length > 0) return 1;
+	if (blocked > 0 || locks.withheld.length > 0 || refusedBeforeFiles) return 1;
 	console.info(
 		dryRun
 			? `[OK] Dry run: ${wrote} file(s) and ${locks.written.length} lock(s) would change.`

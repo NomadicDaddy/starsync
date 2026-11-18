@@ -1,6 +1,7 @@
-# Self-test for leak-guard.sh, cases 11 to 21. Sourced by check-leak-guard.sh, never run alone: it
-# uses that file's scratch repositories, fixtures (synthetic, aws_key, pem_header, b64_run), helpers
-# (run_guard, fail) and failure count, and that file prints the summary and sets the exit code.
+# Self-test for leak-guard.sh, cases 11 to 21. Sourced by check-leak-guard.sh in a lane of its own,
+# never run alone: it uses the setup's scratch repositories, fixtures (synthetic, aws_key,
+# pem_header, b64_run), helpers (run_guard, fail) and failure count, and check-leak-guard.sh prints
+# the summary and sets the exit code.
 # Split from check-leak-guard.sh so each stays under the 300-line ceiling.
 #
 # smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
@@ -68,17 +69,6 @@ git -C "$guard_repo" -c user.email=t@test -c user.name=t commit -q -m 'publishes
 [ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 1 ] || fail 'a longer publishes entry cleared a pattern it only contains'
 git -C "$guard_repo" rm -q "$publishes_path"
 git -C "$guard_repo" -c user.email=t@test -c user.name=t commit -q -m 'drop publishes entry'
-
-# 12d. v0.6.0 only: the list is still read where it was kept before, .githooks/leak-guard-publishes,
-# so a repository that has not moved it yet is not left refusing what it publishes. The release
-# after v0.6.0 drops that read, and this case with it.
-old_publishes_path=.githooks/leak-guard-publishes
-mkdir -p "$guard_repo/.githooks"
-printf '%s\n' 'zzz-sibling-app' >"$guard_repo/$old_publishes_path"
-git -C "$guard_repo" add "$old_publishes_path"
-[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 0 ] || fail 'the list at its old path did not clear its pattern'
-git -C "$guard_repo" rm -q --cached "$old_publishes_path"
-rm -rf "$guard_repo/.githooks"
 
 # 16. The guard does not scan itself, wherever it is installed: it spells out what it looks for.
 # Found by asking git where it is, so a copy staged at scripts/smokestack/hooks is left out.

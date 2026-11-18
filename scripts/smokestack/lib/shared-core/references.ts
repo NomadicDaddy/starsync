@@ -18,6 +18,7 @@ import { join, posix } from 'node:path';
 import { pathPattern } from './move-scripts.ts';
 import { pathWordMentions } from './path-words.ts';
 import { looksBinary, MAX_BYTES, readText } from './read-text.ts';
+import { runCache } from './run-cache.ts';
 
 /** Where everything smokestack delivers lives in a consumer; nothing there is the consumer's own. */
 const DELIVERED_HOME = 'scripts/smokestack/';
@@ -256,7 +257,7 @@ function ownImports(root: string): { file: string; line: number; target: string 
 	return imports;
 }
 
-const importsOf = new Map<string, { file: string; line: number; target: string }[]>();
+const importsOf = runCache<string, { file: string; line: number; target: string }[]>();
 
 /** Relative imports in the consumer's own code that resolve to an old path no longer on disk. */
 export function brokenImports(root: string, moved: ReadonlyMap<string, string>): Reference[] {

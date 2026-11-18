@@ -57,6 +57,20 @@ export function holdRecordLockUntilExit(ownerRoot: string): void {
 	}
 }
 
+/**
+ * Takes the owner's record lock for a write run inside a longer-lived process (the sync called
+ * in-process by `runSharedCoreCli`) and returns its release. It adds no exit or signal listener, so
+ * repeated runs leak none (Morticia #55075); the caller releases it in a `finally`. A hold this
+ * process already has is not taken again, and its release is then a no-op.
+ */
+export function holdRecordLock(ownerRoot: string): () => void {
+	const path = join(configRoot(ownerRoot), RECORD_LOCK_FILE);
+	if (held.has(path)) return () => undefined;
+	const fd = acquire(path);
+	held.add(path);
+	return () => release(path, fd);
+}
+
 /** The signals a write is stopped with, and the exit code each gives (128 + its number). */
 const SIGNAL_EXIT = [
 	['SIGINT', 130],

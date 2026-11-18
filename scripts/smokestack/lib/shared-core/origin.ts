@@ -25,17 +25,18 @@ import { syncedPaths } from './expected.ts';
 import { hashText, installedPath, isClaim, type Lock, LOCK_FILE } from './lock.ts';
 import { parseManifest, type SharedCoreGroup } from './manifest.ts';
 import { sourcesOf } from './owner.ts';
+import { runCache } from './run-cache.ts';
 
 export type Origin =
 	| { behind: null | string; state: 'verified' }
 	| { findings: string[]; state: 'forged' }
 	| { reason: string; state: 'unverified' };
 
-const answered = new Map<string, Buffer | null>();
+const answered = runCache<string, Buffer | null>();
 
 /**
  * Every question asked here reads the owner's history (tags, and files at a tagged commit), which
- * does not change while one sweep runs, so each is answered once per process. The owner's sweep
+ * does not change while one sweep runs, so each is answered once per run. The owner's sweep
  * verifies every target's lock and most name the same tag; asking git again for each of them was
  * over half of the whole check's time.
  */
@@ -85,7 +86,7 @@ function showAll(ownerRoot: string, rev: string, paths: string[]): Map<string, n
 }
 
 const MANIFEST_PATH = 'scripts/shared-core-manifest.json';
-const pathsAt = new Map<string, Map<string, string[]> | null>();
+const pathsAt = runCache<string, Map<string, string[]> | null>();
 
 /**
  * Each group's synced installed paths as the owner's manifest stood at `rev`: what a delivery made
@@ -188,7 +189,7 @@ function newestTagAbove(ownerRoot: string, version: string): null | string {
 }
 
 /** Each tag's manifest as parsed, remembered like every other answer here. */
-const groupsAt = new Map<string, SharedCoreGroup[]>();
+const groupsAt = runCache<string, SharedCoreGroup[]>();
 
 /**
  * Every path a tagged release of the owner installed `group` at, read from each tag's manifest:

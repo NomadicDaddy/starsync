@@ -21,8 +21,9 @@ import { hookClaim } from './hook.ts';
 import { hashShared, isClaim, readLock } from './lock.ts';
 import { syncedPathsAt, verifyOrigin } from './origin.ts';
 import { readShared } from './owner.ts';
+import { runCache } from './run-cache.ts';
 
-const ancestors = new Map<string, boolean>();
+const ancestors = runCache<string, boolean>();
 
 /** A tag held locally can belong to a newer or separate branch, which is not behind this checkout. */
 function precedesOwner(ownerRoot: string, commit: string): boolean {

@@ -29,6 +29,13 @@ import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { platform } from 'node:process';
 
+import {
+	asTarget,
+	isRecord,
+	type PendingRecord,
+	readPendingMap,
+	writtenPending,
+} from './delivery-shape.ts';
 import { type HookClaim, isClaim, type Lock } from './lock.ts';
 import { withRecordLock } from './record-lock.ts';
 import { configRoot } from './roots.ts';
@@ -76,42 +83,21 @@ export function rootKey(fleetRoot: string): string {
 	return platform === 'win32' ? real.toLowerCase() : real;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === 'object' && !Array.isArray(value);
+/**
+ * The whole record: every confirmed section by root key, and the deliveries into linked worktrees
+ * not yet confirmed in their canonical checkout (`pending`, pending.ts). Both are checked in full
+ * on every read (delivery-shape.ts), and this module carries `pending` through every write, so
+ * both always change in one write.
+ */
+export interface RecordParts {
+	pending: PendingRecord | undefined;
+	roots: Record<string, Deliveries>;
 }
 
-function asTarget(raw: unknown, where: string): DeliveredTarget {
-	const fail = (message: string): never => {
-		throw new Error(`${where} ${message}`);
-	};
-	if (!isRecord(raw)) return fail('must be an object.');
-	const { commit, groups, version } = raw;
-	if (typeof commit !== 'string' || !/^[0-9a-f]{40}$/u.test(commit)) {
-		return fail('commit must be 40 hex characters.');
-	}
-	if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/u.test(version)) {
-		return fail('version must be three numbers, as in 1.2.3.');
-	}
-	if (!isRecord(groups)) return fail('groups must be an object.');
-	const read: DeliveredTarget['groups'] = {};
-	for (const [name, group] of Object.entries(groups)) {
-		if (!isRecord(group)) return fail(`group '${name}' must be an object.`);
-		const { claim, paths } = group;
-		if (!Array.isArray(paths) || paths.some((path) => typeof path !== 'string')) {
-			return fail(`group '${name}' paths must be a list of paths.`);
-		}
-		if (claim !== undefined && claim !== 'foreign-hook' && claim !== 'local-chain') {
-			return fail(`group '${name}' claim is not one a write records.`);
-		}
-		read[name] = { paths: paths as string[], ...(claim === undefined ? {} : { claim }) };
-	}
-	return { commit, groups: read, version };
-}
-
-/** Every section in the owner's record, by root key. Empty when the file is not there. */
-function readAll(ownerRoot: string): Record<string, Deliveries> {
+/** The owner's whole record. Empty when the file is not there. */
+export function readRecordParts(ownerRoot: string): RecordParts {
 	const path = join(configRoot(ownerRoot), DELIVERIES_FILE);
-	if (!existsSync(path)) return {};
+	if (!existsSync(path)) return { pending: undefined, roots: {} };
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(readFileSync(path, 'utf8'));
@@ -119,8 +105,15 @@ function readAll(ownerRoot: string): Record<string, Deliveries> {
 		const reason = err instanceof Error ? err.message : String(err);
 		throw new Error(`${path}: is not JSON (${reason}).`, { cause: err });
 	}
-	if (!isRecord(parsed) || !isRecord(parsed['roots']) || Object.keys(parsed).length !== 1) {
-		throw new Error(`${path}: expected an object holding only "roots".`);
+	const keys = isRecord(parsed) ? Object.keys(parsed) : [];
+	const pending = isRecord(parsed) ? parsed['pending'] : undefined;
+	if (
+		!isRecord(parsed) ||
+		!isRecord(parsed['roots']) ||
+		keys.some((key) => key !== 'roots' && key !== 'pending') ||
+		(pending !== undefined && !isRecord(pending))
+	) {
+		throw new Error(`${path}: expected an object holding "roots" and optionally "pending".`);
 	}
 	const all: Record<string, Deliveries> = {};
 	for (const [root, section] of Object.entries(parsed['roots'])) {
@@ -131,7 +124,10 @@ function readAll(ownerRoot: string): Record<string, Deliveries> {
 		}
 		all[root] = read;
 	}
-	return all;
+	return {
+		pending: pending === undefined ? undefined : readPendingMap(pending, path),
+		roots: all,
+	};
 }
 
 /**
@@ -139,7 +135,7 @@ function readAll(ownerRoot: string): Record<string, Deliveries> {
  * cannot vouch for: a record that cannot be read is not an empty one.
  */
 export function readDeliveries(ownerRoot: string, fleetRoot: string): Deliveries | null {
-	return readAll(ownerRoot)[rootKey(fleetRoot)] ?? null;
+	return readRecordParts(ownerRoot).roots[rootKey(fleetRoot)] ?? null;
 }
 
 function sorted<T>(
@@ -161,8 +157,16 @@ export function writeDeliveries(
 	fleetRoot: string,
 	section: Deliveries,
 ): boolean {
-	const all = { ...readAll(ownerRoot), [rootKey(fleetRoot)]: section };
-	const roots = sorted(all, (deliveries) =>
+	const parts = readRecordParts(ownerRoot);
+	return writeRecordParts(ownerRoot, {
+		pending: parts.pending,
+		roots: { ...parts.roots, [rootKey(fleetRoot)]: section },
+	});
+}
+
+/** Writes the whole record, both maps, in one write. Returns whether the file changed. */
+export function writeRecordParts(ownerRoot: string, parts: RecordParts): boolean {
+	const roots = sorted(parts.roots, (deliveries) =>
 		sorted(deliveries, (target) => ({
 			commit: target.commit,
 			groups: sorted(target.groups, (group) => ({
@@ -173,7 +177,9 @@ export function writeDeliveries(
 		})),
 	);
 	const path = join(configRoot(ownerRoot), DELIVERIES_FILE);
-	const content = `${JSON.stringify({ roots }, null, '\t')}\n`;
+	const written = writtenPending(parts.pending ?? {});
+	const pending = Object.keys(written).length === 0 ? {} : { pending: written };
+	const content = `${JSON.stringify({ ...pending, roots }, null, '\t')}\n`;
 	if (existsSync(path) && readFileSync(path, 'utf8') === content) return false;
 	writeFileSync(path, content);
 	return true;

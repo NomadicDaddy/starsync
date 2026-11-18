@@ -32,6 +32,7 @@ import { loadManifest, type SharedCoreGroup } from './manifest.ts';
 import { pathPattern } from './move-scripts.ts';
 import { taggedPaths } from './origin.ts';
 import { brokenImports, unreadFiles } from './references.ts';
+import { runCache } from './run-cache.ts';
 import { readScripts } from './targets.ts';
 
 /**
@@ -165,4 +166,4 @@ function hookPaths(ownerRoot: string): string[] {
 }
 
 /** The owner's manifest does not change while one sweep runs, so its hooks are read once. */
-const hooksOf = new Map<string, string[]>();
+const hooksOf = runCache<string, string[]>();
