@@ -190,9 +190,14 @@ export function readLock(root: string): Lock | null {
 	const file = lockFileIn(root);
 	if (file === null) return null;
 	const path = join(root, file);
+	return parseLock(readFileSync(path, 'utf8'), path);
+}
+
+/** A lock's text read as readLock reads the file; `path` names it in a refusal. */
+export function parseLock(text: string, path: string): Lock {
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(readFileSync(path, 'utf8'));
+		parsed = JSON.parse(text);
 	} catch (err) {
 		return fail(path, `is not JSON (${err instanceof Error ? err.message : String(err)}).`);
 	}

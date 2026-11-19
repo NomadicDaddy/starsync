@@ -37,7 +37,6 @@ import {
 	writtenPending,
 } from './delivery-shape.ts';
 import { type HookClaim, isClaim, type Lock } from './lock.ts';
-import { withRecordLock } from './record-lock.ts';
 import { configRoot } from './roots.ts';
 
 export const DELIVERIES_FILE = 'deliveries.json';
@@ -148,23 +147,10 @@ function sorted<T>(
 }
 
 /**
- * Writes one fleet root's section and leaves every other root's as it was. Objects with sorted
- * keys, tabs, one trailing newline, so the same state is the same bytes. Returns whether the file
- * changed: a write that confirms what is already recorded touches nothing.
+ * Writes the whole record, both maps, in one write. Objects with sorted keys, tabs, one trailing
+ * newline, so the same state is the same bytes. Returns whether the file changed: a write that
+ * confirms what is already recorded touches nothing.
  */
-export function writeDeliveries(
-	ownerRoot: string,
-	fleetRoot: string,
-	section: Deliveries,
-): boolean {
-	const parts = readRecordParts(ownerRoot);
-	return writeRecordParts(ownerRoot, {
-		pending: parts.pending,
-		roots: { ...parts.roots, [rootKey(fleetRoot)]: section },
-	});
-}
-
-/** Writes the whole record, both maps, in one write. Returns whether the file changed. */
 export function writeRecordParts(ownerRoot: string, parts: RecordParts): boolean {
 	const roots = sorted(parts.roots, (deliveries) =>
 		sorted(deliveries, (target) => ({
@@ -207,50 +193,68 @@ export function deliveredBy(lock: Lock): DeliveredTarget | null {
 }
 
 /**
- * Brings the record into line with the locks a write settled, and with no others: a lock withheld
+ * What the record would hold for each target a write settled, and for no others: a lock withheld
  * keeps the entry of its last good delivery, and a target outside an --only narrowing is not
- * touched. Returns whether the file changed.
+ * touched. The write does not put these in the confirmed record. Its target has not decided yet
+ * whether it keeps them, so each becomes a pending delivery that the reconcile confirms only once
+ * the target has committed it (worktree-record.ts settleRun; shared-core-record-follows-a-
+ * restored-delivery).
  *
- * Only the groups the run delivered and compared are recorded from it. A group the run was
- * narrowed away from keeps the entry the record already has: copying it out of the target's lock
- * would write the target's own word into the owner's memory, which is how a hand-made claim was
- * once recorded by a write narrowed to some other group. Where such a kept entry belongs to another
- * version than this delivery, nothing is recorded for that target at all, since one entry cannot
- * name two versions; the unnarrowed write records it.
+ * Only the groups the run delivered and compared are taken from it. A group the run was narrowed
+ * away from keeps the entry the record already has: copying it out of the target's lock would
+ * write the target's own word into the owner's memory, which is how a hand-made claim was once
+ * recorded by a write narrowed to some other group. Where such a kept entry belongs to another
+ * version than this delivery, nothing is returned for that target at all, since one entry cannot
+ * name two versions; the unnarrowed write settles it.
+ *
+ * Read from the record as it stands now rather than as it stood when the write began, so an adopt
+ * or forget run meanwhile is not undone; the caller holds the record lock. `deliveries` is the
+ * write's starting snapshot: a repository, or a group of one, that it held and the record no
+ * longer does was forgotten while the write ran, and the forget stands (Roger #39011).
  */
-export function recordSettled(
+export function settledEntries(
 	ownerRoot: string,
 	fleetRoot: string,
 	deliveries: Deliveries,
 	settled: Map<string, Lock>,
-): boolean {
-	if (settled.size === 0) return false;
-	// Under the record lock, and merged into the record as it stands now rather than as it stood
-	// when the write began, so an adopt or forget run meanwhile is not undone. `deliveries` is the
-	// write's starting snapshot: a repository, or a group of one, that it held and the record no
-	// longer does was forgotten while the write ran, and the forget stands (Roger #39011).
-	return withRecordLock(ownerRoot, () => {
-		const section = { ...(readDeliveries(ownerRoot, fleetRoot) ?? deliveries) };
-		for (const [directory, lock] of settled) {
-			const delivered = deliveredBy(lock);
-			if (delivered === null) continue;
-			const started = deliveries[directory];
-			const before = section[directory];
-			if (started !== undefined && before === undefined) continue;
-			const forgotten = Object.keys(started?.groups ?? {}).filter(
-				(name) => before?.groups[name] === undefined,
-			);
-			const groups = Object.fromEntries(
-				Object.entries(delivered.groups).filter(([name]) => !forgotten.includes(name)),
-			);
-			if (Object.keys(groups).length === 0) continue;
-			const entry: DeliveredTarget = { ...delivered, groups };
-			const kept = Object.keys(before?.groups ?? {}).some((name) => !(name in entry.groups));
-			if (kept && (before?.version !== entry.version || before.commit !== entry.commit)) {
-				continue;
-			}
-			section[directory] = { ...entry, groups: { ...before?.groups, ...entry.groups } };
+): Map<string, DeliveredTarget> {
+	const entries = new Map<string, DeliveredTarget>();
+	const section = readDeliveries(ownerRoot, fleetRoot) ?? deliveries;
+	for (const [directory, lock] of settled) {
+		const delivered = deliveredBy(lock);
+		if (delivered === null) continue;
+		const started = deliveries[directory];
+		const before = section[directory];
+		if (started !== undefined && before === undefined) continue;
+		const forgotten = Object.keys(started?.groups ?? {}).filter(
+			(name) => before?.groups[name] === undefined,
+		);
+		const groups = Object.fromEntries(
+			Object.entries(delivered.groups).filter(([name]) => !forgotten.includes(name)),
+		);
+		if (Object.keys(groups).length === 0) continue;
+		const entry: DeliveredTarget = { ...delivered, groups };
+		const kept = Object.keys(before?.groups ?? {}).some((name) => !(name in entry.groups));
+		if (kept && (before?.version !== entry.version || before.commit !== entry.commit)) {
+			continue;
 		}
-		return writeDeliveries(ownerRoot, fleetRoot, section);
+		entries.set(directory, { ...entry, groups: { ...before?.groups, ...entry.groups } });
+	}
+	return entries;
+}
+
+/** Whether two entries record the same delivery, compared as the record writes them. */
+export function sameDelivery(a: DeliveredTarget | undefined, b: DeliveredTarget): boolean {
+	return a !== undefined && entryText(a) === entryText(b);
+}
+
+function entryText(entry: DeliveredTarget): string {
+	return JSON.stringify({
+		commit: entry.commit,
+		groups: sorted(entry.groups, (group) => ({
+			...(group.claim === undefined ? {} : { claim: group.claim }),
+			paths: [...group.paths].sort(),
+		})),
+		version: entry.version,
 	});
 }

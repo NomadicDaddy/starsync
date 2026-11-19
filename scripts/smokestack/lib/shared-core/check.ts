@@ -108,8 +108,8 @@ export function checkGroup(
 	// the entry point fails on its own account; a caller comparing files alone passes nothing. Null
 	// also withholds the lockless allowance (behind.ts), which needs the record to say "never".
 	deliveries: Deliveries | null = null,
-	// The directories the owner has forgotten under this root (departed.ts). Null, where it keeps no
-	// list or cannot read it, withholds the lockless allowance as a missing record does.
+	// The directories the owner has forgotten under this root (departed.ts), with any a write left
+	// pending. Null, where it keeps no list or cannot read it, withholds the lockless allowance.
 	departed: null | Set<string> = null,
 ): GroupReport {
 	const recorded = deliveries ?? {};

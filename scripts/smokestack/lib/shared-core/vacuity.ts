@@ -7,7 +7,8 @@
  * lock with nothing in it fails there. Both zero cases here are real:
  *
  * - **No peer is checked out.** The owner cloned alone has nothing beside it to compare, which
- *   `docs/reference/gate-conventions.md` covers as `[SKIP]` with the reason, exit 0.
+ *   `gate-conventions.md` (docs/reference/ in smokestack, scripts/smokestack/docs/ where
+ *   delivered) covers as `[SKIP]` with the reason, exit 0.
  * - **`--only` matched nothing.** That flag narrows the target directories a group's model already
  *   resolved, so a name that matches none of them silences every group at once. A typo there
  *   produced a green gate over zero targets, which is exactly the presence-over-content failure

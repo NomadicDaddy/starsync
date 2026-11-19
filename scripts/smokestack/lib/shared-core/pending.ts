@@ -57,8 +57,16 @@ export function canonicalOf(target: string): Canonical | null {
 		);
 	}
 	const checkout = dirname(common);
-	const branch = git(target, ['rev-parse', '--abbrev-ref', 'HEAD']) ?? 'HEAD';
-	return { branch, directory: basename(checkout), fleetRoot: dirname(checkout) };
+	return {
+		branch: branchOf(target),
+		directory: basename(checkout),
+		fleetRoot: dirname(checkout),
+	};
+}
+
+/** The branch `checkout` has checked out, or HEAD where it is detached or cannot be read. */
+export function branchOf(checkout: string): string {
+	return git(checkout, ['rev-parse', '--abbrev-ref', 'HEAD']) ?? 'HEAD';
 }
 
 /**
@@ -104,8 +112,9 @@ export function writePending(
 }
 
 /**
- * Records one delivery into a worktree under its canonical checkout, replacing that checkout's
- * earlier pending delivery and keeping every other checkout's. Caller holds the record lock.
+ * Records one delivery, into a worktree or into the canonical checkout itself, under the canonical
+ * checkout, replacing that checkout's earlier pending delivery and keeping every other checkout's.
+ * Caller holds the record lock.
  */
 export function recordPending(
 	ownerRoot: string,
@@ -113,12 +122,35 @@ export function recordPending(
 	directory: string,
 	delivery: PendingDelivery,
 ): boolean {
+	return replacePending(ownerRoot, canonicalFleetRoot, directory, delivery.checkout, delivery);
+}
+
+/**
+ * Drops the pending delivery recorded for `checkout`, as when a write leaves it holding exactly
+ * what is already confirmed there. Caller holds the record lock. Returns whether the file changed.
+ */
+export function clearPending(
+	ownerRoot: string,
+	canonicalFleetRoot: string,
+	directory: string,
+	checkout: string,
+): boolean {
+	return replacePending(ownerRoot, canonicalFleetRoot, directory, checkout, null);
+}
+
+function replacePending(
+	ownerRoot: string,
+	canonicalFleetRoot: string,
+	directory: string,
+	checkout: string,
+	delivery: null | PendingDelivery,
+): boolean {
 	const record = readPending(ownerRoot);
 	const key = rootKey(canonicalFleetRoot);
 	const section = record[key] ?? {};
 	const others = (section[directory] ?? []).filter(
-		(entry) => rootKey(entry.checkout) !== rootKey(delivery.checkout),
+		(entry) => rootKey(entry.checkout) !== rootKey(checkout),
 	);
-	record[key] = { ...section, [directory]: [...others, delivery] };
+	record[key] = { ...section, [directory]: delivery === null ? others : [...others, delivery] };
 	return writePending(ownerRoot, record);
 }

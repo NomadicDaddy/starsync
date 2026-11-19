@@ -131,7 +131,7 @@ export function reportCheck(
 				`\n${stale} of them are STALE-LOCK: the files in that target are current and its ` +
 					`${LOCK_FILE} does not record them, or the lock and the record of deliveries ` +
 					'disagree about what was last delivered there. The next write from a tagged ' +
-					'version rewrites the lock and the record together. Where the finding is a ' +
+					'version rewrites the lock, and its reconcile the record. Where the finding is a ' +
 					'group the lock names that does not reach that repository, or a file of such a ' +
 					'group held there, it is corrected in that repository, or, where the group is ' +
 					'leaving on purpose, forgotten there and retired by a write with --retire <group>.',

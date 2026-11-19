@@ -132,7 +132,10 @@ export function runSharedCoreSync(options: SharedCoreOptions, place: SyncPlace =
 		console.error(`${noRecord(canonical)} Nothing was written.`);
 	if (run.unrecorded.length > 0 && !(options.write && options.dryRun)) return 1;
 	const { deliveries } = run;
-	const departed = departedOrNone(root, fleetRoot);
+	// Forgotten repositories, and those a write was made in that no reconcile has settled, are
+	// never an installer's copy: both withhold the lockless allowance (lib/shared-core/behind.ts).
+	const forgotten = departedOrNone(root, fleetRoot);
+	const departed = forgotten === null ? null : new Set([...forgotten, ...run.written]);
 	const reports = groups.map((group) =>
 		checkGroup(group, fleetRoot, root, options.only, deliveries, departed),
 	);
@@ -162,6 +165,16 @@ export function runSharedCoreSync(options: SharedCoreOptions, place: SyncPlace =
 			held.scope,
 		);
 		for (const line of held.lines) console.info(line);
+		// Read against a delivery the write made and the target has not yet been shown to keep
+		// (lib/shared-core/worktree-record.ts). Not a failure: the files were held to it above.
+		for (const [directory, version] of run.pendingHeld) {
+			if (options.only !== undefined && !options.only.has(directory)) continue;
+			console.info(
+				`PENDING ${directory}: its lock names the v${version} delivery the record holds ` +
+					'as pending. Once that is committed there, bun run deliveries:reconcile ' +
+					`${directory} confirms it.`,
+			);
+		}
 		return code;
 	}
 	// The whole manifest, not the selection: a narrowed write has to know what else a target takes.
