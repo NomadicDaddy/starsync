@@ -27,6 +27,7 @@ import type { Move } from './move.ts';
 
 import { hooksPath, namesTargetRoot } from './dispatch.ts';
 import { deliveredHooks, unchainedHooks } from './git-hooks.ts';
+import { hooksConfigFlag, isLinkedWorktree } from './hooks-scope.ts';
 import { installedPath, isClaim, type Lock, LOCK_FILE, PREVIOUS_LOCK_FILE } from './lock.ts';
 
 const RUNNER_GROUP = 'runner';
@@ -91,7 +92,15 @@ export function planHome(
 		// Everything the hook groups install, moved or new (post-checkout arrives new in v0.6.0).
 		const hooks = deliveredHooks(groups);
 		const orphans = unchainedHooks(root, configured, hooks);
-		if (orphans.length > 0) {
+		if (hooksConfigFlag(root) === '--local' && isLinkedWorktree(root)) {
+			// A linked worktree without worktree config shares its repository's config, so the value
+			// written here would change which hooks every other checkout runs (Roger, 13048081).
+			refusals.push(
+				`${directory}: is a linked worktree sharing its repository's config, so setting ` +
+					'core.hooksPath here would change it for every checkout. Turn on ' +
+					'extensions.worktreeConfig in that repository, or write to its main checkout.',
+			);
+		} else if (orphans.length > 0) {
 			refusals.push(
 				`${directory}: ${configured} holds ${orphans.join(', ')}, which no delivered hook ` +
 					`runs, so pointing core.hooksPath at ${group.targetRoot} would stop running ` +
@@ -179,7 +188,10 @@ function hooksPathLine(root: string, move: HomeMove, dryRun: boolean): string {
 	// Pointed at a folder missing any delivered hook, git would silently skip that hook's guard.
 	const missing = (move.hooks ?? [move.to]).filter((path) => !existsSync(join(root, path)));
 	if (missing.length > 0) return `KEPT ${what}: ${missing.join(', ')} not written`;
-	const set = Bun.spawnSync(['git', '-C', root, 'config', '--local', 'core.hooksPath', move.to], {
+	// To this checkout alone where worktree config allows it, so a move in one checkout never
+	// changes which hooks another runs (hooks-scope.ts).
+	const scope = hooksConfigFlag(root);
+	const set = Bun.spawnSync(['git', '-C', root, 'config', scope, 'core.hooksPath', move.to], {
 		stderr: 'pipe',
 		stdout: 'pipe',
 		windowsHide: true,

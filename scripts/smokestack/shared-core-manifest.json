@@ -210,6 +210,7 @@
 				{ "disposition": "synced", "source": "lib/shared-core/frozen.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/git-hooks.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/hook.ts" },
+				{ "disposition": "synced", "source": "lib/shared-core/hooks-scope.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/known-drift.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/lock-check.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/lock-scope.ts" },

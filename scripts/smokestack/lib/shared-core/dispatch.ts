@@ -20,25 +20,22 @@ import { join, resolve } from 'node:path';
 import type { SharedCoreGroup } from './manifest.ts';
 
 import { GIT_HOOKS } from './git-hooks.ts';
+import { effectiveHooksPath } from './hooks-scope.ts';
 import { runCache } from './run-cache.ts';
 
 const configuredHooks = runCache<string, string>();
 
 /**
- * The single value git dispatches hooks from. An empty string means unset, in which case git runs
- * .git/hooks and a file written to the group's targetRoot would never execute. Read once per
- * repository per run: every group with a hook asks it of every target, and a sweep does not
- * change a repository's config.
+ * The single value git dispatches hooks from in this checkout: its own under worktree config, else
+ * the shared one (hooks-scope.ts). An empty string means unset, in which case git runs .git/hooks
+ * and a file written to the group's targetRoot would never execute. Read once per repository per
+ * run: every group with a hook asks it of every target, and a sweep does not change a
+ * repository's config.
  */
 export function hooksPath(repoPath: string): string {
 	const known = configuredHooks.get(repoPath);
 	if (known !== undefined) return known;
-	const result = Bun.spawnSync(['git', '-C', repoPath, 'config', '--local', 'core.hooksPath'], {
-		stderr: 'pipe',
-		stdout: 'pipe',
-		windowsHide: true,
-	});
-	const configured = result.success ? result.stdout.toString().trim() : '';
+	const configured = effectiveHooksPath(repoPath);
 	configuredHooks.set(repoPath, configured);
 	return configured;
 }

@@ -6,9 +6,9 @@
  * stops at the first, because it runs inside a commit and the commit is refused either way.
  *
  * An interruption is not a failure. It stops the running step and what that step started (on POSIX,
- * not a process started detached in a process group of its own; see spawn.ts), runs nothing
- * further, and is reported as an interruption with the count of steps that did not run. It is never
- * recorded as a failed step followed by more work.
+ * not a process already orphaned to init, nor one started detached after the stop has looked; see
+ * spawn.ts), runs nothing further, and is reported as an interruption with the count of steps that
+ * did not run. It is never recorded as a failed step followed by more work.
  *
  * The summary counts what happened. A step is passed only when its process ended with 0, or when
  * the step cache replays a pass recorded over the same key and inputs (cache.ts); a replay is

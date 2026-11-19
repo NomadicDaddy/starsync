@@ -1,5 +1,5 @@
 {
-	"commit": "b79bca4c46748cbf449e155c2b632650063acab9",
+	"commit": "4070d88334b272e368cfb44d9a263f9b6550c333",
 	"groups": {
 		"leak-guard-hooks": {
 			"files": {
@@ -9,7 +9,7 @@
 				},
 				"scripts/smokestack/hooks/leak-guard-setup.sh": {
 					"mode": "100644",
-					"sha256": "cc7cc0095a1a5f67d584afadcd0ae7305f301669d30625cacb5f01b3bc521269"
+					"sha256": "22618b2f6369fd82c77b11a4820e6966e9609156b862c346afa66f4921eb01fa"
 				},
 				"scripts/smokestack/hooks/leak-guard.sh": {
 					"mode": "100644",
@@ -153,7 +153,7 @@
 				},
 				"scripts/smokestack/lib/smokestack/gate.ts": {
 					"mode": "100644",
-					"sha256": "052c25e29492198764d62f915592bb9de16e264e6c7ee72c7ec398f5853aa029"
+					"sha256": "c4b58fbe5c49f6d8b9f7e070d8a3511f5228525be3d651cb4ca122b2b9f83107"
 				},
 				"scripts/smokestack/lib/smokestack/heavy-config.ts": {
 					"mode": "100644",
@@ -221,7 +221,7 @@
 				},
 				"scripts/smokestack/lib/shared-core/dispatch.ts": {
 					"mode": "100644",
-					"sha256": "6d2a0ad3bbb6881cae26f3adf1806e26ba7e2234e3ba29f45c99766e636044e2"
+					"sha256": "4dd1df4cf797cb632e601ba001051f3726977d0552289d210228dbd9bf4184d8"
 				},
 				"scripts/smokestack/lib/shared-core/eligibility.ts": {
 					"mode": "100644",
@@ -242,6 +242,10 @@
 				"scripts/smokestack/lib/shared-core/hook.ts": {
 					"mode": "100644",
 					"sha256": "be15cb47b2e7bb6c32ba6ba66a82954bdf3da1a83a75413e940a46ade294f05e"
+				},
+				"scripts/smokestack/lib/shared-core/hooks-scope.ts": {
+					"mode": "100644",
+					"sha256": "f488cedca227c8a15b98786cf21ab9d4c485c855beaecb4a1a249052725bcb84"
 				},
 				"scripts/smokestack/lib/shared-core/known-drift.ts": {
 					"mode": "100644",
@@ -273,7 +277,7 @@
 				},
 				"scripts/smokestack/lib/shared-core/move-home.ts": {
 					"mode": "100644",
-					"sha256": "29063e02eaa085f68fee9c104a6dae1662cee8e607e1ced6fadd7fe38108f021"
+					"sha256": "107cf55085b7c75be97235408d3bcce8e3175d18a9c4bca90ae1cb60a7b9b9f4"
 				},
 				"scripts/smokestack/lib/shared-core/move-scripts.ts": {
 					"mode": "100644",
@@ -373,7 +377,7 @@
 				},
 				"scripts/smokestack/shared-core-manifest.json": {
 					"mode": "100644",
-					"sha256": "3aedde0b51c8ec79286b6d5adccf8e601ca402d781fd9ba6073b892919cf67bf"
+					"sha256": "d7317445b65b0d7bc4d21693ed6c853d1acc58d642950615b3a4e33da3e6a32a"
 				},
 				"scripts/smokestack/sync-shared-core.ts": {
 					"mode": "100644",
@@ -383,5 +387,5 @@
 		}
 	},
 	"owner": "smokestack",
-	"version": "0.10.11"
+	"version": "0.10.12"
 }

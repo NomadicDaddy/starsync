@@ -20,13 +20,22 @@ set -euo pipefail
 # hooks run in turn. Any other value is another tool's dispatch and is left alone, as the installers
 # leave it. Nothing here can fail the install.
 set_hooks_path() {
-	local rel current live
+	local rel current live scope=--local
 	# Asked of git from inside the folder: two spellings of one path (a mount, a drive letter) never
 	# compare equal as strings, and git answers relative to the top of the working tree either way.
 	rel="$(cd "$(dirname "$0")" && git rev-parse --show-prefix 2>/dev/null)" || return 0
 	rel="${rel%/}"
 	[ -n "$rel" ] || return 0
-	current="$(git config --local --get core.hooksPath 2>/dev/null || true)"
+	# Under extensions.worktreeConfig each checkout keeps its own value, and git dispatches from it
+	# first, then the shared one: read it that way and write this checkout's alone, so a prepare in a
+	# linked worktree never changes which hooks another checkout runs (lib/shared-core/hooks-scope.ts).
+	if [ "$(git config --bool --get extensions.worktreeConfig 2>/dev/null || true)" = true ]; then
+		scope=--worktree
+	fi
+	current="$(git config "$scope" --get core.hooksPath 2>/dev/null || true)"
+	if [ -z "$current" ] && [ "$scope" = --worktree ]; then
+		current="$(git config --local --get core.hooksPath 2>/dev/null || true)"
+	fi
 	case "${current%/}" in
 	"$rel" | "./$rel") return 0 ;;
 	'' | .githooks | ./.githooks) ;;
@@ -61,7 +70,7 @@ set_hooks_path() {
 			return 0
 		fi
 	fi
-	git config --local core.hooksPath "$rel" && echo "leak-guard: core.hooksPath set to $rel" >&2
+	git config "$scope" core.hooksPath "$rel" && echo "leak-guard: core.hooksPath set to $rel" >&2
 	return 0
 }
 set_hooks_path
