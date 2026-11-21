@@ -2,8 +2,8 @@
  * FROZEN TARGETS. Some repositories must not be written to for a while: they hold work that cannot
  * take a commit. The sync writes to every target its model resolves, so a write that is not
  * narrowed with `--only` reaches them. Which repositories are frozen is a fact about this machine
- * and names private siblings, so the list lives in an untracked file beside package.json, as the
- * rosters do, and only its `.example` is tracked. While the list names anything, a write is
+ * and names private siblings, so the list lives in an untracked file beside package.json, and only
+ * its `.example` is tracked. While the list names anything, a write is
  * refused when it is not narrowed, and when its narrowing names a frozen target. A dry run is
  * refused the same way, so the rehearsal and the write obey one rule.
  *

@@ -13,7 +13,9 @@
  *
  * Not followed: dynamic `import()`, `require`, and files read at run time; a step declares those.
  * A file Bun cannot parse imports nothing, since it cannot run: a fixture that is broken on purpose
- * does not make a step that only reads it uncacheable.
+ * does not make a step that only reads it uncacheable. A leading shebang is not a parse error:
+ * Bun runs the file, so the scan reads past it. A file the scan refuses that Bun could still run
+ * cannot be keyed, so its step runs, instead of being silently keyed on nothing.
  *
  * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
  * smokestack; every repository that takes it holds a byte-identical copy.
@@ -49,6 +51,18 @@ function loaderOf(path: string): Loader | null {
 	return dot === -1 ? null : (LOADERS[path.slice(dot)] ?? null);
 }
 
+/**
+ * A leading shebang, after an optional byte-order mark. Bun runs past it; its import scanner
+ * refuses it ("Unexpected #!", Bun 1.4.3), which would key a script with nothing it imports. The
+ * line's text is blanked and its line ending (LF or CRLF) kept, so every later line stays put.
+ */
+const SHEBANG = /^(\uFEFF?)#![^\r\n]*/u;
+
+/** `source` with a leading shebang's text blanked; any other `#!` is left as it is. */
+function withoutShebang(source: string): string {
+	return source.replace(SHEBANG, '$1');
+}
+
 function staticImports(source: string, loader: Loader): string[] {
 	return new Bun.Transpiler({ loader })
 		.scanImports(source)
@@ -56,12 +70,29 @@ function staticImports(source: string, loader: Loader): string[] {
 		.map((item) => item.path);
 }
 
-/** The specifiers a file imports statically, type-only ones included. */
+function transforms(source: string, loader: Loader): boolean {
+	try {
+		new Bun.Transpiler({ loader }).transformSync(source);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * The specifiers a file imports statically, type-only ones included. A source the scan and Bun's
+ * transpiler both refuse cannot run and imports nothing. One the scan refuses and the transpiler
+ * accepts can run, so its imports would go unkeyed: that throws, and the step, which cannot then
+ * be keyed, runs and records nothing.
+ */
 function specifiersOf(root: string, file: string, loader: Loader): string[] {
-	const source = readFileSync(join(root, file), 'utf8');
+	const source = withoutShebang(readFileSync(join(root, file), 'utf8'));
 	try {
 		staticImports(source, loader);
 	} catch {
+		if (transforms(source, loader)) {
+			throw new Error(`Bun can run ${file}, but its imports cannot be scanned`);
+		}
 		return [];
 	}
 	const rewritten = TYPE_ONLY.reduce((text, [pattern, by]) => text.replace(pattern, by), source);

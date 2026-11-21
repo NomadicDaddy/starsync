@@ -35,6 +35,8 @@ import { frozenRefusal, loadOwnerFrozen } from './lib/shared-core/frozen.ts';
 import { holdListedRows, localToday } from './lib/shared-core/known-drift.ts';
 import { scopeFindings } from './lib/shared-core/lock-scope.ts';
 import { loadManifest, type SharedCoreGroup } from './lib/shared-core/manifest.ts';
+import { membershipFindings } from './lib/shared-core/membership-check.ts';
+import { membershipReader } from './lib/shared-core/membership.ts';
 import { holdRecordLock, holdRecordLockUntilExit } from './lib/shared-core/record-lock.ts';
 import { reportCheck, reportWrite } from './lib/shared-core/report.ts';
 import {
@@ -95,9 +97,10 @@ export function runSharedCoreSync(options: SharedCoreOptions, place: SyncPlace =
 
 	// From here this checkout is the owner of every group (the loader admits one owner): the baseline
 	// is this checkout wherever the targets live, and what a write delivers from.
-	// The rosters and the deliveries record are gitignored, so from a branch worktree they are read
-	// from the main checkout, and the fleet root defaults to that checkout's parent (lib/shared-core/
-	// roots.ts). Saying which were used keeps a worktree run from passing on an empty roster unseen.
+	// The deliveries record and the frozen and known-drift lists are gitignored, so from a branch
+	// worktree they are read from the main checkout, and the fleet root defaults to that checkout's
+	// parent (lib/shared-core/roots.ts). Saying which were used keeps a worktree run from passing on
+	// an empty record unseen.
 	const fleetRoot =
 		options.fleetRoot === undefined ? defaultFleetRoot(root) : resolve(options.fleetRoot);
 	const groups = selectGroups(manifest, options.groups);
@@ -111,7 +114,7 @@ export function runSharedCoreSync(options: SharedCoreOptions, place: SyncPlace =
 			return 1;
 		}
 	}
-	console.info(`Configuration: rosters and deliveries from ${configRoot(root)}.`);
+	console.info(`Configuration: deliveries and owner lists from ${configRoot(root)}.`);
 	console.info(describeRoots(fleetRoot, loadFleetRoots(fleetRoot)));
 
 	// The owner's record of deliveries (lib/shared-core/deliveries.ts), read under the record lock by a
@@ -136,22 +139,22 @@ export function runSharedCoreSync(options: SharedCoreOptions, place: SyncPlace =
 	// never an installer's copy: both withhold the lockless allowance (lib/shared-core/behind.ts).
 	const forgotten = departedOrNone(root, fleetRoot);
 	const departed = forgotten === null ? null : new Set([...forgotten, ...run.written]);
+	// One committed-lock read per repository for the whole run, shared by every declared group.
+	const read = membershipReader(
+		manifest.filter((group) => group.targets.model === 'declared').map((group) => group.name),
+	);
 	const reports = groups.map((group) =>
-		checkGroup(group, fleetRoot, root, options.only, deliveries, departed),
+		checkGroup(group, fleetRoot, root, options.only, deliveries, departed, read),
 	);
 
 	if (options.check) {
-		const scope = scopeFindings(
-			reports,
-			manifest,
-			deliveries ?? {},
-			fleetRoot,
-			root,
-			options.only,
-		);
+		const scope = [
+			...scopeFindings(reports, manifest, deliveries ?? {}, fleetRoot, options.only),
+			...membershipFindings(manifest, fleetRoot, read, options.only),
+		];
 		// Rows already known (an end date) and repositories that keep their own gate (a decision),
-		// from lib/shared-core/known-drift.ts. Untracked like the rosters, so a branch worktree reads
-		// the main checkout's.
+		// from lib/shared-core/known-drift.ts. Untracked, so a branch worktree reads the main
+		// checkout's.
 		const held = holdListedRows(configRoot(root), reports, scope, localToday());
 		if (typeof held === 'string') {
 			console.error(`[FAIL] ${held}`);
@@ -177,9 +180,27 @@ export function runSharedCoreSync(options: SharedCoreOptions, place: SyncPlace =
 		}
 		return code;
 	}
+	// A repository whose membership cannot be read could be taking a declared group the write cannot
+	// see, so nothing is written while one is in scope (membership-check.ts). Every one is named; a
+	// rehearsal goes on to name the other blockers too.
+	const unreadable = membershipFindings(manifest, fleetRoot, read, options.only).filter(
+		(finding) => finding.kind === 'unreadable-membership',
+	);
+	const meanwhile =
+		'To write the other targets meanwhile, narrow with --only to leave this one out.';
+	for (const f of unreadable)
+		console.error(`REFUSED ${f.target}: ${f.detail} ${meanwhile} Nothing was written.`);
+	if (unreadable.length > 0 && !options.dryRun) return 1;
+	// A group on --retire leaves the named targets while their committed lock still declares it, so
+	// its recorded hashes are there to prove each file untouched (Roger 5Q-1). This run delivers
+	// nothing of it, and the lock plan stops counting it as reaching them (lock-write.ts), so it is
+	// retired with every guard in retire.ts. --retire needs --only: exactly the named repositories.
+	const writing = reports.map((report) =>
+		options.retire.has(report.group) ? { ...report, findings: [] } : report,
+	);
 	// The whole manifest, not the selection: a narrowed write has to know what else a target takes.
-	const code = reportWrite(reports, manifest, fleetRoot, root, options, run);
-	return run.unrecorded.length > 0 ? Math.max(code, 1) : code;
+	const code = reportWrite(writing, manifest, fleetRoot, root, options, run);
+	return run.unrecorded.length > 0 || unreadable.length > 0 ? Math.max(code, 1) : code;
 }
 
 /**

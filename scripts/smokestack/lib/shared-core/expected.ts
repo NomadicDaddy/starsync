@@ -56,7 +56,7 @@ export interface Difference {
 export type GroupState = Record<string, LockedFile | null>;
 
 /** Every file the group keeps current, by installed path. This is the set a lock records. */
-export function syncedPaths(group: SharedCoreGroup): SyncedPath[] {
+export function syncedPaths(group: Pick<SharedCoreGroup, 'files' | 'targetRoot'>): SyncedPath[] {
 	return group.files
 		.filter((file) => file.disposition === 'synced')
 		.map((file) => ({ file, path: installedPath(group, file) }));

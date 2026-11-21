@@ -84,7 +84,6 @@ export function planLocks(
 	selected: SharedCoreGroup[],
 	all: SharedCoreGroup[],
 	fleetRoot: string,
-	ownerRoot: string,
 	delivery: Delivery | null,
 	retiring: Set<string>,
 	deliveries: Deliveries,
@@ -128,7 +127,8 @@ export function planLocks(
 			'narrow with --only to leave this one out.';
 		if (refuse(dirty ? [dirtyLock] : [])) continue;
 
-		const reaching = reachingGroups(directory, reports, all, fleetRoot, ownerRoot);
+		const reached = reachingGroups(directory, reports, all, fleetRoot);
+		const reaching = reached.filter((name) => !retiring.has(name)); // --retire takes it out
 		const declared = Object.keys(lock.groups).filter((name) => !reaching.includes(name));
 		// A file a group still taken here installs is that group's now, whichever group it left.
 		const installs = new Set(
@@ -148,7 +148,7 @@ export function planLocks(
 							'does not reach it from here. Writing the lock would drop what that repository ' +
 							'declared. This stops the whole run: to write the other targets, narrow with ' +
 							'--only to leave this one out. If it is leaving on purpose, forget it there and ' +
-							'write with --retire <group>.',
+							'write with --only <directory> --retire <group>.',
 					];
 		if (refuse([...leaving.refusals, ...unreached])) continue;
 		// A file a reaching group no longer installs anywhere, and is not moving to a new home, is

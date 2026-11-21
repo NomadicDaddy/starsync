@@ -23,7 +23,7 @@ import { posix } from 'node:path';
 
 import { syncedPaths } from './expected.ts';
 import { hashText, installedPath, isClaim, type Lock, LOCK_FILE } from './lock.ts';
-import { parseManifest, type SharedCoreGroup } from './manifest.ts';
+import { parseManifestAt, type PastGroup } from './manifest.ts';
 import { sourcesOf } from './owner.ts';
 import { runCache } from './run-cache.ts';
 
@@ -104,7 +104,7 @@ export function syncedPathsAt(ownerRoot: string, rev: string): Map<string, strin
 		manifest === null || manifest === undefined
 			? null
 			: new Map(
-					parseManifest(manifest).map((group) => [
+					parseManifestAt(manifest).map((group) => [
 						group.name,
 						syncedPaths(group).map((synced) => synced.path),
 					]),
@@ -122,7 +122,7 @@ export function deliveredAt(ownerRoot: string, rev: string): Map<string, Set<str
 	if (manifest === null || manifest === undefined) return null;
 
 	const sources = new Map<string, string[]>();
-	for (const group of parseManifest(manifest)) {
+	for (const group of parseManifestAt(manifest)) {
 		for (const { file, path } of syncedPaths(group)) {
 			const variants = sourcesOf(file).map((s) =>
 				posix.normalize(`${group.sourceRoot}/${s}`),
@@ -189,7 +189,7 @@ function newestTagAbove(ownerRoot: string, version: string): null | string {
 }
 
 /** Each tag's manifest as parsed, remembered like every other answer here. */
-const groupsAt = runCache<string, SharedCoreGroup[]>();
+const groupsAt = runCache<string, PastGroup[]>();
 
 /**
  * Every path a tagged release of the owner installed `group` at, read from each tag's manifest:
@@ -212,7 +212,7 @@ export function taggedPaths(ownerRoot: string, group: string): Set<string> {
 			const manifest = showAll(ownerRoot, `refs/tags/${tag}`, [MANIFEST_PATH]).get(
 				MANIFEST_PATH,
 			);
-			groups = manifest === null || manifest === undefined ? [] : parseManifest(manifest);
+			groups = manifest === null || manifest === undefined ? [] : parseManifestAt(manifest);
 			groupsAt.set(key, groups);
 		}
 		const then = groups.find((candidate) => candidate.name === group);

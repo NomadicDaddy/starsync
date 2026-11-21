@@ -32,6 +32,7 @@ import { assertCacheCoverage, parseStepCache, type StepCache } from './cache-con
 import { asObject, asText, CONFIG_FILE, fail } from './config-read.ts';
 import { type EnvPolicy, parseEnv } from './env.ts';
 import { type HeavyConfig, parseHeavy } from './heavy-config.ts';
+import { parseOmits } from './omits.ts';
 
 /** The folder the runner is installed in: two above this file, beside smokestack.ts. */
 const RUNNER_DIR = join(import.meta.dir, '..', '..');
@@ -79,6 +80,8 @@ export interface Config {
 	env: EnvPolicy | null;
 	fast: null | Step[];
 	heavy: HeavyConfig;
+	/** Catalogued gates this repository leaves out, with the reason it gives (omits.ts). */
+	omits: ReadonlyMap<string, string>;
 	/** package.json's name, which each step's `onlyIn` is matched against. Null: none. */
 	packageName: null | string;
 	qc: Step[];
@@ -239,7 +242,7 @@ function parseConfig(
 	} catch (err) {
 		fail(`is not JSON (${err instanceof Error ? err.message : String(err)}).`);
 	}
-	const root = asObject(raw, 'the file', ['env', 'fast', 'heavy', 'qc', 'version']);
+	const root = asObject(raw, 'the file', ['env', 'fast', 'heavy', 'omits', 'qc', 'version']);
 	const version = root['version'];
 	if (typeof version !== 'number' || !ACCEPTED_VERSIONS.includes(version)) {
 		fail(
@@ -252,6 +255,7 @@ function parseConfig(
 		env: parseEnv(root['env']),
 		fast: asFast(root['fast'], qc, scripts, packageName),
 		heavy: parseHeavy(root['heavy']),
+		omits: parseOmits(root['omits']),
 		packageName,
 		qc,
 	};
@@ -269,16 +273,22 @@ function readPackageName(root: string): null | string {
 	}
 }
 
-/** Reads the config at `root`. A missing file is a ConfigError: nothing says what the gate is. */
-export function readConfig(root: string, scripts: null | Record<string, string>): Config {
+/**
+ * Reads the config at `root`. A missing file is a ConfigError: nothing says what the gate is. `file`
+ * is where the config is: by default where this runner reads it, given where the runner is
+ * installed. smokestack's own gate names a consumer's file explicitly, since its runner is not.
+ */
+export function readConfig(
+	root: string,
+	scripts: null | Record<string, string>,
+	file = configPath(root),
+): Config {
 	let text: string;
 	try {
-		text = readFileSync(configPath(root), 'utf8');
+		text = readFileSync(file, 'utf8');
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-		fail(
-			`is missing at ${dirname(configPath(root))}, so nothing says what this repository's gate runs.`,
-		);
+		fail(`is missing at ${dirname(file)}, so nothing says what this repository's gate runs.`);
 	}
 	return parseConfig(text, scripts, readPackageName(root));
 }

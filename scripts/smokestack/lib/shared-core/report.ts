@@ -47,8 +47,10 @@ function order(findings: Finding[]): Finding[] {
 		'stale-layout': 5,
 		'stale-lock': 2,
 		uncovered: 5,
+		'undeclared-carrier': 2,
 		unguarded: 3,
 		'unmanaged-dispatch': 7,
+		'unreadable-membership': 2,
 		unwired: 4,
 	};
 	return [...findings].sort((a, b) => rank[a.kind] - rank[b.kind]);
@@ -134,7 +136,8 @@ export function reportCheck(
 					'version rewrites the lock, and its reconcile the record. Where the finding is a ' +
 					'group the lock names that does not reach that repository, or a file of such a ' +
 					'group held there, it is corrected in that repository, or, where the group is ' +
-					'leaving on purpose, forgotten there and retired by a write with --retire <group>.',
+					'leaving on purpose, forgotten there and retired by a write with --only ' +
+					'<directory> --retire <group>.',
 			);
 		}
 		if (fatal.some((f) => f.kind === 'old-path')) {
@@ -206,17 +209,7 @@ export function reportWrite(
 			return 1;
 		}
 	}
-	const plan = planLocks(
-		owned,
-		groups,
-		manifest,
-		fleetRoot,
-		root,
-		delivery,
-		retire,
-		record,
-		dryRun,
-	);
+	const plan = planLocks(owned, groups, manifest, fleetRoot, delivery, retire, record, dryRun);
 	// A delivered file whose installed path changed (move.ts): planned now, applied after the locks.
 	// A rehearsal plans the targets refused above too, so their hooks path is reported as well.
 	const directories = [...plan.targets.map((target) => target.directory), ...plan.rehearsed];

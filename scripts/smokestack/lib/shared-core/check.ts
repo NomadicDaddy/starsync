@@ -23,7 +23,7 @@ import type { SharedCoreGroup } from './manifest.ts';
 import { classifyBehind } from './behind.ts';
 import { departedFindings } from './delivery-check.ts';
 import { chainedByHook, runByGit } from './dispatch.ts';
-import { assertPackageIdentity, skipReason } from './eligibility.ts';
+import { skipReason } from './eligibility.ts';
 import {
 	differingHookFinding,
 	readDispatch,
@@ -33,6 +33,7 @@ import {
 } from './hook.ts';
 import { lockFindings } from './lock-check.ts';
 import { lockFileIn } from './lock.ts';
+import { type Membership, membershipReader } from './membership.ts';
 import {
 	assertHookChainIsCarried,
 	assertSourcesExist,
@@ -59,8 +60,10 @@ export type FindingKind =
 	| 'stale-layout'
 	| 'stale-lock'
 	| 'uncovered'
+	| 'undeclared-carrier'
 	| 'unguarded'
 	| 'unmanaged-dispatch'
+	| 'unreadable-membership'
 	| 'unwired';
 
 /**
@@ -111,6 +114,8 @@ export function checkGroup(
 	// The directories the owner has forgotten under this root (departed.ts), with any a write left
 	// pending. Null, where it keeps no list or cannot read it, withholds the lockless allowance.
 	departed: null | Set<string> = null,
+	// One membership read per repository for the whole run (membership.ts), shared across groups.
+	read: (root: string) => Membership = membershipReader([group.name]),
 ): GroupReport {
 	const recorded = deliveries ?? {};
 	assertSourcesExist(group, ownerRoot);
@@ -131,7 +136,7 @@ export function checkGroup(
 	};
 
 	const skipReasons = new Map<string, string>();
-	for (const target of resolveTargets(group, fleetRoot, ownerRoot, only)) {
+	for (const target of resolveTargets(group, fleetRoot, only, read)) {
 		const scripts = readScripts(target.path);
 		// A skipped target produces no findings, and the write path takes its worklist from findings,
 		// so every exclusion eligibility.ts makes is unwritable by the same construction that makes a
@@ -142,7 +147,6 @@ export function checkGroup(
 			skipReasons.set(target.directory, skip);
 			continue;
 		}
-		assertPackageIdentity(target);
 		report.targets += 1;
 		report.reached.push(target.directory);
 		const first = report.findings.length;
@@ -266,7 +270,8 @@ export function checkGroup(
  * are current under a lock that does not say so, and a file the lock's delivery included that is
  * gone, which is the one absence that is not a rollout gap. See lock-check.ts. The last is a group
  * whose wiring is its point, held by a repository that does not run it: see wiring.ts. And a script
- * or hook still naming where a moved group used to be: see old-path.ts.
+ * or hook still naming where a moved group used to be: see old-path.ts. And a repository whose
+ * membership cannot be read or no longer covers what it carries: see membership-check.ts.
  */
 export function isFatal(finding: Finding): boolean {
 	return (
@@ -275,6 +280,8 @@ export function isFatal(finding: Finding): boolean {
 		finding.kind === 'lost-delivery' ||
 		finding.kind === 'not-run' ||
 		finding.kind === 'old-path' ||
-		finding.kind === 'stale-lock'
+		finding.kind === 'stale-lock' ||
+		finding.kind === 'undeclared-carrier' ||
+		finding.kind === 'unreadable-membership'
 	);
 }

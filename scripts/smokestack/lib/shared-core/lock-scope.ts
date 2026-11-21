@@ -12,8 +12,9 @@
  *   group its lock does not declare.
  *
  * So each reached repository that has a lock is held to them here, once per repository. A
- * repository with no lock is not looked at: it takes whatever discovery or a roster gives it, as
- * it always has. "Reaches" is the write plan's own answer (`reachingGroups`), not a second copy.
+ * repository with no lock is not looked at: it takes whatever discovery gives it and declares
+ * nothing, as it always has. "Reaches" is the write plan's own answer (`reachingGroups`), not a
+ * second copy.
  *
  * The record is held the same way from its side: a delivery recorded under a group the manifest no
  * longer has belongs to no group's comparison either, and stays until it is forgotten on purpose.
@@ -51,7 +52,6 @@ export function scopeFindings(
 	manifest: SharedCoreGroup[],
 	deliveries: Deliveries,
 	fleetRoot: string,
-	ownerRoot: string,
 	only?: Set<string>,
 ): Finding[] {
 	const findings: Finding[] = [];
@@ -64,7 +64,7 @@ export function scopeFindings(
 		const stale = (group: string, detail: string): void => {
 			findings.push({ detail, group, kind: 'stale-lock', target: directory });
 		};
-		const reaching = reachingGroups(directory, reports, manifest, fleetRoot, ownerRoot);
+		const reaching = reachingGroups(directory, reports, manifest, fleetRoot);
 
 		for (const name of Object.keys(lock.groups).sort()) {
 			if (!known.has(name)) {

@@ -27,9 +27,10 @@ export const USAGE = `sync-shared-core — sync the files this fleet shares betw
                           more than one group is named one group per flag.
   --only <csv>            Restrict to the named target directories. Narrows what the group's target
                           model already resolved; it can never add a target the model rejected.
-  --retire <name>         With --write: a group a target's lock declares and no longer takes, and
-                          the record has forgotten there, leaves it. Its files are removed where
-                          they are exactly as delivered, and the lock drops it. Repeatable.
+  --retire <name>         With --write and --only: a group the named targets' committed lock still
+                          declares, and the record has forgotten there, leaves them. Its files are
+                          removed where they are exactly as delivered, and the lock drops it.
+                          Repeatable.
   --fleet-root <dir>      Directory holding the peer repositories. Defaults to SMOKESTACK_FLEET_ROOT
                           when set, else the parent of this repository's main checkout (from a
                           branch worktree, not the worktree's own parent). Its untracked
@@ -104,6 +105,13 @@ export function parseSharedCoreArgs(args: string[]): SharedCoreOptions {
 	}
 	if (parsed.retire.size > 0 && !parsed.write) {
 		throw new Error('--retire only means anything with --write.');
+	}
+	// A declared group leaves a repository that still declares it, so an unnarrowed --retire would
+	// take it out of every repository that declares it. One repository's lead decides for that one.
+	if (parsed.retire.size > 0 && parsed.only === undefined) {
+		throw new Error(
+			'--retire needs --only <directory>: a group leaves the named repositories.',
+		);
 	}
 	return parsed;
 }

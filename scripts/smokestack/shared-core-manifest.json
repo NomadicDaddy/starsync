@@ -47,6 +47,13 @@
 				{ "disposition": "synced", "source": "check-leak-guard-binary-cases.sh" },
 				{ "disposition": "seeded", "requiresPackageJson": true, "source": "run-bash.ts" }
 			],
+			"gates": [
+				{
+					"id": "leak-guard",
+					"purpose": "Self-tests the delivered leak guard against fixtures, so a guard that passes everything fails the gate.",
+					"script": "check:leak-guard"
+				}
+			],
 			"name": "leak-guard-scripts",
 			"owner": "smokestack",
 			"sourceRoot": "scripts",
@@ -62,12 +69,24 @@
 				{ "disposition": "synced", "source": "check-audit-artifact-hygiene.ts" },
 				{ "disposition": "synced", "source": "check-env-spread.ts" }
 			],
+			"gates": [
+				{
+					"id": "audit-artifact-hygiene",
+					"purpose": "Audit reports and findings stay well-formed, starting with a report never claiming a date that has not come.",
+					"script": "check:audit-artifact-hygiene"
+				},
+				{
+					"id": "env-spread",
+					"purpose": "No child process is handed the whole environment by accident.",
+					"script": "check:env-spread"
+				}
+			],
 			"name": "portable-gates-aidd",
 			"owner": "smokestack",
 			"requiresPackageJson": true,
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts/smokestack",
-			"targets": { "model": "roster", "roster": "portable-gates-aidd-targets.json" },
+			"targets": { "model": "declared" },
 			"wiring": {
 				"check:audit-artifact-hygiene": "bun scripts/smokestack/check-audit-artifact-hygiene.ts",
 				"check:env-spread": "bun scripts/smokestack/check-env-spread.ts"
@@ -86,12 +105,34 @@
 				{ "disposition": "synced", "source": "lib/docs/scan.ts" },
 				{ "disposition": "synced", "source": "lib/docs/waivers.ts" }
 			],
+			"gates": [
+				{
+					"id": "destructive-confirmation",
+					"purpose": "A destructive user action (delete, revoke, impersonate, purge) asks for confirmation before it is sent.",
+					"script": "check:destructive-confirmation"
+				},
+				{
+					"id": "docs",
+					"purpose": "Every internal Markdown link resolves to a file that exists.",
+					"script": "check:docs"
+				},
+				{
+					"id": "git-window-hide",
+					"purpose": "Every direct git subprocess passes windowsHide: true.",
+					"script": "check:git-window-hide"
+				},
+				{
+					"id": "no-inline-references",
+					"purpose": "Drizzle foreign keys are named foreignKey() constraints, never inline .references().",
+					"script": "check:no-inline-references"
+				}
+			],
 			"name": "portable-gates",
 			"owner": "smokestack",
 			"requiresPackageJson": true,
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts/smokestack",
-			"targets": { "model": "roster", "roster": "portable-gates-targets.json" },
+			"targets": { "model": "declared" },
 			"wiring": {
 				"check:destructive-confirmation": "bun scripts/smokestack/check-destructive-confirmation.ts",
 				"check:docs": "bun scripts/smokestack/check-docs.ts",
@@ -157,12 +198,24 @@
 					"target": "scripts/smokestack/test-gate-conventions.ts"
 				}
 			],
+			"gates": [
+				{
+					"id": "gate-conventions",
+					"purpose": "Every gate script follows the decidable rules of gate-conventions.md.",
+					"script": "check:gate-conventions"
+				},
+				{
+					"id": "gate-conventions-self-test",
+					"purpose": "The gate-conventions meta-gate passes a conforming gate and refuses one that breaks each rule.",
+					"script": "test:gate-conventions"
+				}
+			],
 			"name": "gate-conventions",
 			"owner": "smokestack",
 			"requiresPackageJson": true,
 			"sourceRoot": ".",
 			"targetRoot": ".",
-			"targets": { "model": "roster", "roster": "gate-conventions-targets.json" },
+			"targets": { "model": "declared" },
 			"wiring": {
 				"check:gate-conventions": "bun scripts/smokestack/check-gate-conventions.ts",
 				"test:gate-conventions": "bun scripts/smokestack/test-gate-conventions.ts"
@@ -182,7 +235,7 @@
 			"owner": "smokestack",
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts/smokestack",
-			"targets": { "model": "roster", "roster": "shared-core-targets.json" }
+			"targets": { "model": "declared" }
 		},
 		{
 			"files": [{ "disposition": "synced", "source": "lib/third-party-licenses/resolve.ts" }],
@@ -190,7 +243,7 @@
 			"owner": "smokestack",
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts/smokestack",
-			"targets": { "model": "roster", "roster": "license-core-adapter-targets.json" }
+			"targets": { "model": "declared" }
 		},
 		{
 			"files": [
@@ -218,6 +271,8 @@
 				{ "disposition": "synced", "source": "lib/shared-core/lock.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/manifest-file.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/manifest.ts" },
+				{ "disposition": "synced", "source": "lib/shared-core/membership-check.ts" },
+				{ "disposition": "synced", "source": "lib/shared-core/membership.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/move-home.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/move-scripts.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/move.ts" },
@@ -243,12 +298,19 @@
 				{ "disposition": "synced", "source": "lib/shared-core/worktree-record.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/write.ts" }
 			],
+			"gates": [
+				{
+					"id": "shared-core",
+					"purpose": "The repository's delivered copies are the ones its lock records, verified against smokestack's tags.",
+					"script": "check:shared-core"
+				}
+			],
 			"name": "shared-core-sync",
 			"owner": "smokestack",
 			"requiresPackageJson": true,
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts/smokestack",
-			"targets": { "model": "roster", "roster": "shared-core-sync-targets.json" },
+			"targets": { "model": "declared" },
 			"wiring": {
 				"check:shared-core": "bun scripts/smokestack/sync-shared-core.ts --check"
 			}
@@ -270,6 +332,7 @@
 				{ "disposition": "synced", "source": "lib/smokestack/heavy-files.ts" },
 				{ "disposition": "synced", "source": "lib/smokestack/heavy.ts" },
 				{ "disposition": "synced", "source": "lib/smokestack/list.ts" },
+				{ "disposition": "synced", "source": "lib/smokestack/omits.ts" },
 				{ "disposition": "synced", "source": "lib/smokestack/preflight.ts" },
 				{ "disposition": "synced", "source": "lib/smokestack/process-start.ts" },
 				{ "disposition": "synced", "source": "lib/smokestack/spawn.ts" }
@@ -280,7 +343,7 @@
 			"requiresPackageJson": true,
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts/smokestack",
-			"targets": { "model": "roster", "roster": "runner-targets.json" },
+			"targets": { "model": "declared" },
 			"wiring": {
 				"smoke:qc": "bun scripts/smokestack/smokestack.ts",
 				"smoke:qc:fast": "bun scripts/smokestack/smokestack.ts --fast"
@@ -294,7 +357,7 @@
 			"requiresPackageJson": true,
 			"sourceRoot": "scripts",
 			"targetRoot": "scripts/smokestack",
-			"targets": { "model": "roster", "roster": "release-states-targets.json" }
+			"targets": { "model": "declared" }
 		},
 		{
 			"files": [{ "disposition": "synced", "source": "pre-commit-leak-guard-only" }],
@@ -302,7 +365,7 @@
 			"owner": "smokestack",
 			"sourceRoot": ".githooks",
 			"targetRoot": "scripts/smokestack/hooks",
-			"targets": { "model": "roster", "roster": "hook-variant-sources-targets.json" }
+			"targets": { "model": "declared" }
 		}
 	]
 }

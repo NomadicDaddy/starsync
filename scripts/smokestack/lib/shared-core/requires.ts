@@ -33,7 +33,7 @@ export function asRequires(raw: unknown, where: string): string[] {
 }
 
 /** A requirement must name a group that exists and is not the group itself. */
-export function assertRequirements(groups: SharedCoreGroup[]): void {
+export function assertRequirements(groups: Pick<SharedCoreGroup, 'name' | 'requires'>[]): void {
 	const names = new Set(groups.map((group) => group.name));
 	for (const group of groups) {
 		for (const required of group.requires ?? []) {

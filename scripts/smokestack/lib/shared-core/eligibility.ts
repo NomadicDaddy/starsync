@@ -14,7 +14,7 @@
  * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
  * smokestack; every repository that takes it holds a byte-identical copy.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { SharedCoreGroup } from './manifest.ts';
@@ -52,34 +52,4 @@ export function skipReason(
 		}
 	}
 	return null;
-}
-
-/**
- * Throws when a roster entry pins a package name the directory does not hold.
- *
- * A roster names DIRECTORIES, and a directory is not an identity: a rename, a stale entry, or a
- * clone under a different name would silently retarget a write at whatever sits there now. This is
- * fatal rather than a skip because it means the roster is wrong, and continuing would compare the
- * right files against the wrong repository.
- */
-export function assertPackageIdentity(target: Target): void {
-	if (target.packageName === undefined) return;
-	const manifest = join(target.path, 'package.json');
-	if (!existsSync(manifest)) return;
-
-	let name: string | undefined;
-	try {
-		name = (JSON.parse(readFileSync(manifest, 'utf8')) as { name?: string }).name;
-	} catch (err) {
-		// Unguarded, the parse error named no repository and stopped the whole sweep.
-		const reason = err instanceof Error ? err.message : String(err);
-		throw new Error(`${target.directory}: package.json is not valid JSON (${reason}).`, {
-			cause: err,
-		});
-	}
-	if (name !== target.packageName) {
-		throw new Error(
-			`${target.directory}: expected package ${target.packageName}, found ${name ?? 'none'}.`,
-		);
-	}
 }

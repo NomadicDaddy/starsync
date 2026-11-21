@@ -1,10 +1,13 @@
 /**
  * Resolves the repositories a group applies to.
  *
- * Two models, because the two existing syncs genuinely differ. The license core names its four
- * siblings in a gitignored roster; the hook installers sweep the fleet root and take whatever they
- * find. Neither can be expressed as the other: a roster cannot arm a repository nobody remembered
- * to add, and discovery cannot express a subset chosen by hand.
+ * Two models, because the groups genuinely differ. An opt-in group is `declared`: it reaches the
+ * siblings whose committed lock names it (membership.ts), so each repository chooses by its own
+ * reviewed commit. The hook installers' groups are `discovered`: they sweep the fleet root and take
+ * whatever they find. Neither can be expressed as the other: a declaration cannot arm a repository
+ * nobody opted in, and discovery cannot express a subset chosen by each repository. Until v1.0 the
+ * opt-in groups read gitignored rosters in the owner instead, and a lost roster dropped every
+ * repository it listed with nothing red (opt-in-membership-in-the-lock).
  *
  * A discovered group's marker is OPTIONAL. Every discovered group today names none: the leak guard
  * and the push guards are installed into every git repository under the fleet root. The push
@@ -16,7 +19,7 @@
  *
  * NO GROUP NAMES A TARGET REPOSITORY. This manifest is tracked in repositories that are published,
  * and a private sibling's name in a tracked file is the exact disclosure leak-guard.sh
- * exists to stop. A roster group names a gitignored FILE; a discovered group names at most a
+ * exists to stop. A declared group names nothing at all; a discovered group names at most a
  * MARKER, and none does today.
  *
  * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
@@ -28,67 +31,60 @@ import { join } from 'node:path';
 import type { SharedCoreGroup } from './manifest.ts';
 
 import { lockFileIn } from './lock.ts';
-import { worktreeFor } from './pending.ts';
-import { configRoot } from './roots.ts';
+import { type Membership, membershipReader } from './membership.ts';
+import { canonicalOf } from './pending.ts';
 
 export interface Target {
 	/** Directory name beside the fleet root, used for reporting. */
 	directory: string;
-	/** Expected package.json "name", when the roster pins one. */
-	packageName?: string;
 	path: string;
 }
 
-function readRoster(ownerRoot: string, roster: string): null | string[] {
-	const path = join(configRoot(ownerRoot), roster);
-
-	// Absent is not an error, and this is load-bearing rather than lenient. CI checks out one
-	// repository, so there is nothing beside it to verify; an adopter of this template has no
-	// siblings at all. Both must leave the gate green, or the gate gets removed from CI.
-	if (!existsSync(path)) return null;
-	const parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
-	if (!Array.isArray(parsed)) throw new Error(`${path}: expected an array of target entries.`);
-	return parsed as string[];
+/** Every sibling git repository under the fleet root but the owner and `.old` folders. */
+export function siblingRepositories(fleetRoot: string, owner: string): Target[] {
+	return readdirSync(fleetRoot, { withFileTypes: true })
+		.filter((entry) => entry.isDirectory() && !entry.name.endsWith('.old'))
+		.filter((entry) => entry.name !== owner)
+		.map((entry) => ({ directory: entry.name, path: join(fleetRoot, entry.name) }))
+		.filter((t) => existsSync(join(t.path, '.git')));
 }
 
-function rosterTargets(group: SharedCoreGroup, fleetRoot: string, ownerRoot: string): Target[] {
-	if (group.targets.model !== 'roster') return [];
-	const entries = readRoster(ownerRoot, group.targets.roster);
-	if (entries === null) return [];
-
-	return entries.map((entry, index) => {
-		const raw: Record<string, unknown> =
-			typeof entry === 'string'
-				? { directory: entry }
-				: entry !== null && typeof entry === 'object'
-					? (entry as Record<string, unknown>)
-					: {};
-		const directory = raw['directory'];
-		const packageName = raw['packageName'] ?? directory;
-		if (
-			typeof directory !== 'string' ||
-			directory.length === 0 ||
-			directory !== directory.trim() ||
-			directory === '.' ||
-			directory === '..' ||
-			/[\\/]/u.test(directory)
-		) {
-			throw new Error(
-				`${group.targets.model === 'roster' ? group.targets.roster : ''}: entry ${index} ` +
-					'directory must be one sibling directory name.',
-			);
-		}
-		// A linked worktree of the named repository stands in for it when no folder has its name: a
-		// worktree is named for its task (pending.ts). The package name is still the roster's.
-		const folder = existsSync(join(fleetRoot, directory))
-			? directory
-			: (worktreeFor(fleetRoot, directory) ?? directory);
-		return {
-			directory: folder,
-			path: join(fleetRoot, folder),
-			...(typeof packageName === 'string' ? { packageName } : {}),
-		};
+/**
+ * A declared group's targets: the siblings whose committed lock names it. One that cannot vouch
+ * for its membership is not a target here; membership-check.ts reports it so the check fails.
+ *
+ * An absent fleet is not an error, and this is load-bearing rather than lenient. CI checks out one
+ * repository, so there is nothing beside it to verify; an adopter of this template has no siblings
+ * at all. Both must leave the gate green, or the gate gets removed from CI.
+ *
+ * Two siblings that are checkouts of one repository (its canonical folder and a linked worktree,
+ * or two worktrees) are refused, never both written: each carries the same committed lock, so a
+ * write would deliver twice into one repository's history. The rosters refused this as an
+ * ambiguous name (Roger and Morticia, 95427f3), and the sweep keeps it (Roger #59791).
+ */
+function declaredTargets(
+	group: SharedCoreGroup,
+	fleetRoot: string,
+	read: (root: string) => Membership,
+): Target[] {
+	const targets = siblingRepositories(fleetRoot, group.owner).filter((t) => {
+		const membership = read(t.path);
+		return membership.kind === 'declared' && membership.groups.has(group.name);
 	});
+	const byRepository = new Map<string, string[]>();
+	for (const t of targets) {
+		const repository = canonicalOf(t.path)?.directory ?? t.directory;
+		byRepository.set(repository, [...(byRepository.get(repository) ?? []), t.directory]);
+	}
+	for (const [repository, folders] of byRepository) {
+		if (folders.length < 2) continue;
+		throw new Error(
+			`${fleetRoot} holds ${String(folders.length)} checkouts of ${repository} ` +
+				`(${folders.sort().join(', ')}), so which one ${group.name} reaches is ambiguous. ` +
+				'Pass one worktree parent per run.',
+		);
+	}
+	return targets;
 }
 
 /**
@@ -187,28 +183,25 @@ export function discovers(group: SharedCoreGroup, repoPath: string): boolean {
 }
 
 function discoveredTargets(group: SharedCoreGroup, fleetRoot: string, owner: string): Target[] {
-	return readdirSync(fleetRoot, { withFileTypes: true })
-		.filter((entry) => entry.isDirectory() && !entry.name.endsWith('.old'))
-		.filter((entry) => entry.name !== owner)
-		.map((entry) => ({ directory: entry.name, path: join(fleetRoot, entry.name) }))
-		.filter((t) => discovers(group, t.path));
+	return siblingRepositories(fleetRoot, owner).filter((t) => discovers(group, t.path));
 }
 
 /**
  * `only` narrows the resolved set to the named directories and can never widen it: it is applied
- * after the model has answered, so a repository the roster omits or discovery rejects stays out
- * however it is spelled on the command line. That is what makes it safe as the rollout aid it is —
- * covering the fleet one repository at a time — rather than a second, looser way to name a target.
+ * after the model has answered, so a repository that does not declare a group or that discovery
+ * rejects stays out however it is spelled on the command line. That is what makes it safe as the
+ * rollout aid it is — covering the fleet one repository at a time — rather than a second, looser way
+ * to name a target. `read` lets one invocation share a single membership read per repository.
  */
 export function resolveTargets(
 	group: SharedCoreGroup,
 	fleetRoot: string,
-	ownerRoot: string,
 	only?: Set<string>,
+	read: (root: string) => Membership = membershipReader([group.name]),
 ): Target[] {
 	const targets =
-		group.targets.model === 'roster'
-			? rosterTargets(group, fleetRoot, ownerRoot)
+		group.targets.model === 'declared'
+			? declaredTargets(group, fleetRoot, read)
 			: discoveredTargets(group, fleetRoot, group.owner);
 	return only === undefined ? targets : targets.filter((t) => only.has(t.directory));
 }

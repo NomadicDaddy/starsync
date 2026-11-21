@@ -71,9 +71,10 @@ export function isUnsettled(finding: Finding): boolean {
  * here, because there is no entry to compare and the absent files read as a gap. That is answered
  * for a DISCOVERED group only. A repository that keeps a lock takes every discovered group
  * (targets.ts), so if the group existed at the commit the lock names, that delivery included it.
- * A group reached through a roster cannot be answered this way: its absence from the lock, or a
- * bare declaration of it, may equally be a repository the roster started naming after that
- * delivery, and nothing here records which repositories a past write reached.
+ * A declared group cannot be answered this way: a bare declaration of it is how a repository joins
+ * (membership.ts), so it may equally be a repository that declared the group after that delivery,
+ * and nothing here records which repositories a past write reached. Its lock reads stale until the
+ * first write delivers it, which is the order a join takes.
  */
 function lostPaths(
 	group: SharedCoreGroup,

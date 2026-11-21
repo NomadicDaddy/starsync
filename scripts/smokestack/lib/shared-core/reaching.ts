@@ -20,14 +20,13 @@ export function reachingGroups(
 	reports: GroupReport[],
 	all: SharedCoreGroup[],
 	fleetRoot: string,
-	ownerRoot: string,
 ): string[] {
 	const reportOf = new Map(reports.map((report) => [report.group, report]));
 	return all
 		.filter((group) => {
 			const report = reportOf.get(group.name);
 			if (report !== undefined) return report.reached.includes(directory);
-			return resolveTargets(group, fleetRoot, ownerRoot, new Set([directory])).some(
+			return resolveTargets(group, fleetRoot, new Set([directory])).some(
 				(target) => skipReason(group, target, readScripts(target.path)) === null,
 			);
 		})

@@ -249,6 +249,9 @@ export function hashShared(path: string): string {
  * key. The source it came from is not recorded: it is found again through the manifest, from the
  * file's `target` and its variants.
  */
-export function installedPath(group: SharedCoreGroup, file: SharedCoreFile): string {
+export function installedPath(
+	group: Pick<SharedCoreGroup, 'targetRoot'>,
+	file: SharedCoreFile,
+): string {
 	return posix.normalize(`${group.targetRoot}/${file.target ?? file.source}`);
 }

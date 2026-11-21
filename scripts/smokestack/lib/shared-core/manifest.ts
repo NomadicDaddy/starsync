@@ -50,10 +50,13 @@ export interface SharedCoreFile {
 	target?: string;
 }
 
-export interface RosterTargets {
-	model: 'roster';
-	/** A gitignored file in the owning repository. Never a list of repository names in tracked code. */
-	roster: string;
+/**
+ * An opt-in group: it reaches exactly the repositories whose committed smokestack.lock declares it
+ * (membership.ts). The declaration is that repository's own reviewed commit, so no tracked file
+ * here names a repository, and no untracked roster can drop one silently.
+ */
+export interface DeclaredTargets {
+	model: 'declared';
 }
 
 export interface DiscoveredTargets {
@@ -104,7 +107,7 @@ export interface SharedCoreGroup {
 	requiresPackageJson?: boolean;
 	sourceRoot: string;
 	targetRoot: string;
-	targets: DiscoveredTargets | RosterTargets;
+	targets: DeclaredTargets | DiscoveredTargets;
 	/**
 	 * Script name to a substring that script must contain. This is reported and never written.
 	 * Substring rather than equality because the canonical command is the smallest thing that has
@@ -125,21 +128,21 @@ export interface SharedCoreGroup {
 	wiringRequired?: true;
 }
 
+/** A group as a past commit's manifest gave it: everything but how it chooses its targets. */
+export type PastGroup = Omit<SharedCoreGroup, 'targets'>;
+
 const OWNERS = new Set(['smokestack']);
 
 function fail(message: string): never {
 	throw new Error(`shared-core-manifest.json: ${message}`);
 }
 
-function asTargets(raw: unknown, where: string): DiscoveredTargets | RosterTargets {
+function asTargets(raw: unknown, where: string): DeclaredTargets | DiscoveredTargets {
 	if (raw === null || typeof raw !== 'object') fail(`${where} targets must be an object.`);
 	const targets = raw as Record<string, unknown>;
-	if (targets['model'] === 'roster') {
-		const roster = targets['roster'];
-		if (typeof roster !== 'string' || roster.length === 0) {
-			fail(`${where} roster targets need a roster filename.`);
-		}
-		return { model: 'roster', roster };
+	if (targets['model'] === 'declared') {
+		if (Object.keys(targets).length !== 1) fail(`${where} declared targets take no other key.`);
+		return { model: 'declared' };
 	}
 	if (targets['model'] === 'discovered') {
 		const marker = targets['marker'];
@@ -148,10 +151,10 @@ function asTargets(raw: unknown, where: string): DiscoveredTargets | RosterTarge
 		}
 		return { model: 'discovered', ...(typeof marker === 'string' ? { marker } : {}) };
 	}
-	return fail(`${where} targets.model must be 'roster' or 'discovered'.`);
+	return fail(`${where} targets.model must be 'declared' or 'discovered'.`);
 }
 
-function asGroup(raw: unknown, index: number): SharedCoreGroup {
+function asGroup(raw: unknown, index: number): PastGroup {
 	if (raw === null || typeof raw !== 'object') fail(`group ${index} must be an object.`);
 	const group = raw as Record<string, unknown>;
 	const name = group['name'];
@@ -226,7 +229,6 @@ function asGroup(raw: unknown, index: number): SharedCoreGroup {
 		owner,
 		sourceRoot: group['sourceRoot'] as string,
 		targetRoot: group['targetRoot'] as string,
-		targets: asTargets(group['targets'], where),
 		...(typeof hook === 'string' ? { hook } : {}),
 		...(typeof group['hookMarker'] === 'string' ? { hookMarker: group['hookMarker'] } : {}),
 		...(typeof group['localChainMarker'] === 'string'
@@ -248,8 +250,28 @@ export function loadManifest(scriptsDir: string): SharedCoreGroup[] {
 	return parseManifest(readFileSync(path, 'utf8'));
 }
 
-/** Validates a manifest's text, wherever it was read from: the working tree, or a commit. */
+/** Validates a manifest's text, read from the working tree or a commit, targets included. */
 export function parseManifest(text: string): SharedCoreGroup[] {
+	const { groups, raw } = parseGroups(text);
+	return groups.map((group, index) => ({
+		...group,
+		targets: asTargets(
+			(raw[index] as Record<string, unknown>)['targets'],
+			`group '${group.name}'`,
+		),
+	}));
+}
+
+/**
+ * Validates a manifest read at a past commit, for what a delivery made from it held (origin.ts):
+ * every rule but the targets model, which no file a delivery wrote depends on. The field is not
+ * read at all, so a tag that names a model since retired reads like any other.
+ */
+export function parseManifestAt(text: string): PastGroup[] {
+	return parseGroups(text).groups;
+}
+
+function parseGroups(text: string): { groups: PastGroup[]; raw: unknown[] } {
 	const parsed = JSON.parse(text) as unknown;
 	const rawGroups = (parsed as null | Record<string, unknown>)?.['groups'];
 	if (!Array.isArray(rawGroups) || rawGroups.length === 0) {
@@ -272,5 +294,5 @@ export function parseManifest(text: string): SharedCoreGroup[] {
 		}
 	}
 	assertRequirements(groups);
-	return groups;
+	return { groups, raw: rawGroups };
 }

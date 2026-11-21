@@ -18,8 +18,7 @@
  * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
  * smokestack; every repository that takes it holds a byte-identical copy.
  */
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname } from 'node:path';
 
 import type { PendingDelivery, PendingRecord } from './delivery-shape.ts';
 
@@ -67,31 +66,6 @@ export function canonicalOf(target: string): Canonical | null {
 /** The branch `checkout` has checked out, or HEAD where it is detached or cannot be read. */
 export function branchOf(checkout: string): string {
 	return git(checkout, ['rev-parse', '--abbrev-ref', 'HEAD']) ?? 'HEAD';
-}
-
-/**
- * The folder under `fleetRoot` that is a linked worktree of the repository named `name`, when no
- * folder there carries that name itself: a worktree is usually named for its task, not its project.
- * Two worktrees of that repository there is ambiguous and refused, never settled by listing order
- * (Roger and Morticia, 95427f3).
- */
-export function worktreeFor(fleetRoot: string, name: string): null | string {
-	if (!existsSync(fleetRoot)) return null;
-	const found: string[] = [];
-	for (const entry of readdirSync(fleetRoot, { withFileTypes: true })) {
-		const path = join(fleetRoot, entry.name);
-		const dotGit = join(path, '.git');
-		if (!entry.isDirectory() || !existsSync(dotGit) || !statSync(dotGit).isFile()) continue;
-		if (canonicalOf(path)?.directory === name) found.push(entry.name);
-	}
-	if (found.length > 1) {
-		throw new Error(
-			`${fleetRoot} holds ${String(found.length)} worktrees of ${name} (${found.sort().join(', ')}), ` +
-				'so which one the roster means is ambiguous. Pass one worktree parent per run.',
-		);
-	}
-	if (found.length === 1) return found[0] ?? null;
-	return null;
 }
 
 /** Every pending delivery in the owner's record, checked in full as it is read (delivery-shape.ts). */

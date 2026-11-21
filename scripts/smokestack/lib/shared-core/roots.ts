@@ -7,8 +7,8 @@
  * a fact about the machine, not about this template, so the list lives in an untracked file beside
  * the repositories rather than in the manifest, which is tracked in published repositories.
  *
- * Absent is not an error, for the reason the roster gives: CI and an adopter of this template have
- * no such file, and the gate has to stay green there. The output then says no other root was
+ * Absent is not an error: CI and an adopter of this template have no such file, and the gate has
+ * to stay green there. The output then says no other root was
  * considered, so the absence is stated rather than mistaken for coverage.
  *
  * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
@@ -21,9 +21,9 @@ export const ROOTS_FILE = '.shared-core-roots.json';
 export const FLEET_ROOT_ENV = 'SMOKESTACK_FLEET_ROOT';
 
 /**
- * Where the owner's untracked configuration lives: the rosters and the record of deliveries. Both
- * are gitignored because they name private sibling repositories, so a linked git worktree of the
- * owner (the team puts every branch in one) has neither. Run from such a worktree, they are read
+ * Where the owner's untracked configuration lives: the record of deliveries and the frozen and
+ * known-drift lists. They are gitignored because they name private sibling repositories, so a
+ * linked git worktree of the owner (the team puts every branch in one) has none of them. Run from such a worktree, they are read
  * from the main checkout the worktree belongs to; anywhere else, from the checkout itself.
  */
 export function configRoot(ownerRoot: string): string {

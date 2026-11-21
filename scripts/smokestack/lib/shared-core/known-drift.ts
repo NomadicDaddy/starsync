@@ -12,7 +12,7 @@
  * which entry ran out. An entry may not expire more than 14 days after the day it is read: a list
  * that could hold a row back indefinitely would be the standing red this exists to end, made quiet.
  *
- * The list names sibling repositories, so like the rosters and frozen-targets.json it is untracked,
+ * The list names sibling repositories, so like frozen-targets.json it is untracked,
  * only its `.example` is tracked, and a branch worktree reads the main checkout's. A missing list
  * means nothing is known, which is the safe reading: every row then fails as it would without it.
  * Only `--check` reads it. A write still replaces a drifted file, known or not.

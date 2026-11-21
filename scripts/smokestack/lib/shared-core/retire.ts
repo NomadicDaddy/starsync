@@ -1,16 +1,18 @@
 /**
- * Retiring a group from a repository that no longer takes it: `--retire <group>` on a write.
+ * Retiring a group from a repository: `--retire <group>` on a write narrowed with `--only`.
  *
  * A lock that declares a group which no longer reaches its repository stops the whole write
  * (lock-write.ts), because rewriting the lock would silently drop what that repository declared.
- * That refusal is right for a mistake, such as a roster edited by accident. It also left no way to
- * take a group away on purpose: the delivered files stayed, with no consumer, and every later
- * write to that repository was refused.
+ * That refusal is right for a mistake. It also left no way to take a group away on purpose: the
+ * delivered files stayed, with no consumer, and every later write to that repository was refused.
  *
  * So a departure is said twice, and nothing here infers it. The record forgets the group there
  * first (`bun run deliveries:forget <directory> --group <name>`), the command that acknowledges
  * any departure, and the write is then told to retire it. Only then does a write remove the
- * group's files from that repository and leave the group out of the lock it rewrites.
+ * group's files from that repository and leave the group out of the lock it rewrites. A declared
+ * group is retired while the repository's committed lock still declares it, so the hashes it
+ * records are there to prove each file untouched; the write stops counting it as reaching the
+ * named repositories (lock-write.ts) rather than waiting for the declaration to go first.
  *
  * A file is removed only while it is exactly what the lock says was delivered, with no
  * uncommitted change: a file the repository has edited is its own work, and the write refuses
@@ -191,10 +193,11 @@ export function planDropped(
 /**
  * Each --retire group no planned repository retires: a flag that did nothing must not pass.
  *
- * A write plans only the repositories some group reaches, so a group cannot be retired from a
- * repository it was the last thing delivered to: nothing reaches that repository any more, and
- * this write does not open its lock. That is the whole repository leaving, which its lead settles
- * there, and the refusal says so rather than guess.
+ * A write plans only the repositories some group reaches. A repository with a lock is always
+ * reached, by the discovered groups if nothing else, so this is a repository that declines the
+ * fleet or whose lock is gone, or a group its committed lock does not declare (any more): this
+ * write does not open that lock, or finds no hashes in it to prove a removal by. The refusal says
+ * so rather than guess.
  */
 export function idleRetirements(retiring: Set<string>, retired: Retirement[]): string[] {
 	const acted = new Set(retired.map((retirement) => retirement.group));
@@ -202,11 +205,11 @@ export function idleRetirements(retiring: Set<string>, retired: Retirement[]): s
 		.filter((group) => !acted.has(group))
 		.map(
 			(group) =>
-				`--retire ${group}: no repository this run rewrites a ${LOCK_FILE} for declares it ` +
-				'without taking it, so there is nothing to retire. A repository that took nothing ' +
-				'else from here is not reached at all, so its last group cannot be retired by a ' +
-				`write: its lead removes the delivered files and the ${LOCK_FILE} there, and the ` +
-				'record forgets the repository.',
+				`--retire ${group}: no repository this run rewrites a ${LOCK_FILE} for declares it, ` +
+				'so there is nothing to retire. A repository that declines the fleet or has no ' +
+				'lock is not reached at all, so a write retires nothing there: its lead removes ' +
+				`the delivered files and the ${LOCK_FILE} there, and the record forgets the ` +
+				'repository.',
 		);
 }
 
@@ -233,9 +236,15 @@ export function applyRetirements(
 		const what = dropped
 			? `${group} no longer delivers ${named} there`
 			: `${group} is retired there`;
+		// A retire changes which groups the lock declares, and membership moves only once that is
+		// committed (membership.ts): until then the sweep and every unnarrowed write stop on it.
+		const until = dropped
+			? ''
+			: ` Until then it reads as UNREADABLE-MEMBERSHIP, and a write that is not narrowed ` +
+				`with --only to leave ${directory} out is refused.`;
 		lines.push(
 			`LEAD ${directory}: ${what}. Commit the removal and the new ${LOCK_FILE}, and drop any ` +
-				`reference to ${named}.`,
+				`reference to ${named}.${until}`,
 		);
 	}
 	return lines;
