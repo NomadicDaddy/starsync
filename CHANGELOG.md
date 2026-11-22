@@ -2,24 +2,7 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
-
-### Changed
-
-- Accepted smokestack v0.9.0 delivery tooling, which removes unchanged files that a shared
-  group no longer delivers and retires the obsolete test-timeout lead helper.
-- Updated ESLint to 10.15.0 and Prettier to 3.10.1.
-- Updated the smokestack shared-core delivery to v0.7.1, removing unused exports from its
-  departed helper. v0.7.2 and v0.7.3 then split the leak guard's setup into its own script and
-  made the self-test's case 19 test the guard's patch step on every git, with the scratch
-  repositories reading no global or system git configuration.
-- Updated the smokestack-delivered history guard and shared-core sync files to v0.7.0.
-- Aligned ESLint, its sorting and TypeScript plugins, Knip, and Bun type definitions with
-  the workspace dependency targets. TypeScript remains pinned to 6.0.3.
-- Updated the development dependency toolchain to the approved November fleet targets:
-  knip 6.45.1 and typescript-eslint 8.72.2 (fleet targets 20261111).
-
-## [2.5.0] - Internal build, unshipped
+## [2.5.0] - 2026-11-22
 
 ### Added
 
@@ -47,6 +30,26 @@ All notable changes to this project will be documented in this file. Format foll
 - The full quality gate runs through the smokestack runner, checks the delivered files first,
   then runs every existing check and reports all failures before exiting. The fast gate keeps
   its four static checks and stops at the first failure.
+- The README's quick start now creates an empty directory, supplies the host's API token and runs
+  `init` before the first `sync`; an existing format-2 archive runs `sync` alone.
+- Development tooling (none of it ships in the CLI or library bundles):
+    - Updated ESLint to 10.15.0 and Prettier to 3.10.1, and the development toolchain to the
+      approved November fleet targets (knip 6.45.1, typescript-eslint 8.72.2). ESLint, its
+      sorting and TypeScript plugins, Knip and the Bun type definitions follow the workspace
+      dependency targets. TypeScript remains pinned to 6.0.3.
+    - Took smokestack's shared files from v0.7.0 through v1.0.5: the history guard and
+      shared-core sync (v0.7.0), unused exports removed (v0.7.1), the leak guard's setup split
+      into its own script and its self-test isolated from global git configuration (v0.7.2,
+      v0.7.3), and unchanged files a group no longer delivers removed (v0.9.0).
+    - v0.10.8: the leak guard scans added lines that look like diff headers, and a key body
+      after a line with no final newline. v0.10.10: a delivery stays pending until its target
+      commits or restores it. v0.10.11: an interrupted gate on Linux or macOS also stops a
+      step's detached grandchild processes. v0.10.12: the hooks path is read and written per
+      checkout under `extensions.worktreeConfig`.
+    - v1.0.4: shared groups reach a repository by its lock's own declaration, and a step keyed
+      on a script with a shebang is keyed on what that script imports. v1.0.5: a delivered gate
+      marked fast must run in every fast gate, and three delivered files at the line cap are
+      split.
 
 ### Fixed
 
