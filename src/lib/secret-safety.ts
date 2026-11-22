@@ -12,6 +12,8 @@
 
 import type { ArchiveHost } from './archive-host.ts';
 
+import { quotedValueEnd, redactQuotedSecretFields } from './json-secret-fields.ts';
+
 /** Matches user:password@ in an HTTPS URL. */
 const EMBEDDED_USERPASS_RE = /(https?:\/\/)[^/@:]+:[^/@]+@/g;
 /** Matches bare token@ in an HTTPS URL (no colon, just credentials before @). */
@@ -76,128 +78,40 @@ const GENERIC_SECRET_VALUE_RE = new RegExp(
 );
 
 /**
- * A decoded JSON property name that holds a credential: it ends in one of these words after any
- * prefix, with or without a separator, so access_token, accessToken, x-api-key, secret_access_key
- * and Set-Cookie all match while tokenType and author do not.
+ * Sanitizes one JSON string literal by its decoded text, so escapes such as a tab or a newline
+ * read as the characters they stand for and every rule sees the text a reader would. The literal
+ * is re-encoded only when something was redacted; otherwise its original spelling is kept.
  */
-const SECRET_PROPERTY_RE =
-	/(?:authorization|auth|(?:api|access|private)[-_]?key|secret|token|password|passwd|pwd|cookie)$/i;
-
-/**
- * A double quote and the whole run of backslashes before it. JSON carried inside a JSON string
- * escapes its quotes, so that run (none at the top level, one a level down, three below that)
- * gives the depth, and each later quote of the same field carries the same run.
- */
-const QUOTE_RE = /(?<!\\)(\\*)"/g;
-const FIELD_SEPARATOR_RE = /\s*:\s*/y;
-
-/**
- * Whether `run` backslashes and then a quote close a string whose own quotes carry `depth`
- * backslashes. A level down, every backslash doubles and each quote gains one, so the closing
- * quote has `depth` backslashes after any number of escaped backslashes, each `2 * (depth + 1)`
- * long. Fewer than `depth` belong to an enclosing string, which ends the value too.
- */
-const closesQuotedValue = (run: number, depth: number): boolean =>
-	run < depth || (run - depth) % (2 * (depth + 1)) === 0;
-
-/** Index where a quoted value that starts at `start` ends, or the end of text if it never does. */
-const quotedValueEnd = (text: string, start: number, depth: number): number => {
-	for (let index = start; index < text.length; index++) {
-		let run = 0;
-		while (text[index + run] === '\\') run++;
-		if (text[index + run] === '"' && closesQuotedValue(run, depth)) {
-			return index + Math.max(0, run - depth);
-		}
-		index += run;
-	}
-	return text.length;
-};
-
-/**
- * Decodes a property name written where quotes carry `depth` backslashes, one JSON string decode
- * per level, so a name spelled with JSON unicode escapes (a backslash, u and four hex digits) is
- * matched as the name it stands for. Returns null for text that isn't a valid name at that depth.
- */
-const decodePropertyName = (raw: string, depth: number): null | string => {
-	const levels = Math.log2(depth + 1);
-	if (!Number.isInteger(levels)) return null;
-	let name = raw;
+const sanitizeStringLiteral = (raw: string): string => {
+	let decoded: unknown;
 	try {
-		for (let level = 0; level <= levels; level++) {
-			const decoded: unknown = JSON.parse(`"${name}"`);
-			if (typeof decoded !== 'string') return null;
-			name = decoded;
-		}
+		decoded = JSON.parse(raw);
 	} catch {
-		return null;
+		return raw;
 	}
-	return name;
-};
-
-const JSON_NUMBER_RE = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
-
-interface SecretValueSpan {
-	end: number;
-	replacement: string;
-	start: number;
-}
-
-/**
- * The span of a secret property's value and what replaces it, or null. A string value keeps its
- * quotes and gets [REDACTED] inside them. A number becomes the quoted string "[REDACTED]" at the
- * field's own depth, so the JSON stays valid. true, false and null are left alone.
- */
-const secretValueSpan = (
-	text: string,
-	valueStart: number,
-	quote: string,
-): null | SecretValueSpan => {
-	if (text.startsWith(quote, valueStart)) {
-		const start = valueStart + quote.length;
-		const depth = quote.length - 1;
-		return { end: quotedValueEnd(text, start, depth), replacement: '[REDACTED]', start };
-	}
-	JSON_NUMBER_RE.lastIndex = valueStart;
-	const number = JSON_NUMBER_RE.exec(text);
-	if (number === null) return null;
-	const end = valueStart + number[0].length;
-	return { end, replacement: `${quote}[REDACTED]${quote}`, start: valueStart };
-};
-
-/** The value span of a secret property whose quoted name starts at `nameStart`, or null. */
-const secretFieldValue = (
-	text: string,
-	nameStart: number,
-	depth: number,
-): null | SecretValueSpan => {
-	const quote = `${'\\'.repeat(depth)}"`;
-	const nameEnd = quotedValueEnd(text, nameStart, depth);
-	if (!text.startsWith(quote, nameEnd)) return null;
-	FIELD_SEPARATOR_RE.lastIndex = nameEnd + quote.length;
-	if (FIELD_SEPARATOR_RE.exec(text) === null) return null;
-	const valueStart = FIELD_SEPARATOR_RE.lastIndex;
-	const name = decodePropertyName(text.slice(nameStart, nameEnd), depth);
-	if (name === null || !SECRET_PROPERTY_RE.test(name)) return null;
-	return secretValueSpan(text, valueStart, quote);
+	if (typeof decoded !== 'string') return raw;
+	const cleaned = sanitizeMessage(decoded);
+	return cleaned === decoded ? raw : JSON.stringify(cleaned);
 };
 
 /**
- * Replaces the string value of every secret property with [REDACTED] and keeps its quotes, so a
- * provider error carrying JSON, or JSON nested inside a JSON string, stays valid and its ordinary
- * keys and values stay readable. Every quote is tried as the start of a name, so a misread pairing
- * can only redact more, and the scan continues inside strings to reach nested JSON.
+ * Applies the whole sanitizer inside each top-level JSON string literal, which reaches JSON
+ * nested inside a string level by level. The quote pattern is local because this recurses.
  */
-const redactQuotedSecretFields = (message: string): string => {
+const sanitizeStringLiterals = (message: string): string => {
+	const quotes = /(?<!\\)"/g;
 	let result = '';
 	let copied = 0;
-	QUOTE_RE.lastIndex = 0;
-	for (let quote = QUOTE_RE.exec(message); quote; quote = QUOTE_RE.exec(message)) {
-		const depth = quote[1]?.length ?? 0;
-		const field = secretFieldValue(message, quote.index + depth + 1, depth);
-		if (field === null) continue;
-		result += `${message.slice(copied, field.start)}${field.replacement}`;
-		copied = field.end;
-		QUOTE_RE.lastIndex = field.end;
+	for (let quote = quotes.exec(message); quote; quote = quotes.exec(message)) {
+		const end = quotedValueEnd(message, quote.index + 1, 0);
+		if (end >= message.length) break;
+		const raw = message.slice(quote.index, end + 1);
+		const cleaned = sanitizeStringLiteral(raw);
+		if (cleaned !== raw) {
+			result += message.slice(copied, quote.index) + cleaned;
+			copied = end + 1;
+		}
+		quotes.lastIndex = end + 1;
 	}
 	return result + message.slice(copied);
 };
@@ -205,11 +119,12 @@ const redactQuotedSecretFields = (message: string): string => {
 /**
  * Sanitizes an error or log message by stripping credentials from URLs and
  * redacting quoted JSON secret fields, authorization headers, bearer tokens,
- * secret key-value pairs, and recognizable provider credentials.
+ * secret key-value pairs, and recognizable provider credentials, both in the
+ * text as written and inside each JSON string literal by its decoded text.
  */
 export const sanitizeMessage = (message: string): string => {
 	let result = message.replace(EMBEDDED_USERPASS_RE, '$1').replace(EMBEDDED_TOKEN_RE, '$1');
-	result = redactQuotedSecretFields(result)
+	result = sanitizeStringLiterals(redactQuotedSecretFields(result))
 		.replace(AUTHORIZATION_HEADER_RE, '$1[REDACTED]')
 		.replace(AUTHORIZATION_VALUE_RE, '$1[REDACTED]')
 		.replace(BEARER_TOKEN_RE, '$1[REDACTED]')

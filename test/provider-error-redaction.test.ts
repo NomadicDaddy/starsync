@@ -179,6 +179,10 @@ describe('quoted secret field redaction', () => {
 				`password="${ECHOED}" and token=${ECHOED}`,
 				'password=[REDACTED] and token=[REDACTED]',
 			],
+			[`authorization:\ttoken ${ECHOED}`, 'authorization:\t[REDACTED]'],
+			[`x\r\nAuthorization: token ${ECHOED}`, 'x\r\nAuthorization: [REDACTED]'],
+			[`Bearer\t${ECHOED}`, 'Bearer\t[REDACTED]'],
+			[`password=\t${ECHOED}`, 'password=\t[REDACTED]'],
 		] as const;
 		for (const [msg, expected] of cases) {
 			const top = sanitizeMessage(JSON.stringify({ keep: 'yes', msg, n: 1 }));
