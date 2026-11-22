@@ -24,10 +24,12 @@ nul/
 # build/cache
 *.tsbuildinfo
 
-# Environment
+# Environment. Bun auto-loads .env, .env.local and the NODE_ENV overlays (.env.development,
+# .env.production, .env.test), and any of them can hold a token. Ignore every form and allow only
+# the documented example back in.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # OS
 .DS_Store

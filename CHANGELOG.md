@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Security
+
+- The repository now ignores every dotenv file Bun loads, including the `.env.development`,
+  `.env.production` and `.env.test` overlays, so a token placed in one can't be committed by
+  accident. `.env.example` stays trackable, and a test checks each file against the ignore rules.
+  This affects contributors to this repository only, not installed copies of StarSync.
+
 ## [2.5.0] - 2026-11-22
 
 ### Added
