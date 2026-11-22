@@ -212,6 +212,34 @@ describe('quoted secret field redaction', () => {
 		});
 	});
 
+	test('redacts an object or array under a secret name whole, keeping its container valid', () => {
+		const value = {
+			keep: 'yes',
+			keys: ['public'],
+			token: { scope: 'repo', value: ECHOED },
+			tokens: [ECHOED, { inner: ECHOED }],
+		};
+		const expected = {
+			keep: 'yes',
+			keys: ['public'],
+			token: '[REDACTED]',
+			tokens: '[REDACTED]',
+		};
+		const top = sanitizeMessage(JSON.stringify(value));
+		expect(top).not.toContain(ECHOED);
+		expect(JSON.parse(top)).toEqual(expected);
+		const nested = sanitizeMessage(JSON.stringify({ body: JSON.stringify(value) }));
+		expect(nested).not.toContain(ECHOED);
+		expect(JSON.parse((JSON.parse(nested) as { body: string }).body)).toEqual(expected);
+	});
+
+	test('redacts a plain-text credential that only begins with true, false or null', () => {
+		for (const prefix of ['true', 'false', 'null']) {
+			const sanitized = sanitizeMessage(`password=${prefix}-${ECHOED} and status=ok`);
+			expect(sanitized).toBe('password=[REDACTED] and status=ok');
+		}
+	});
+
 	test('matches a property by its decoded name when the name is written with escapes', () => {
 		// The backslash is built rather than typed, so the fixture holds a real JSON escape: the
 		// names below read as authorization and login only once decoded.

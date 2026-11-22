@@ -69,11 +69,12 @@ const BEARER_TOKEN_RE = new RegExp(
 	String.raw`(\bbearer\s+)(?:${QUOTED_TEXT_VALUE}|[^\s,;"\\]+)`,
 	'gi',
 );
-// The lookaheads leave a JSON value the quoted-field pass already redacted, and a JSON true, false
-// or null, as they are, so the JSON stays valid instead of losing a value's quotes or gaining an
-// unquoted word.
+// The lookaheads leave a JSON value the quoted-field pass already redacted, and a complete JSON
+// true, false or null (one a delimiter or the end follows), as they are, so the JSON stays valid
+// instead of losing a value's quotes or gaining an unquoted word. A credential that merely begins
+// with one of those words is still redacted.
 const GENERIC_SECRET_VALUE_RE = new RegExp(
-	String.raw`((?:["']?)(?:(?:[A-Za-z0-9]+[-_])*(?:api[-_]?key|secret|token|password|passwd|pwd))["']?\s*(?:=|:)\s*)(?!"\[REDACTED\]")(?!(?:true|false|null)\b)(?:${QUOTED_TEXT_VALUE}|[^\s&#,;"\\]+)`,
+	String.raw`((?:["']?)(?:(?:[A-Za-z0-9]+[-_])*(?:api[-_]?key|secret|token|password|passwd|pwd))["']?\s*(?:=|:)\s*)(?!"\[REDACTED\]")(?!(?:true|false|null)\s*(?:[,}\]]|$))(?:${QUOTED_TEXT_VALUE}|[^\s&#,;"\\]+)`,
 	'gi',
 );
 
