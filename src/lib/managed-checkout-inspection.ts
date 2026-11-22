@@ -75,6 +75,74 @@ export const checkoutBoundaryProblem = (targetPath: string, name: string): null 
 	}
 };
 
+const GIT_BOUNDARY_QUERY = [
+	'rev-parse',
+	'--path-format=absolute',
+	'--show-toplevel',
+	'--git-dir',
+	'--git-common-dir',
+];
+
+// A path Git names may not exist, for example a work tree redirected to a missing folder. It is
+// then compared as written, so it still counts as outside the checkout.
+const canonicalOrResolved = (target: string): string => {
+	try {
+		return fs.realpathSync(target);
+	} catch {
+		return path.resolve(target);
+	}
+};
+
+const gitPathsInside = (answer: string, checkoutPath: string): boolean => {
+	const [topLevel, gitDir, commonDir, extra] = answer.split(/\r?\n/);
+	if (!topLevel || !gitDir || !commonDir || extra !== undefined) return false;
+	const checkout = fs.realpathSync(checkoutPath);
+	const metadata = path.join(checkout, '.git');
+	return (
+		sameFilesystemPath(canonicalOrResolved(topLevel), checkout) &&
+		sameFilesystemPath(canonicalOrResolved(gitDir), metadata) &&
+		sameFilesystemPath(canonicalOrResolved(commonDir), metadata)
+	);
+};
+
+export interface GitBoundaryOptions {
+	/**
+	 * Let an entry through when Git can't answer at all, as for a damaged repository. Only
+	 * verification sets this: it reads inside the entry's own .git, which the filesystem check has
+	 * confined, and forced repair replaces the folder inside the archive without running Git there.
+	 */
+	allowUnreadable?: boolean;
+}
+
+/**
+ * The full boundary check for an entry about to have Git work done in it: the filesystem check,
+ * then Git's own answer for its work tree, Git directory and common directory, read under the
+ * shared isolated Git environment. Each must be the checkout or its own .git directory, so a
+ * core.worktree setting or any other redirect Git honours is refused before Git reads identity,
+ * fetches or writes metadata there.
+ */
+export const checkoutGitBoundaryProblem = async (
+	targetPath: string,
+	name: string,
+	options: GitBoundaryOptions = {},
+): Promise<null | string> => {
+	const fileProblem = checkoutBoundaryProblem(targetPath, name);
+	const checkoutPath = path.join(targetPath, name);
+	if (fileProblem !== null || !fs.existsSync(path.join(checkoutPath, '.git'))) return fileProblem;
+	let answer: string;
+	try {
+		answer = await runGit(GIT_BOUNDARY_QUERY, { cwd: checkoutPath });
+	} catch (err) {
+		if (options.allowUnreadable === true) return null;
+		return `Cannot confirm Git stays inside the checkout: ${sanitizeMessage(
+			err instanceof Error ? err.message : String(err),
+		)}`;
+	}
+	return gitPathsInside(answer, checkoutPath)
+		? null
+		: 'Git resolves its work tree, Git directory or common directory outside the checkout.';
+};
+
 const originMatchesIdentity = (
 	origin: string,
 	repositorySlug: string,
@@ -127,7 +195,7 @@ export const inspectManagedCheckoutEntry = async (
 	name: string,
 	host: ArchiveHost = 'github.com',
 ): Promise<ManagedCheckoutInspection> => {
-	const boundaryProblem = checkoutBoundaryProblem(targetPath, name);
+	const boundaryProblem = await checkoutGitBoundaryProblem(targetPath, name);
 	if (boundaryProblem !== null) {
 		return {
 			checkout: null,

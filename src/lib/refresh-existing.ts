@@ -5,7 +5,7 @@ import type { ProcessRepositoryOptions, RefreshResult, RepoRecord } from './refr
 
 import { finalizeCheckoutIdentity } from './checkout-state-transition.ts';
 import { refreshCheckoutOnDefaultBranch } from './default-branch-refresh.ts';
-import { checkoutBoundaryProblem } from './managed-checkout-inspection.ts';
+import { checkoutGitBoundaryProblem } from './managed-checkout-inspection.ts';
 import { buildRefreshFailure, cloneRepository } from './refresh-clone.ts';
 
 const finalizeExistingIdentity = async (
@@ -40,7 +40,7 @@ export const processRepository = async (
 ): Promise<RefreshResult> => {
 	const folderName = repo.folderName ?? repo.name;
 	const repoPath = path.join(targetBase, folderName);
-	const boundaryProblem = checkoutBoundaryProblem(targetBase, folderName);
+	const boundaryProblem = await checkoutGitBoundaryProblem(targetBase, folderName);
 	const hasGitDir = fs.existsSync(repoPath) && fs.existsSync(path.join(repoPath, '.git'));
 	let result: RefreshResult;
 	if (isInterruptionRequested()) {

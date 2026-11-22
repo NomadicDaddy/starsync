@@ -7,11 +7,14 @@ All notable changes to this project will be documented in this file. Format foll
 ### Security
 
 - Sync, rename and verification now refuse an archive entry that could send Git outside the
-  archive, and report it as `checkout-outside-archive` before running Git: a link or junction in
-  place of a checkout, a `.git` file or link that redirects Git, Git metadata that names a common
-  directory, or a folder that resolves outside the archive root. Before, sync could fetch into, and
-  write identity metadata for, a repository a planted link pointed at, and rename could act on it.
-  A link or junction now also counts as an occupied name, so sync won't clone through it.
+  archive, and report it as `checkout-outside-archive`: a link or junction in place of a checkout,
+  a `.git` file or link that redirects Git, Git metadata that names a common directory, a folder
+  that resolves outside the archive root, or a checkout whose work tree, Git directory or common
+  directory Git itself resolves elsewhere, as a `core.worktree` setting can. The check runs before
+  each checkout's identity is read, and rename apply repeats it before reading identity and again
+  after moving the folder, before writing metadata. Before, sync could fetch into, and write
+  identity metadata for, a repository a planted link pointed at, and rename could act on it. A
+  link or junction now also counts as an occupied name, so sync won't clone through it.
 
 ## [2.5.1] - 2026-11-22
 

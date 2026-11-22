@@ -62,15 +62,26 @@ const mockExecFileSync = mock(
 	(_cmd: string, _args: string[], _options?: unknown): string | undefined => undefined,
 );
 
+/**
+ * Git's answer to the checkout boundary query (rev-parse of the work tree, Git directory and
+ * common directory) for a self-contained checkout at `cwd`, or null for any other command.
+ */
+const boundaryAnswer = (args: string[], options: unknown): null | string => {
+	const cwd = (options as { cwd?: string } | undefined)?.cwd;
+	if (args[0] !== 'rev-parse' || cwd === undefined) return null;
+	const metadata = path.join(cwd, '.git');
+	return `${cwd}\n${metadata}\n${metadata}\n`;
+};
+
 const mockExecFile = mock(
 	(
 		_cmd: string,
-		_args: string[],
-		_options: unknown,
+		args: string[],
+		options: unknown,
 		callback: (err: Error | null, stdout: string, stderr: string) => void,
 	): void => {
 		// Simulate success by default
-		callback(null, '', '');
+		callback(null, boundaryAnswer(args, options) ?? '', '');
 	},
 );
 
@@ -208,6 +219,11 @@ const mockManagedCheckoutIdentity = (
 	let currentRepositoryId = String(repositoryId);
 	let currentRepositorySlug = repositorySlug;
 	mockExecFile.mockImplementation((_cmd, args, options, callback) => {
+		const boundary = boundaryAnswer(args, options);
+		if (boundary !== null) {
+			callback(null, boundary, '');
+			return;
+		}
 		const cwd = (options as { cwd?: string } | undefined)?.cwd ?? '';
 		if (path.basename(cwd) === folderName && args[0] === 'remote' && args[1] === 'set-url') {
 			currentOrigin = args.at(-1) ?? currentOrigin;
@@ -263,6 +279,11 @@ const mockSuccessfulCloneAndDateOperations = (
 	const repositoryIds = new Map<string, string>();
 	const repositorySlugs = new Map<string, string>();
 	mockExecFile.mockImplementation((_cmd, args, options, callback) => {
+		const boundary = boundaryAnswer(args, options);
+		if (boundary !== null) {
+			callback(null, boundary, '');
+			return;
+		}
 		const cwd = (options as { cwd?: string } | undefined)?.cwd;
 		if (
 			failingRepository !== undefined &&

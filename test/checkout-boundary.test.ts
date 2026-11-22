@@ -11,13 +11,18 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import type { CheckoutReport } from '../src/lib/reporting.ts';
 import type { RepositoryResolver } from '../src/lib/repository-resolution.ts';
 
 import { writeArchiveConfig } from '../src/lib/archive-config.ts';
 import { inspectArchive } from '../src/lib/archive-inspection.ts';
 import { verifyCheckout } from '../src/lib/archive-verification-checkout.ts';
+import { applyCheckoutRename } from '../src/lib/checkout-rename-apply.ts';
 import { resolveRenameEntry } from '../src/lib/checkout-rename-resolution.ts';
-import { checkoutBoundaryProblem } from '../src/lib/managed-checkout-inspection.ts';
+import {
+	checkoutBoundaryProblem,
+	checkoutGitBoundaryProblem,
+} from '../src/lib/managed-checkout-inspection.ts';
 import { scanManagedCheckouts } from '../src/lib/managed-checkout-planning.ts';
 import { processRepository } from '../src/lib/refresh-existing.ts';
 
@@ -136,5 +141,66 @@ describe('checkout boundary', () => {
 		expect('outcome' in renamed ? renamed.findings.map((finding) => finding.code) : []).toEqual(
 			['checkout-outside-archive'],
 		);
+	});
+});
+
+describe('Git effective-path boundary', () => {
+	const outsideMessage = 'outside the checkout';
+
+	test('refuses a work tree that core.worktree redirects outside the checkout', async () => {
+		const { archive, outside } = fixture();
+		const real = path.join(archive, 'real');
+		expect(await checkoutGitBoundaryProblem(archive, 'real')).toBeNull();
+		git(real, ['config', 'core.worktree', outside]);
+		expect(checkoutBoundaryProblem(archive, 'real')).toBeNull();
+		expect(await checkoutGitBoundaryProblem(archive, 'real')).toContain(outsideMessage);
+	});
+
+	test('sync blocks and skips a checkout whose work tree Git resolves elsewhere', async () => {
+		const { archive, outside } = fixture();
+		git(path.join(archive, 'real'), ['config', 'core.worktree', outside]);
+		const scan = await scanManagedCheckouts(archive);
+		expect(
+			scan.reports.map((report) => [report.name, report.findings[0]?.code]),
+		).toContainEqual(['real', 'checkout-outside-archive']);
+		const result = await processRepository(
+			{
+				clone_url: 'https://github.com/example/real.git',
+				defaultBranch: 'main',
+				id: 1,
+				name: 'real',
+				slug: 'example/real',
+			},
+			archive,
+			() => false,
+			{ archiveOwnerId: 7 },
+		);
+		expect(result.outcome).toBe('failed');
+		expect(result.message).toContain(outsideMessage);
+	});
+
+	test('rename apply rechecks the checkout instead of trusting the preview', async () => {
+		const { archive, outside } = fixture();
+		const real = path.join(archive, 'real');
+		const entries = inspectArchive(archive).entries;
+		git(real, ['config', 'core.worktree', outside]);
+		const checkout: CheckoutReport = {
+			findings: [],
+			lifecycle: 'active',
+			name: 'real',
+			outcome: 'current',
+			pendingRename: true,
+			rename: {
+				classification: 'pending',
+				proposedName: 'repository--owner',
+				repositoryId: 42,
+				repositorySlug: 'owner/repository',
+			},
+		};
+		const applied = await applyCheckoutRename(archive, checkout, entries);
+		expect(applied.applied).toBe(false);
+		expect(applied.report.findings[0]?.message).toContain(outsideMessage);
+		expect(existsSync(real)).toBe(true);
+		expect(existsSync(path.join(archive, 'repository--owner'))).toBe(false);
 	});
 });

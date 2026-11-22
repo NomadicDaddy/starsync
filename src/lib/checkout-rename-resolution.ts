@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import type { ArchiveHost } from './archive-host.ts';
 import type { ArchiveEntry } from './archive-inspection.ts';
 import type { RenamePreview } from './reporting.ts';
@@ -5,6 +7,7 @@ import type { RepositoryResolver, ResolvedRepository } from './repository-resolu
 
 import { readCheckoutIdentity } from './checkout-identity.ts';
 import { readStatusPaths } from './git-exec.ts';
+import { checkoutGitBoundaryProblem } from './managed-checkout-inspection.ts';
 import { type CheckoutReport, createFinding } from './reporting.ts';
 import { parseGitHubRepositorySlug } from './repository-resolution.ts';
 import {
@@ -157,6 +160,8 @@ export const resolveRenameEntry = async (
 ): Promise<CheckoutReport | ResolvedRenameEntry> => {
 	const originSlug = parseResolvableOrigin(entry, host);
 	if ('outcome' in originSlug) return originSlug;
+	const boundary = await checkoutGitBoundaryProblem(path.dirname(entry.path), entry.name);
+	if (boundary !== null) return failedCheckout(entry, 'checkout-outside-archive', boundary);
 	const identity = await readIdentity(entry);
 	if ('outcome' in identity) return identity;
 	const repository = await resolveRepository(entry, originSlug, resolver, identity.repositoryId);
