@@ -52,17 +52,72 @@ const SECRET_PATTERNS = [
 const AUTHORIZATION_HEADER_RE = /(\bauthorization\s*:\s*)[^\r\n]+/gi;
 const AUTHORIZATION_VALUE_RE = /(\bauthorization\s*=\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&#,;]+)/gi;
 const BEARER_TOKEN_RE = /(\bbearer\s+)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi;
+// The lookahead leaves a JSON value the quoted-field pass already redacted as it is, so the JSON
+// stays valid instead of losing the value's quotes.
 const GENERIC_SECRET_VALUE_RE =
-	/((?:["']?)(?:(?:[A-Za-z0-9]+[-_])*(?:api[-_]?key|secret|token|password|passwd|pwd))["']?\s*(?:=|:)\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&#,;]+)/gi;
+	/((?:["']?)(?:(?:[A-Za-z0-9]+[-_])*(?:api[-_]?key|secret|token|password|passwd|pwd))["']?\s*(?:=|:)\s*)(?!"\[REDACTED\]")(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&#,;]+)/gi;
+
+/**
+ * A double-quoted secret key, its colon and the opening quote of its string value, at any JSON
+ * escaping depth. JSON carried inside a JSON string escapes its quotes, so the run of backslashes
+ * before the key's opening quote (none at the top level, one a level down, three below that)
+ * repeats before each later quote of the field. The lookbehind keeps that run whole.
+ */
+const QUOTED_SECRET_FIELD_RE = new RegExp(
+	String.raw`(?<!\\)(\\*)"(?:[A-Za-z0-9]+[-_])*(?:authorization|api[-_]?key|secret|token|password|passwd|pwd)\1"\s*:\s*\1"`,
+	'gi',
+);
+
+/**
+ * Whether `run` backslashes and then a quote close a string whose own quotes carry `depth`
+ * backslashes. A level down, every backslash doubles and each quote gains one, so the closing
+ * quote has `depth` backslashes after any number of escaped backslashes, each `2 * (depth + 1)`
+ * long. Fewer than `depth` belong to an enclosing string, which ends the value too.
+ */
+const closesQuotedValue = (run: number, depth: number): boolean =>
+	run < depth || (run - depth) % (2 * (depth + 1)) === 0;
+
+/** Index where a quoted value that starts at `start` ends, or the end of text if it never does. */
+const quotedValueEnd = (text: string, start: number, depth: number): number => {
+	for (let index = start; index < text.length; index++) {
+		let run = 0;
+		while (text[index + run] === '\\') run++;
+		if (text[index + run] === '"' && closesQuotedValue(run, depth)) {
+			return index + Math.max(0, run - depth);
+		}
+		index += run;
+	}
+	return text.length;
+};
+
+/**
+ * Replaces the string value of every quoted secret field with [REDACTED] and keeps its quotes,
+ * so a provider error carrying JSON, or JSON nested inside a JSON string, stays valid and its
+ * ordinary keys and values stay readable.
+ */
+const redactQuotedSecretFields = (message: string): string => {
+	let result = '';
+	let cursor = 0;
+	QUOTED_SECRET_FIELD_RE.lastIndex = 0;
+	let match = QUOTED_SECRET_FIELD_RE.exec(message);
+	while (match) {
+		const valueStart = match.index + match[0].length;
+		result += `${message.slice(cursor, valueStart)}[REDACTED]`;
+		cursor = quotedValueEnd(message, valueStart, match[1]?.length ?? 0);
+		QUOTED_SECRET_FIELD_RE.lastIndex = cursor;
+		match = QUOTED_SECRET_FIELD_RE.exec(message);
+	}
+	return result + message.slice(cursor);
+};
 
 /**
  * Sanitizes an error or log message by stripping credentials from URLs and
- * redacting authorization headers, bearer tokens, secret key-value pairs,
- * and recognizable provider credentials.
+ * redacting quoted JSON secret fields, authorization headers, bearer tokens,
+ * secret key-value pairs, and recognizable provider credentials.
  */
 export const sanitizeMessage = (message: string): string => {
 	let result = message.replace(EMBEDDED_USERPASS_RE, '$1').replace(EMBEDDED_TOKEN_RE, '$1');
-	result = result
+	result = redactQuotedSecretFields(result)
 		.replace(AUTHORIZATION_HEADER_RE, '$1[REDACTED]')
 		.replace(AUTHORIZATION_VALUE_RE, '$1[REDACTED]')
 		.replace(BEARER_TOKEN_RE, '$1[REDACTED]')

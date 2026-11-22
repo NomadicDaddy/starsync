@@ -2,10 +2,20 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.5.1] - 2026-11-22
 
 ### Security
 
+- A GitHub API failure is now reported as the operation, the HTTP status and, when the rate
+  limit is exhausted, its reset time, for example `GitHub API request failed (HTTP 401) while
+  reading the authenticated account.` Octokit's own error text is no longer passed on, because a
+  provider can echo the request's credentials in its response body. Codeberg failures already
+  worked this way.
+- Error and report sanitizing now redacts the values of quoted secret fields such as
+  `"authorization"`, `"access_token"` and `"password"` in JSON, including JSON nested inside a
+  JSON string. The redacted JSON stays valid, and other keys and values are left as they were.
+  Before, an opaque credential in a quoted Authorization field reached reports, progress and JSON
+  output unchanged.
 - The repository now ignores every dotenv file Bun loads, including the `.env.development`,
   `.env.production` and `.env.test` overlays, so a token placed in one can't be committed by
   accident. `.env.example` stays trackable, and a test checks each file against the ignore rules.
