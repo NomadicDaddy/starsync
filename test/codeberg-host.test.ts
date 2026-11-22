@@ -1,9 +1,48 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
+import { initArchive } from '../src/lib/archive-api.ts';
 import { parseArchiveConfig } from '../src/lib/archive-config.ts';
 import { parseHostArgs } from '../src/lib/cli-host.ts';
+import { createCommandReporter } from '../src/lib/reporting.ts';
 import { createRepositoryHost } from '../src/lib/repository-host.ts';
 import { parseGitHubRepositorySlug } from '../src/lib/repository-resolution.ts';
+
+// An opaque, Codeberg-shaped credential with no recognizable prefix, so nothing but the
+// decoder's fixed message keeps it out of reports. It is a single identifier, because Bun's JSON
+// parse error quotes the first bare identifier it meets.
+const ECHOED = 'opaquecodebergfixture4c1d8e';
+
+// A success status whose body is not JSON: it echoes the request's own token as a bare value, so
+// the parser's error message carries the credential unless the decoder replaces it.
+const echoingNonJson = (
+	_input: Parameters<typeof fetch>[0],
+	init?: Parameters<typeof fetch>[1],
+) => {
+	const token = (new Headers(init?.headers).get('Authorization') ?? '').replace(/^token /, '');
+	return Promise.resolve(new Response(`{"echo": ${token}}`, { status: 200 }));
+};
+
+const captureStreams = (operation: () => void): string => {
+	const lines: string[] = [];
+	const log = spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+		lines.push(args.map(String).join(' '));
+	});
+	const error = spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+		lines.push(args.map(String).join(' '));
+	});
+	try {
+		operation();
+	} finally {
+		log.mockRestore();
+		error.mockRestore();
+	}
+	return lines.join('\n');
+};
+
+const temporaryRoots: string[] = [];
 
 const repository = (id: number) => ({
 	clone_url: `https://codeberg.org/example/repo-${id}.git`,
@@ -26,6 +65,7 @@ const installFetch = (
 };
 afterEach(() => {
 	fetchMock?.mockRestore();
+	for (const root of temporaryRoots.splice(0)) rmSync(root, { force: true, recursive: true });
 });
 
 describe('Codeberg host contract', () => {
@@ -71,6 +111,53 @@ describe('Codeberg host contract', () => {
 			createRepositoryHost('codeberg.org', 'fixture-secret').authenticate(),
 		).rejects.toThrow('HTTP 401');
 		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	test('reports a success response that is not JSON by operation and status alone', async () => {
+		installFetch(echoingNonJson);
+		const host = createRepositoryHost('codeberg.org', ECHOED);
+		for (const [run, operation] of [
+			[() => host.authenticate(), 'reading the authenticated account'],
+			[() => host.listStars(), 'listing starred repositories'],
+			[() => host.resolve('example', 'repo', undefined), 'resolving example/repo'],
+			[() => host.resolve('example', 'repo', 3), 'resolving repository 3'],
+		] as const) {
+			const failure = await run().then(
+				() => undefined,
+				(err: unknown) => err,
+			);
+			expect(failure).toBeInstanceOf(Error);
+			const error = failure as { status?: number } & Error;
+			expect(error.message).toBe(
+				`Codeberg API returned a response that is not valid JSON (HTTP 200) while ${operation}.`,
+			);
+			expect(error.status).toBe(200);
+			expect(error.cause).toBeUndefined();
+			expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain(ECHOED);
+		}
+	});
+
+	test('keeps an echoed credential out of init reports and both CLI output modes', async () => {
+		for (const [handler, expected] of [
+			[echoingNonJson, 'not valid JSON (HTTP 200)'],
+			// The control: a failure status already gets the fixed HTTP diagnostic.
+			[() => Promise.resolve(new Response(`token ${ECHOED}`, { status: 401 })), 'HTTP 401'],
+		] as const) {
+			installFetch(handler);
+			const targetPath = mkdtempSync(path.join(tmpdir(), 'starsync-codeberg-json-'));
+			temporaryRoots.push(targetPath);
+			const report = await initArchive({ host: 'codeberg.org', targetPath, token: ECHOED });
+			expect(report.exitCode).toBe(1);
+			expect(report.findings.map((finding) => finding.code)).toEqual([
+				'host-authentication-failed',
+			]);
+			expect(JSON.stringify(report)).not.toContain(ECHOED);
+			for (const json of [true, false]) {
+				const output = captureStreams(() => createCommandReporter(json).emit(report));
+				expect(output).toContain(expected);
+				expect(output).not.toContain(ECHOED);
+			}
+		}
 	});
 
 	test('validates host config, CLI values and cross-host origins', () => {

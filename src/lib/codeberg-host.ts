@@ -61,12 +61,28 @@ const request = (token: string, route: string): Promise<Response> =>
 		{ maxRetries: 2 },
 	);
 
+// A body that isn't JSON is reported as the operation and status only. The parser's own error
+// quotes part of the body, and a provider can echo the request's credentials there, so neither the
+// message nor the original error is passed on.
+const readJson = async (response: Response, operation: string): Promise<unknown> => {
+	try {
+		return await response.json();
+	} catch {
+		throw Object.assign(
+			new Error(
+				`Codeberg API returned a response that is not valid JSON (HTTP ${response.status}) while ${operation}.`,
+			),
+			{ status: response.status },
+		);
+	}
+};
+
 const listStars = async (token: string): Promise<StarredRepositoryRecord[]> => {
 	const repositories: StarredRepositoryRecord[] = [];
 	const seen = new Set<number>();
 	for (let page = 1; ; page++) {
 		const response = await request(token, `user/starred?limit=50&page=${page}`);
-		const body: unknown = await response.json();
+		const body = await readJson(response, 'listing starred repositories');
 		if (!Array.isArray(body)) throw new Error('Invalid Codeberg stars response.');
 		if (body.length === 0) return repositories;
 		for (const value of body) {
@@ -80,14 +96,20 @@ const listStars = async (token: string): Promise<StarredRepositoryRecord[]> => {
 };
 
 export const createCodebergHost = (token: string): RepositoryHost => ({
-	authenticate: async () => parseOwner(await (await request(token, 'user')).json()),
+	authenticate: async () =>
+		parseOwner(
+			await readJson(await request(token, 'user'), 'reading the authenticated account'),
+		),
 	listStars: () => listStars(token),
 	resolve: async (owner, repository, id) => {
 		const route =
 			id === undefined
 				? `repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`
 				: `repositories/${id}`;
-		const resolved = parseRepository(await (await request(token, route)).json());
+		const target = id === undefined ? `${owner}/${repository}` : `repository ${id}`;
+		const resolved = parseRepository(
+			await readJson(await request(token, route), `resolving ${target}`),
+		);
 		return {
 			id: resolved.id,
 			name: resolved.name,

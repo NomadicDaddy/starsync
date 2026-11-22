@@ -11,6 +11,16 @@ All notable changes to this project will be documented in this file. Format foll
   accident. `.env.example` stays trackable, and a test checks each file against the ignore rules.
   This affects contributors to this repository only, not installed copies of StarSync.
 
+## [2.5.3] - 2026-11-22
+
+### Security
+
+- When Codeberg answers with a success status but a body that isn't valid JSON, StarSync now
+  reports only that the response wasn't valid JSON, with the HTTP status and the operation it was
+  on, such as reading the authenticated account. Before, the parser's own error was passed on,
+  and it can quote part of the body, so a credential echoed there could reach command reports and
+  both CLI output modes, as it did in init.
+
 ## [2.5.2] - 2026-11-22
 
 ### Security
