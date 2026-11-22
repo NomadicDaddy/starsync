@@ -27,9 +27,11 @@ const responseStatus = (err: unknown): number | undefined => {
 const rateLimitNote = (err: unknown): string => {
 	const headers = errorField(errorField(err, 'response'), 'headers');
 	if (errorField(headers, 'x-ratelimit-remaining') !== '0') return '';
-	const reset = Number(errorField(headers, 'x-ratelimit-reset'));
-	return Number.isSafeInteger(reset) && reset > 0
-		? ` The rate limit is exhausted until ${new Date(reset * 1000).toISOString()}.`
+	// A reset outside the Date range gives an invalid Date, whose toISOString would throw and
+	// replace the typed failure, so only a valid instant is named.
+	const resetAt = new Date(Number(errorField(headers, 'x-ratelimit-reset')) * 1000);
+	return resetAt.getTime() > 0
+		? ` The rate limit is exhausted until ${resetAt.toISOString()}.`
 		: ' The rate limit is exhausted.';
 };
 

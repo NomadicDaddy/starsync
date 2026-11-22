@@ -87,6 +87,17 @@ describe('GitHub adapter error boundary', () => {
 		);
 	});
 
+	test('falls back to the untimed note when the reset is outside the Date range', async () => {
+		installEchoingRejection(403, {
+			'x-ratelimit-remaining': '0',
+			'x-ratelimit-reset': String(Number.MAX_SAFE_INTEGER),
+		});
+		await expect(createRepositoryHost('github.com', ECHOED).listStars()).rejects.toThrow(
+			'GitHub API request failed (HTTP 403) while listing starred repositories. ' +
+				'The rate limit is exhausted.',
+		);
+	});
+
 	test('init reports and JSON output carry no echoed credential', async () => {
 		installEchoingRejection(401);
 		const targetPath = mkdtempSync(path.join(tmpdir(), 'starsync-provider-error-'));
@@ -135,6 +146,40 @@ describe('quoted secret field redaction', () => {
 		expect(JSON.parse(middle.request)).toEqual({
 			authorization: '[REDACTED]',
 			message: 'Bad credentials',
+		});
+	});
+
+	test('matches camelCase and other secret names by suffix, top level and nested', () => {
+		const secrets = {
+			accessToken: ECHOED,
+			auth: ECHOED,
+			clientSecret: ECHOED,
+			cookie: ECHOED,
+			private_key: ECHOED,
+			refreshToken: ECHOED,
+			'Set-Cookie': ECHOED,
+			userPassword: ECHOED,
+		};
+		const ordinary = { author: 'some_user', monkey: 'banana', tokenType: 'bearer' };
+		const redacted = Object.fromEntries(Object.keys(secrets).map((key) => [key, '[REDACTED]']));
+		const top = sanitizeMessage(JSON.stringify({ ...secrets, ...ordinary }));
+		expect(top).not.toContain(ECHOED);
+		expect(JSON.parse(top)).toEqual({ ...redacted, ...ordinary });
+		const nested = sanitizeMessage(JSON.stringify({ body: JSON.stringify(secrets) }));
+		expect(nested).not.toContain(ECHOED);
+		expect(JSON.parse((JSON.parse(nested) as { body: string }).body)).toEqual(redacted);
+	});
+
+	test('matches a property by its decoded name when the name is written with escapes', () => {
+		const escaped = String.raw`{"authorization":"token ${ECHOED}","login":"some_user"}`;
+		const top = sanitizeMessage(escaped);
+		expect(top).not.toContain(ECHOED);
+		expect(JSON.parse(top)).toEqual({ authorization: '[REDACTED]', login: 'some_user' });
+		const nested = sanitizeMessage(JSON.stringify({ body: escaped }));
+		expect(nested).not.toContain(ECHOED);
+		expect(JSON.parse((JSON.parse(nested) as { body: string }).body)).toEqual({
+			authorization: '[REDACTED]',
+			login: 'some_user',
 		});
 	});
 

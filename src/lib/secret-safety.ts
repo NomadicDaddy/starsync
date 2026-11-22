@@ -58,15 +58,20 @@ const GENERIC_SECRET_VALUE_RE =
 	/((?:["']?)(?:(?:[A-Za-z0-9]+[-_])*(?:api[-_]?key|secret|token|password|passwd|pwd))["']?\s*(?:=|:)\s*)(?!"\[REDACTED\]")(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&#,;]+)/gi;
 
 /**
- * A double-quoted secret key, its colon and the opening quote of its string value, at any JSON
- * escaping depth. JSON carried inside a JSON string escapes its quotes, so the run of backslashes
- * before the key's opening quote (none at the top level, one a level down, three below that)
- * repeats before each later quote of the field. The lookbehind keeps that run whole.
+ * A decoded JSON property name that holds a credential: it ends in one of these words after any
+ * prefix, with or without a separator, so access_token, accessToken, x-api-key and Set-Cookie all
+ * match while tokenType and author do not.
  */
-const QUOTED_SECRET_FIELD_RE = new RegExp(
-	String.raw`(?<!\\)(\\*)"(?:[A-Za-z0-9]+[-_])*(?:authorization|api[-_]?key|secret|token|password|passwd|pwd)\1"\s*:\s*\1"`,
-	'gi',
-);
+const SECRET_PROPERTY_RE =
+	/(?:authorization|auth|api[-_]?key|private[-_]?key|secret|token|password|passwd|pwd|cookie)$/i;
+
+/**
+ * A double quote and the whole run of backslashes before it. JSON carried inside a JSON string
+ * escapes its quotes, so that run (none at the top level, one a level down, three below that)
+ * gives the depth, and each later quote of the same field carries the same run.
+ */
+const QUOTE_RE = /(?<!\\)(\\*)"/g;
+const FIELD_SEPARATOR_RE = /\s*:\s*/y;
 
 /**
  * Whether `run` backslashes and then a quote close a string whose own quotes carry `depth`
@@ -91,23 +96,64 @@ const quotedValueEnd = (text: string, start: number, depth: number): number => {
 };
 
 /**
- * Replaces the string value of every quoted secret field with [REDACTED] and keeps its quotes,
- * so a provider error carrying JSON, or JSON nested inside a JSON string, stays valid and its
- * ordinary keys and values stay readable.
+ * Decodes a property name written where quotes carry `depth` backslashes, one JSON string decode
+ * per level, so an escaped spelling such as `auth` is matched as the name it stands for.
+ * Returns null for text that isn't a valid name at that depth.
+ */
+const decodePropertyName = (raw: string, depth: number): null | string => {
+	const levels = Math.log2(depth + 1);
+	if (!Number.isInteger(levels)) return null;
+	let name = raw;
+	try {
+		for (let level = 0; level <= levels; level++) {
+			const decoded: unknown = JSON.parse(`"${name}"`);
+			if (typeof decoded !== 'string') return null;
+			name = decoded;
+		}
+	} catch {
+		return null;
+	}
+	return name;
+};
+
+/** The value span of a secret property whose quoted name starts at `nameStart`, or null. */
+const secretFieldValue = (
+	text: string,
+	nameStart: number,
+	depth: number,
+): { end: number; start: number } | null => {
+	const quote = `${'\\'.repeat(depth)}"`;
+	const nameEnd = quotedValueEnd(text, nameStart, depth);
+	if (!text.startsWith(quote, nameEnd)) return null;
+	FIELD_SEPARATOR_RE.lastIndex = nameEnd + quote.length;
+	if (FIELD_SEPARATOR_RE.exec(text) === null) return null;
+	const valueQuote = FIELD_SEPARATOR_RE.lastIndex;
+	if (!text.startsWith(quote, valueQuote)) return null;
+	const name = decodePropertyName(text.slice(nameStart, nameEnd), depth);
+	if (name === null || !SECRET_PROPERTY_RE.test(name)) return null;
+	const start = valueQuote + quote.length;
+	return { end: quotedValueEnd(text, start, depth), start };
+};
+
+/**
+ * Replaces the string value of every secret property with [REDACTED] and keeps its quotes, so a
+ * provider error carrying JSON, or JSON nested inside a JSON string, stays valid and its ordinary
+ * keys and values stay readable. Every quote is tried as the start of a name, so a misread pairing
+ * can only redact more, and the scan continues inside strings to reach nested JSON.
  */
 const redactQuotedSecretFields = (message: string): string => {
 	let result = '';
-	let cursor = 0;
-	QUOTED_SECRET_FIELD_RE.lastIndex = 0;
-	let match = QUOTED_SECRET_FIELD_RE.exec(message);
-	while (match) {
-		const valueStart = match.index + match[0].length;
-		result += `${message.slice(cursor, valueStart)}[REDACTED]`;
-		cursor = quotedValueEnd(message, valueStart, match[1]?.length ?? 0);
-		QUOTED_SECRET_FIELD_RE.lastIndex = cursor;
-		match = QUOTED_SECRET_FIELD_RE.exec(message);
+	let copied = 0;
+	QUOTE_RE.lastIndex = 0;
+	for (let quote = QUOTE_RE.exec(message); quote; quote = QUOTE_RE.exec(message)) {
+		const depth = quote[1]?.length ?? 0;
+		const field = secretFieldValue(message, quote.index + depth + 1, depth);
+		if (field === null) continue;
+		result += `${message.slice(copied, field.start)}[REDACTED]`;
+		copied = field.end;
+		QUOTE_RE.lastIndex = field.end;
 	}
-	return result + message.slice(cursor);
+	return result + message.slice(copied);
 };
 
 /**
