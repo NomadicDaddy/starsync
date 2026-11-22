@@ -195,6 +195,19 @@ describe('quoted secret field redaction', () => {
 		}
 	});
 
+	test('keeps JSON valid when a secret property holds a number, a boolean or null', () => {
+		const value = { keep: 'yes', password: 482193, pin: 7, secret: true, token: null };
+		const top = sanitizeMessage(JSON.stringify(value));
+		expect(top).not.toContain('482193');
+		expect(JSON.parse(top)).toEqual({ ...value, password: '[REDACTED]' });
+		const nested = sanitizeMessage(JSON.stringify({ body: JSON.stringify(value) }));
+		expect(nested).not.toContain('482193');
+		expect(JSON.parse((JSON.parse(nested) as { body: string }).body)).toEqual({
+			...value,
+			password: '[REDACTED]',
+		});
+	});
+
 	test('matches a property by its decoded name when the name is written with escapes', () => {
 		// The backslash is built rather than typed, so the fixture holds a real JSON escape: the
 		// names below read as authorization and login only once decoded.

@@ -67,10 +67,11 @@ const BEARER_TOKEN_RE = new RegExp(
 	String.raw`(\bbearer\s+)(?:${QUOTED_TEXT_VALUE}|[^\s,;"\\]+)`,
 	'gi',
 );
-// The lookahead leaves a JSON value the quoted-field pass already redacted as it is, so the JSON
-// stays valid instead of losing the value's quotes.
+// The lookaheads leave a JSON value the quoted-field pass already redacted, and a JSON true, false
+// or null, as they are, so the JSON stays valid instead of losing a value's quotes or gaining an
+// unquoted word.
 const GENERIC_SECRET_VALUE_RE = new RegExp(
-	String.raw`((?:["']?)(?:(?:[A-Za-z0-9]+[-_])*(?:api[-_]?key|secret|token|password|passwd|pwd))["']?\s*(?:=|:)\s*)(?!"\[REDACTED\]")(?:${QUOTED_TEXT_VALUE}|[^\s&#,;"\\]+)`,
+	String.raw`((?:["']?)(?:(?:[A-Za-z0-9]+[-_])*(?:api[-_]?key|secret|token|password|passwd|pwd))["']?\s*(?:=|:)\s*)(?!"\[REDACTED\]")(?!(?:true|false|null)\b)(?:${QUOTED_TEXT_VALUE}|[^\s&#,;"\\]+)`,
 	'gi',
 );
 
@@ -114,8 +115,8 @@ const quotedValueEnd = (text: string, start: number, depth: number): number => {
 
 /**
  * Decodes a property name written where quotes carry `depth` backslashes, one JSON string decode
- * per level, so an escaped spelling such as `auth` is matched as the name it stands for.
- * Returns null for text that isn't a valid name at that depth.
+ * per level, so a name spelled with JSON unicode escapes (a backslash, u and four hex digits) is
+ * matched as the name it stands for. Returns null for text that isn't a valid name at that depth.
  */
 const decodePropertyName = (raw: string, depth: number): null | string => {
 	const levels = Math.log2(depth + 1);
@@ -133,23 +134,51 @@ const decodePropertyName = (raw: string, depth: number): null | string => {
 	return name;
 };
 
+const JSON_NUMBER_RE = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+
+interface SecretValueSpan {
+	end: number;
+	replacement: string;
+	start: number;
+}
+
+/**
+ * The span of a secret property's value and what replaces it, or null. A string value keeps its
+ * quotes and gets [REDACTED] inside them. A number becomes the quoted string "[REDACTED]" at the
+ * field's own depth, so the JSON stays valid. true, false and null are left alone.
+ */
+const secretValueSpan = (
+	text: string,
+	valueStart: number,
+	quote: string,
+): null | SecretValueSpan => {
+	if (text.startsWith(quote, valueStart)) {
+		const start = valueStart + quote.length;
+		const depth = quote.length - 1;
+		return { end: quotedValueEnd(text, start, depth), replacement: '[REDACTED]', start };
+	}
+	JSON_NUMBER_RE.lastIndex = valueStart;
+	const number = JSON_NUMBER_RE.exec(text);
+	if (number === null) return null;
+	const end = valueStart + number[0].length;
+	return { end, replacement: `${quote}[REDACTED]${quote}`, start: valueStart };
+};
+
 /** The value span of a secret property whose quoted name starts at `nameStart`, or null. */
 const secretFieldValue = (
 	text: string,
 	nameStart: number,
 	depth: number,
-): { end: number; start: number } | null => {
+): null | SecretValueSpan => {
 	const quote = `${'\\'.repeat(depth)}"`;
 	const nameEnd = quotedValueEnd(text, nameStart, depth);
 	if (!text.startsWith(quote, nameEnd)) return null;
 	FIELD_SEPARATOR_RE.lastIndex = nameEnd + quote.length;
 	if (FIELD_SEPARATOR_RE.exec(text) === null) return null;
-	const valueQuote = FIELD_SEPARATOR_RE.lastIndex;
-	if (!text.startsWith(quote, valueQuote)) return null;
+	const valueStart = FIELD_SEPARATOR_RE.lastIndex;
 	const name = decodePropertyName(text.slice(nameStart, nameEnd), depth);
 	if (name === null || !SECRET_PROPERTY_RE.test(name)) return null;
-	const start = valueQuote + quote.length;
-	return { end: quotedValueEnd(text, start, depth), start };
+	return secretValueSpan(text, valueStart, quote);
 };
 
 /**
@@ -166,7 +195,7 @@ const redactQuotedSecretFields = (message: string): string => {
 		const depth = quote[1]?.length ?? 0;
 		const field = secretFieldValue(message, quote.index + depth + 1, depth);
 		if (field === null) continue;
-		result += `${message.slice(copied, field.start)}[REDACTED]`;
+		result += `${message.slice(copied, field.start)}${field.replacement}`;
 		copied = field.end;
 		QUOTE_RE.lastIndex = field.end;
 	}
