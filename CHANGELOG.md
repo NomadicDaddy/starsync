@@ -41,15 +41,16 @@ All notable changes to this project will be documented in this file. Format foll
       shared-core sync (v0.7.0), unused exports removed (v0.7.1), the leak guard's setup split
       into its own script and its self-test isolated from global git configuration (v0.7.2,
       v0.7.3), and unchanged files a group no longer delivers removed (v0.9.0).
-    - v0.10.8: the leak guard scans added lines that look like diff headers, and a key body
-      after a line with no final newline. v0.10.10: a delivery stays pending until its target
-      commits or restores it. v0.10.11: an interrupted gate on Linux or macOS also stops a
-      step's detached grandchild processes. v0.10.12: the hooks path is read and written per
-      checkout under `extensions.worktreeConfig`.
-    - v1.0.4: shared groups reach a repository by its lock's own declaration, and a step keyed
-      on a script with a shebang is keyed on what that script imports. v1.0.5: a delivered gate
-      marked fast must run in every fast gate, and three delivered files at the line cap are
-      split.
+    - The v0.10.8 delivery: the leak guard scans added lines that look like diff headers, and a
+      key body after a line with no final newline. The v0.10.10 delivery: a delivery stays
+      pending until its target commits or restores it. The v0.10.11 delivery: an interrupted
+      gate on Linux or macOS also stops a step's detached grandchild processes. The v0.10.12
+      delivery: the hooks path is read and written per checkout under
+      `extensions.worktreeConfig`.
+    - The v1.0.4 delivery: shared groups reach a repository by its lock's own declaration, and
+      a step keyed on a script with a shebang is keyed on what that script imports. The v1.0.5
+      delivery: a delivered gate marked fast must run in every fast gate, and three delivered
+      files at the line cap are split.
 
 ### Fixed
 
