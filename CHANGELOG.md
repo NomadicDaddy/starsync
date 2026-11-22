@@ -15,16 +15,40 @@ All notable changes to this project will be documented in this file. Format foll
   after moving the folder, before writing metadata. Before, sync could fetch into, and write
   identity metadata for, a repository a planted link pointed at, and rename could act on it. A
   link or junction now also counts as an occupied name, so sync won't clone through it.
+- When Git can't open a checkout at all, for example because its `.git/config` is damaged,
+  StarSync no longer runs any further Git in it. Verification reports it as
+  `checkout-boundary-unverified`, and `verify --force` leaves the folder and its local work as
+  they are for you to recover or remove. Before, forced repair could replace it and discard
+  uncommitted files. A checkout Git can open but whose objects are damaged is still replaced as
+  before.
+
+### Known limitations
+
+These were present in 2.4.1 and are not fixed in this release. Each is recorded for a later
+2.5.x release.
+
+- Octokit's own request logger can write a GitHub request id to standard error when an API call
+  fails, outside StarSync's sanitized output. It doesn't carry the token.
+- `unlock` follows a `.starsync` folder that is a link, so it can read and remove the operation
+  lock of the archive the link points to. It removes only that fixed lock file.
+- For contributors only: `scripts/live-smoke.ts` prints its errors and reports without the shared
+  output sanitizer, full QC has no dependency-advisory step, and the lint toolchain still resolves
+  minimatch 10.2.6 (GHSA-g3hv-75wg-m249, a development-only resource-exhaustion advisory).
+- Release checks: of the 26 project audits that apply to StarSync, only the security and
+  secret-handling audits were run for this release. The other 24 were last run before 2.5.0, or
+  in one case never. Older review findings from the first 60 commits after 2.4.1 aren't all
+  traced to their follow-ups, and the project's priority history can't be compared with 2.4.1's
+  because it isn't kept in Git.
 
 ## [2.5.1] - 2026-11-22
 
 ### Security
 
 - A GitHub API failure is now reported as the operation, the HTTP status and, when the rate
-  limit is exhausted, its reset time, for example `GitHub API request failed (HTTP 401) while
-  reading the authenticated account.` Octokit's own error text is no longer passed on, because a
-  provider can echo the request's credentials in its response body. Codeberg failures already
-  worked this way.
+  limit is exhausted, its reset time, for example
+  `GitHub API request failed (HTTP 401) while reading the authenticated account.` Octokit's own
+  error text is no longer passed on, because a provider can echo the request's credentials in its
+  response body. Codeberg failures already worked this way.
 - Error and report sanitizing now redacts the values of secret fields in JSON, including JSON
   nested inside a JSON string. A field counts when its decoded name ends in authorization, auth,
   api key, access key, private key, secret, token, password, passwd, pwd or cookie, so
