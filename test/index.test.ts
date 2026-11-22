@@ -68,7 +68,7 @@ const mockExecFileSync = mock(
  */
 const boundaryAnswer = (args: string[], options: unknown): null | string => {
 	const cwd = (options as { cwd?: string } | undefined)?.cwd;
-	if (args[0] !== 'rev-parse' || cwd === undefined) return null;
+	if (!args.includes('rev-parse') || cwd === undefined) return null;
 	const metadata = path.join(cwd, '.git');
 	return `${cwd}\n${metadata}\n${metadata}\n`;
 };
@@ -771,7 +771,10 @@ describe('managed archive initialization', () => {
 			writeManagedArchiveConfig(target);
 			createCheckout(target, 'repository--example');
 			mockManagedCheckoutIdentity('repository--example', 101, 'example/repository');
-			mockExecFileSync.mockReturnValue('https://github.com/example/repository.git\n');
+			mockExecFileSync.mockImplementation(
+				(_cmd, args, options) =>
+					boundaryAnswer(args, options) ?? 'https://github.com/example/repository.git\n',
+			);
 
 			const report = await applyArchiveRenames(target, () =>
 				Promise.resolve({

@@ -88,6 +88,8 @@ const repairEntry = async (
 	const replacement = await verifyCheckout(
 		{
 			...entry,
+			boundaryError: null,
+			boundaryUnverified: null,
 			gitError: null,
 			name: replacementName,
 			origin: `https://${readArchiveConfig(options.repair.targetPath).host ?? 'github.com'}/${repaired.repository.slug}.git`,

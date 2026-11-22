@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 import type { ArchiveHost } from './archive-host.ts';
 import type { ArchiveEntry } from './archive-inspection.ts';
 import type { CheckoutReport, Finding } from './reporting.ts';
@@ -10,7 +8,6 @@ import {
 	REPOSITORY_SLUG_KEY,
 } from './checkout-identity.ts';
 import { readStatusPaths, runGit } from './git-exec.ts';
-import { checkoutGitBoundaryProblem } from './managed-checkout-inspection.ts';
 import { createFinding } from './reporting.ts';
 import { parseGitHubRepositorySlug } from './repository-resolution.ts';
 import {
@@ -266,10 +263,16 @@ export const verifyCheckout = async (
 	if (!entry.isGitCheckout) {
 		return failEntry(entry, 'unrelated-archive-entry', 'Archive entry is not a Git checkout.');
 	}
-	const gitBoundary = await checkoutGitBoundaryProblem(path.dirname(entry.path), entry.name, {
-		allowUnreadable: true,
-	});
-	if (gitBoundary !== null) return failEntry(entry, 'checkout-outside-archive', gitBoundary);
+	// Inspection asked Git where this checkout lives before any other Git read. When Git couldn't
+	// answer, nothing more runs here: the checkout is reported as failing its integrity check, which
+	// forced repair replaces from a fresh clone without touching it with Git again.
+	if (entry.boundaryUnverified !== null) {
+		return failEntry(
+			entry,
+			'git-integrity-failed',
+			`Git cannot open this checkout to confirm it stays inside the archive: ${entry.boundaryUnverified}`,
+		);
+	}
 	const state: VerificationState = {
 		blocked: false,
 		findings: [],

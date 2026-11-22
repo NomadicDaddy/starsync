@@ -203,4 +203,36 @@ describe('Git effective-path boundary', () => {
 		expect(existsSync(real)).toBe(true);
 		expect(existsSync(path.join(archive, 'repository--owner'))).toBe(false);
 	});
+
+	test('inspection asks Git before reading origin, and verification refuses a redirect', async () => {
+		const { archive, outside } = fixture();
+		const real = path.join(archive, 'real');
+		git(real, ['remote', 'add', 'origin', 'https://github.com/owner/repository.git']);
+		git(real, ['config', 'core.worktree', outside]);
+		const entry = inspectArchive(archive).entries.find(
+			(candidate) => candidate.name === 'real',
+		);
+		expect(entry?.boundaryError).toContain(outsideMessage);
+		expect(entry?.origin).toBeNull();
+		if (entry === undefined) return;
+		const verified = await verifyCheckout(entry);
+		expect(verified.report.findings.map((finding) => finding.code)).toEqual([
+			'checkout-outside-archive',
+		]);
+	});
+
+	test('a checkout Git cannot open is read no further and reported replaceable', async () => {
+		const { archive } = fixture();
+		writeFileSync(path.join(archive, 'real', '.git', 'HEAD'), 'not a ref\n');
+		const entry = inspectArchive(archive).entries.find(
+			(candidate) => candidate.name === 'real',
+		);
+		expect(entry?.boundaryUnverified).not.toBeNull();
+		expect(entry?.origin).toBeNull();
+		if (entry === undefined) return;
+		const verified = await verifyCheckout(entry);
+		expect(verified.report.findings.map((finding) => finding.code)).toEqual([
+			'git-integrity-failed',
+		]);
+	});
 });

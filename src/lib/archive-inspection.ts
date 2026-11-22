@@ -6,7 +6,12 @@ import type { Finding } from './reporting.ts';
 
 import { CURRENT_ARCHIVE_FORMAT, readArchiveConfig } from './archive-config.ts';
 import { buildGitEnvironment } from './git-exec.ts';
-import { checkoutBoundaryProblem } from './managed-checkout-inspection.ts';
+import {
+	checkoutBoundaryProblem,
+	GIT_BOUNDARY_QUERY,
+	GIT_OUTSIDE_CHECKOUT,
+	gitPathsInside,
+} from './managed-checkout-inspection.ts';
 import { isOwnedCheckoutArtifactName } from './owned-checkout-artifacts.ts';
 import { createFinding } from './reporting.ts';
 import { sanitizeMessage } from './secret-safety.ts';
@@ -16,6 +21,12 @@ type ArchiveKind = 'current' | 'invalid' | 'uninitialized' | 'unsupported';
 export interface ArchiveEntry {
 	/** Why Git work in this entry could reach outside the archive; set entries are never acted on. */
 	boundaryError: null | string;
+	/**
+	 * Why Git couldn't say where this checkout's work tree and metadata are, as for a damaged
+	 * repository. No further Git runs in it: verification reports it replaceable, and forced repair
+	 * replaces the folder from a fresh clone.
+	 */
+	boundaryUnverified: null | string;
 	gitError: null | string;
 	isGitCheckout: boolean;
 	name: string;
@@ -40,7 +51,10 @@ const readGit = (checkoutPath: string, args: string[]): string =>
 	}).trim();
 
 type ArchiveEntryFields = Partial<
-	Pick<ArchiveEntry, 'boundaryError' | 'gitError' | 'isGitCheckout' | 'origin'>
+	Pick<
+		ArchiveEntry,
+		'boundaryError' | 'boundaryUnverified' | 'gitError' | 'isGitCheckout' | 'origin'
+	>
 >;
 
 const archiveEntry = (
@@ -49,6 +63,7 @@ const archiveEntry = (
 	fields: ArchiveEntryFields = {},
 ): ArchiveEntry => ({
 	boundaryError: null,
+	boundaryUnverified: null,
 	gitError: null,
 	isGitCheckout: false,
 	origin: null,
@@ -56,6 +71,21 @@ const archiveEntry = (
 	name,
 	path: path.join(targetPath, name),
 });
+
+// Git's own answer for where the checkout's work tree and metadata are, asked before any other Git
+// read, so a redirected checkout is never read and one Git can't open is read no further.
+const gitBoundaryFields = (entryPath: string): ArchiveEntryFields | null => {
+	let answer: string;
+	try {
+		answer = readGit(entryPath, GIT_BOUNDARY_QUERY);
+	} catch (err) {
+		const reason = sanitizeMessage(err instanceof Error ? err.message : String(err));
+		return { boundaryUnverified: reason, gitError: reason, isGitCheckout: true };
+	}
+	return gitPathsInside(answer, entryPath)
+		? null
+		: { boundaryError: GIT_OUTSIDE_CHECKOUT, isGitCheckout: true };
+};
 
 const readArchiveEntry = (targetPath: string, entry: fs.Dirent): ArchiveEntry => {
 	const entryPath = path.join(targetPath, entry.name);
@@ -68,6 +98,8 @@ const readArchiveEntry = (targetPath: string, entry: fs.Dirent): ArchiveEntry =>
 		return archiveEntry(targetPath, entry.name, { boundaryError, isGitCheckout: hasGitEntry });
 	}
 	if (!entry.isDirectory() || !hasGitEntry) return archiveEntry(targetPath, entry.name);
+	const gitBoundary = gitBoundaryFields(entryPath);
+	if (gitBoundary !== null) return archiveEntry(targetPath, entry.name, gitBoundary);
 	try {
 		return archiveEntry(targetPath, entry.name, {
 			isGitCheckout: true,
