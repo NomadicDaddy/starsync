@@ -49,8 +49,9 @@ All notable changes to this project will be documented in this file. Format foll
       `extensions.worktreeConfig`.
     - The v1.0.4 delivery: shared groups reach a repository by its lock's own declaration, and
       a step keyed on a script with a shebang is keyed on what that script imports. The v1.0.5
-      delivery: a delivered gate marked fast must run in every fast gate, and three delivered
-      files at the line cap are split.
+      delivery: when a full-gate step runs a delivered command marked fast, a fast step must run
+      that same command (starsync's full gate runs neither marked command), and the delivered
+      lock writer's planning moved into its own file (lock-write.ts split into lock-plan.ts).
 
 ### Fixed
 
