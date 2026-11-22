@@ -23,8 +23,8 @@ export interface ArchiveEntry {
 	boundaryError: null | string;
 	/**
 	 * Why Git couldn't say where this checkout's work tree and metadata are, as for a damaged
-	 * repository. No further Git runs in it: verification reports it replaceable, and forced repair
-	 * replaces the folder from a fresh clone.
+	 * repository. No further Git runs in it: verification reports it as checkout-boundary-unverified,
+	 * which forced repair never replaces, so the folder and its local work stay for a person.
 	 */
 	boundaryUnverified: null | string;
 	gitError: null | string;
