@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { Finding } from './reporting.ts';
 
 import { CURRENT_ARCHIVE_FORMAT, readArchiveConfig } from './archive-config.ts';
-import { buildGitEnvironment } from './git-exec.ts';
+import { buildGitEnvironment, NO_CHECKOUT_FSMONITOR } from './git-exec.ts';
 import {
 	checkoutBoundaryProblem,
 	GIT_BOUNDARY_QUERY,
@@ -42,7 +42,7 @@ export interface ArchiveInspection {
 }
 
 const readGit = (checkoutPath: string, args: string[]): string =>
-	execFileSync('git', ['-c', 'core.askPass=', ...args], {
+	execFileSync('git', [...NO_CHECKOUT_FSMONITOR, '-c', 'core.askPass=', ...args], {
 		cwd: checkoutPath,
 		encoding: 'utf-8',
 		env: buildGitEnvironment(process.env, { GIT_OPTIONAL_LOCKS: '0' }),

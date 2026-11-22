@@ -11,6 +11,17 @@ All notable changes to this project will be documented in this file. Format foll
   accident. `.env.example` stays trackable, and a test checks each file against the ignore rules.
   This affects contributors to this repository only, not installed copies of StarSync.
 
+## [2.5.4] - 2026-11-22
+
+### Security
+
+- StarSync now turns off Git's filesystem monitor for every Git command it runs. A checkout's own
+  Git config can name a monitor command, and Git runs it whenever it reads the index, which
+  includes `verify`'s status and integrity checks, rename preview and sync's refresh. Before, a
+  checkout whose config someone had edited could start a command of their choosing during those
+  read-only checks. Git's own monitor setting in your global config is overridden for StarSync's
+  commands only.
+
 ## [2.5.3] - 2026-11-22
 
 ### Security

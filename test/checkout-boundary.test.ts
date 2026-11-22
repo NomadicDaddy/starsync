@@ -19,6 +19,7 @@ import { inspectArchive } from '../src/lib/archive-inspection.ts';
 import { verifyCheckout } from '../src/lib/archive-verification-checkout.ts';
 import { applyCheckoutRename } from '../src/lib/checkout-rename-apply.ts';
 import { resolveRenameEntry } from '../src/lib/checkout-rename-resolution.ts';
+import { readStatusPaths } from '../src/lib/git-exec.ts';
 import {
 	checkoutBoundaryProblem,
 	checkoutGitBoundaryProblem,
@@ -219,6 +220,47 @@ describe('Git effective-path boundary', () => {
 		expect(verified.report.findings.map((finding) => finding.code)).toEqual([
 			'checkout-outside-archive',
 		]);
+	});
+
+	test('status reads never run a checkout-configured filesystem monitor', async () => {
+		const { archive } = fixture();
+		const real = path.join(archive, 'real');
+		const marker = path.join(archive, '..', 'fsmonitor-ran');
+		const hook = path.join(archive, '..', 'fsmonitor-hook.sh');
+		writeFileSync(hook, `#!/bin/sh\necho ran >> '${marker.replaceAll('\\', '/')}'\nexit 1\n`);
+		git(real, ['remote', 'add', 'origin', 'https://github.com/owner/repository.git']);
+		git(real, ['config', 'starsync.repository-id', '42']);
+		git(real, ['config', 'starsync.repository-slug', 'owner/repository']);
+		writeFileSync(path.join(real, 'notes.txt'), 'one\n');
+		git(real, ['add', 'notes.txt']);
+		git(real, ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init']);
+		git(real, ['config', 'core.fsmonitor', hook.replaceAll('\\', '/')]);
+		writeFileSync(path.join(real, 'notes.txt'), 'two\n');
+		// The control: a plain status read runs the checkout's own monitor command.
+		git(real, ['status', '--porcelain']);
+		expect(existsSync(marker)).toBe(true);
+		rmSync(marker);
+		expect(await readStatusPaths([], { cwd: real })).toEqual(['notes.txt']);
+		const entry = inspectArchive(archive).entries.find(
+			(candidate) => candidate.name === 'real',
+		);
+		if (entry === undefined) throw new Error('The fixture checkout is missing.');
+		const verified = await verifyCheckout(entry);
+		expect(verified.report.findings.map((finding) => finding.code)).toContain(
+			'checkout-blocked',
+		);
+		const resolver: RepositoryResolver = () =>
+			Promise.resolve({
+				id: 42,
+				name: 'repository',
+				owner: 'owner',
+				slug: 'owner/repository',
+			});
+		expect(await resolveRenameEntry(entry, resolver)).toHaveProperty(
+			'blockedReason',
+			'Local changes prevent a safe folder rename.',
+		);
+		expect(existsSync(marker)).toBe(false);
 	});
 
 	test('a checkout Git cannot open is read no further and kept from forced repair', async () => {

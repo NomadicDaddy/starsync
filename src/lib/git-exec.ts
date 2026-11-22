@@ -69,6 +69,16 @@ export const buildGitEnvironment = (
 };
 
 /**
+ * Leads every Git command StarSync runs. A checkout's own config can name a filesystem-monitor
+ * command, which Git runs whenever it reads the index (status, fsck, merge and others). A
+ * command-line setting outranks the checkout's config, so this turns the monitor off for every
+ * call. The empty value works across Git versions: Git documents an empty string as boolean
+ * false, and Git before 2.36, where the setting is a hook path, treats an empty path as no
+ * monitor.
+ */
+export const NO_CHECKOUT_FSMONITOR = ['-c', 'core.fsmonitor='];
+
+/**
  * Runs a Git command asynchronously and returns stdout exactly as Git wrote it.
  *
  * Uses execFile (no shell) to prevent injection. Sets GIT_TERMINAL_PROMPT=0
@@ -78,7 +88,7 @@ const runGitRaw = (args: string[], options: GitExecOptions): Promise<string> =>
 	new Promise((resolve, reject) => {
 		execFile(
 			'git',
-			args,
+			[...NO_CHECKOUT_FSMONITOR, ...args],
 			{
 				cwd: options.cwd,
 				encoding: 'utf-8',
