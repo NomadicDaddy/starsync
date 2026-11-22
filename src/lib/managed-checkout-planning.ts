@@ -36,13 +36,15 @@ export interface ManagedSyncPlan {
 	retainedReports: CheckoutReport[];
 }
 
+// A link or junction occupies its name as surely as a directory does, so it is listed too, and
+// inspection reports it blocked instead of letting sync clone or refresh through it.
 const archiveEntryNames = (targetPath: string): string[] =>
 	fs
 		.readdirSync(targetPath, { withFileTypes: true })
 		.filter(
 			(entry) =>
 				entry.name !== '.starsync' &&
-				entry.isDirectory() &&
+				(entry.isDirectory() || entry.isSymbolicLink()) &&
 				!isOwnedCheckoutArtifactName(entry.name),
 		)
 		.map((entry) => entry.name)

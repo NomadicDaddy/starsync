@@ -41,6 +41,9 @@ const parseResolvableOrigin = (
 	entry: ArchiveEntry,
 	host: ArchiveHost,
 ): { owner: string; repository: string } | CheckoutReport => {
+	if (entry.boundaryError !== null) {
+		return failedCheckout(entry, 'checkout-outside-archive', entry.boundaryError);
+	}
 	if (!entry.isGitCheckout) {
 		return failedCheckout(
 			entry,

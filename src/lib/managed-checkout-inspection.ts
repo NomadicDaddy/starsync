@@ -28,6 +28,53 @@ export interface ManagedCheckoutScan {
 
 const emptyInspection = (): ManagedCheckoutInspection => ({ checkout: null, report: null });
 
+const sameFilesystemPath = (left: string, right: string): boolean =>
+	process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
+
+const lstatIfPresent = (entryPath: string): fs.Stats | undefined =>
+	fs.lstatSync(entryPath, { throwIfNoEntry: false });
+
+const gitMetadataProblem = (checkoutPath: string): null | string => {
+	const gitEntry = lstatIfPresent(path.join(checkoutPath, '.git'));
+	if (gitEntry === undefined) return null;
+	if (gitEntry.isSymbolicLink() || !gitEntry.isDirectory()) {
+		return 'Its .git entry is a file or link, which can point Git at metadata outside the checkout.';
+	}
+	if (lstatIfPresent(path.join(checkoutPath, '.git', 'commondir')) !== undefined) {
+		return 'Its Git metadata names a common directory, which can point Git outside the checkout.';
+	}
+	return null;
+};
+
+/**
+ * Why an archive entry can't be trusted to keep Git work inside the archive, or null when it is a
+ * real directory directly under the canonical archive root whose Git metadata, if it has any, is
+ * its own `.git` directory. A link or junction in its place, a `.git` file or link, and a
+ * `commondir` redirect all count, because sync and rename would otherwise fetch, write identity
+ * metadata or move files outside the selected archive. An entry that is neither a directory nor a
+ * link is not a checkout, so it has no problem here.
+ */
+export const checkoutBoundaryProblem = (targetPath: string, name: string): null | string => {
+	const checkoutPath = path.join(targetPath, name);
+	try {
+		const entry = lstatIfPresent(checkoutPath);
+		if (entry === undefined) return null;
+		if (entry.isSymbolicLink()) {
+			return 'The entry is a link or junction. StarSync manages only real directories inside the archive.';
+		}
+		if (!entry.isDirectory()) return null;
+		const canonical = path.join(fs.realpathSync(targetPath), name);
+		if (!sameFilesystemPath(fs.realpathSync(checkoutPath), canonical)) {
+			return 'The entry resolves outside the archive root.';
+		}
+		return gitMetadataProblem(checkoutPath);
+	} catch (err) {
+		return `Cannot confirm the entry stays inside the archive: ${sanitizeMessage(
+			err instanceof Error ? err.message : String(err),
+		)}`;
+	}
+};
+
 const originMatchesIdentity = (
 	origin: string,
 	repositorySlug: string,
@@ -80,6 +127,13 @@ export const inspectManagedCheckoutEntry = async (
 	name: string,
 	host: ArchiveHost = 'github.com',
 ): Promise<ManagedCheckoutInspection> => {
+	const boundaryProblem = checkoutBoundaryProblem(targetPath, name);
+	if (boundaryProblem !== null) {
+		return {
+			checkout: null,
+			report: blockedCheckoutReport(name, 'checkout-outside-archive', boundaryProblem),
+		};
+	}
 	const checkoutPath = path.join(targetPath, name);
 	if (!fs.existsSync(path.join(checkoutPath, '.git'))) return emptyInspection();
 	try {

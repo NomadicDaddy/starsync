@@ -5,6 +5,7 @@ import type { ProcessRepositoryOptions, RefreshResult, RepoRecord } from './refr
 
 import { finalizeCheckoutIdentity } from './checkout-state-transition.ts';
 import { refreshCheckoutOnDefaultBranch } from './default-branch-refresh.ts';
+import { checkoutBoundaryProblem } from './managed-checkout-inspection.ts';
 import { buildRefreshFailure, cloneRepository } from './refresh-clone.ts';
 
 const finalizeExistingIdentity = async (
@@ -26,7 +27,11 @@ const finalizeExistingIdentity = async (
 	return metadataError === null ? result : buildRefreshFailure(result.name, metadataError);
 };
 
-/** Processes one repository without starting Git work after an interruption. */
+/**
+ * Processes one repository without starting Git work after an interruption, or in an entry that
+ * could send Git outside the archive. The boundary is checked again here, just before Git runs,
+ * rather than trusted from the earlier archive scan.
+ */
 export const processRepository = async (
 	repo: RepoRecord,
 	targetBase: string,
@@ -35,6 +40,7 @@ export const processRepository = async (
 ): Promise<RefreshResult> => {
 	const folderName = repo.folderName ?? repo.name;
 	const repoPath = path.join(targetBase, folderName);
+	const boundaryProblem = checkoutBoundaryProblem(targetBase, folderName);
 	const hasGitDir = fs.existsSync(repoPath) && fs.existsSync(path.join(repoPath, '.git'));
 	let result: RefreshResult;
 	if (isInterruptionRequested()) {
@@ -43,6 +49,8 @@ export const processRepository = async (
 			name: folderName,
 			outcome: 'skipped',
 		};
+	} else if (boundaryProblem !== null) {
+		result = buildRefreshFailure(folderName, boundaryProblem);
 	} else if (!hasGitDir) {
 		result = await cloneRepository(repo, targetBase, options);
 	} else {

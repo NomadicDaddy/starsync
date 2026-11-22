@@ -6,6 +6,7 @@ import type { Finding } from './reporting.ts';
 
 import { CURRENT_ARCHIVE_FORMAT, readArchiveConfig } from './archive-config.ts';
 import { buildGitEnvironment } from './git-exec.ts';
+import { checkoutBoundaryProblem } from './managed-checkout-inspection.ts';
 import { isOwnedCheckoutArtifactName } from './owned-checkout-artifacts.ts';
 import { createFinding } from './reporting.ts';
 import { sanitizeMessage } from './secret-safety.ts';
@@ -13,6 +14,8 @@ import { sanitizeMessage } from './secret-safety.ts';
 type ArchiveKind = 'current' | 'invalid' | 'uninitialized' | 'unsupported';
 
 export interface ArchiveEntry {
+	/** Why Git work in this entry could reach outside the archive; set entries are never acted on. */
+	boundaryError: null | string;
 	gitError: null | string;
 	isGitCheckout: boolean;
 	name: string;
@@ -36,34 +39,45 @@ const readGit = (checkoutPath: string, args: string[]): string =>
 		windowsHide: true,
 	}).trim();
 
+type ArchiveEntryFields = Partial<
+	Pick<ArchiveEntry, 'boundaryError' | 'gitError' | 'isGitCheckout' | 'origin'>
+>;
+
+const archiveEntry = (
+	targetPath: string,
+	name: string,
+	fields: ArchiveEntryFields = {},
+): ArchiveEntry => ({
+	boundaryError: null,
+	gitError: null,
+	isGitCheckout: false,
+	origin: null,
+	...fields,
+	name,
+	path: path.join(targetPath, name),
+});
+
 const readArchiveEntry = (targetPath: string, entry: fs.Dirent): ArchiveEntry => {
 	const entryPath = path.join(targetPath, entry.name);
-	const isGitCheckout = entry.isDirectory() && fs.existsSync(path.join(entryPath, '.git'));
-	if (!isGitCheckout) {
-		return {
-			gitError: null,
-			isGitCheckout: false,
-			name: entry.name,
-			origin: null,
-			path: entryPath,
-		};
+	const hasGitEntry = fs.existsSync(path.join(entryPath, '.git'));
+	const boundaryError =
+		entry.isDirectory() || entry.isSymbolicLink()
+			? checkoutBoundaryProblem(targetPath, entry.name)
+			: null;
+	if (boundaryError !== null) {
+		return archiveEntry(targetPath, entry.name, { boundaryError, isGitCheckout: hasGitEntry });
 	}
+	if (!entry.isDirectory() || !hasGitEntry) return archiveEntry(targetPath, entry.name);
 	try {
-		return {
-			gitError: null,
+		return archiveEntry(targetPath, entry.name, {
 			isGitCheckout: true,
-			name: entry.name,
 			origin: readGit(entryPath, ['config', '--get', 'remote.origin.url']),
-			path: entryPath,
-		};
+		});
 	} catch (err) {
-		return {
+		return archiveEntry(targetPath, entry.name, {
 			gitError: sanitizeMessage(err instanceof Error ? err.message : String(err)),
 			isGitCheckout: true,
-			name: entry.name,
-			origin: null,
-			path: entryPath,
-		};
+		});
 	}
 };
 

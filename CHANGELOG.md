@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.5.2] - 2026-11-22
+
+### Security
+
+- Sync, rename and verification now refuse an archive entry that could send Git outside the
+  archive, and report it as `checkout-outside-archive` before running Git: a link or junction in
+  place of a checkout, a `.git` file or link that redirects Git, Git metadata that names a common
+  directory, or a folder that resolves outside the archive root. Before, sync could fetch into, and
+  write identity metadata for, a repository a planted link pointed at, and rename could act on it.
+  A link or junction now also counts as an occupied name, so sync won't clone through it.
+
 ## [2.5.1] - 2026-11-22
 
 ### Security

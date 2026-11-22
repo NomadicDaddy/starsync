@@ -257,6 +257,9 @@ export const verifyCheckout = async (
 	entry: ArchiveEntry,
 	host: ArchiveHost = 'github.com',
 ): Promise<VerifiedCheckout> => {
+	if (entry.boundaryError !== null) {
+		return failEntry(entry, 'checkout-outside-archive', entry.boundaryError);
+	}
 	if (!entry.isGitCheckout) {
 		return failEntry(entry, 'unrelated-archive-entry', 'Archive entry is not a Git checkout.');
 	}
