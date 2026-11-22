@@ -2,7 +2,7 @@
  * Retiring a group from a repository: `--retire <group>` on a write narrowed with `--only`.
  *
  * A lock that declares a group which no longer reaches its repository stops the whole write
- * (lock-write.ts), because rewriting the lock would silently drop what that repository declared.
+ * (lock-plan.ts), because rewriting the lock would silently drop what that repository declared.
  * That refusal is right for a mistake. It also left no way to take a group away on purpose: the
  * delivered files stayed, with no consumer, and every later write to that repository was refused.
  *
@@ -12,7 +12,7 @@
  * group's files from that repository and leave the group out of the lock it rewrites. A declared
  * group is retired while the repository's committed lock still declares it, so the hashes it
  * records are there to prove each file untouched; the write stops counting it as reaching the
- * named repositories (lock-write.ts) rather than waiting for the declaration to go first.
+ * named repositories (lock-plan.ts) rather than waiting for the declaration to go first.
  *
  * A file is removed only while it is exactly what the lock says was delivered, with no
  * uncommitted change: a file the repository has edited is its own work, and the write refuses

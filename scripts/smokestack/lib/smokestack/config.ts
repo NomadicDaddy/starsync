@@ -31,6 +31,7 @@ import { dirname, join, relative } from 'node:path';
 import { assertCacheCoverage, parseStepCache, type StepCache } from './cache-config.ts';
 import { asObject, asText, CONFIG_FILE, fail } from './config-read.ts';
 import { type EnvPolicy, parseEnv } from './env.ts';
+import { assertFastGates, manifestBeside } from './fast-gates.ts';
 import { type HeavyConfig, parseHeavy } from './heavy-config.ts';
 import { parseOmits } from './omits.ts';
 
@@ -290,5 +291,9 @@ export function readConfig(
 		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
 		fail(`is missing at ${dirname(file)}, so nothing says what this repository's gate runs.`);
 	}
-	return parseConfig(text, scripts, readPackageName(root));
+	const config = parseConfig(text, scripts, readPackageName(root));
+	assertFastGates(config, manifestBeside(root, file), (step) =>
+		skipReason(step, config.packageName),
+	);
+	return config;
 }

@@ -103,10 +103,12 @@
 				{ "disposition": "synced", "source": "lib/destructive/waivers.ts" },
 				{ "disposition": "synced", "source": "lib/docs/git-ignored.ts" },
 				{ "disposition": "synced", "source": "lib/docs/scan.ts" },
-				{ "disposition": "synced", "source": "lib/docs/waivers.ts" }
+				{ "disposition": "synced", "source": "lib/docs/waivers.ts" },
+				{ "disposition": "synced", "source": "lib/git-window-hide/code-mask.ts" }
 			],
 			"gates": [
 				{
+					"fast": true,
 					"id": "destructive-confirmation",
 					"purpose": "A destructive user action (delete, revoke, impersonate, purge) asks for confirmation before it is sent.",
 					"script": "check:destructive-confirmation"
@@ -200,6 +202,7 @@
 			],
 			"gates": [
 				{
+					"fast": true,
 					"id": "gate-conventions",
 					"purpose": "Every gate script follows the decidable rules of gate-conventions.md.",
 					"script": "check:gate-conventions"
@@ -266,6 +269,7 @@
 				{ "disposition": "synced", "source": "lib/shared-core/hooks-scope.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/known-drift.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/lock-check.ts" },
+				{ "disposition": "synced", "source": "lib/shared-core/lock-plan.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/lock-scope.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/lock-write.ts" },
 				{ "disposition": "synced", "source": "lib/shared-core/lock.ts" },
@@ -327,6 +331,7 @@
 				{ "disposition": "synced", "source": "lib/smokestack/config-read.ts" },
 				{ "disposition": "synced", "source": "lib/smokestack/config.ts" },
 				{ "disposition": "synced", "source": "lib/smokestack/env.ts" },
+				{ "disposition": "synced", "source": "lib/smokestack/fast-gates.ts" },
 				{ "disposition": "synced", "source": "lib/smokestack/gate.ts" },
 				{ "disposition": "synced", "source": "lib/smokestack/heavy-config.ts" },
 				{ "disposition": "synced", "source": "lib/smokestack/heavy-files.ts" },

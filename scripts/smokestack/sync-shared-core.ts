@@ -193,7 +193,7 @@ export function runSharedCoreSync(options: SharedCoreOptions, place: SyncPlace =
 	if (unreadable.length > 0 && !options.dryRun) return 1;
 	// A group on --retire leaves the named targets while their committed lock still declares it, so
 	// its recorded hashes are there to prove each file untouched (Roger 5Q-1). This run delivers
-	// nothing of it, and the lock plan stops counting it as reaching them (lock-write.ts), so it is
+	// nothing of it, and the lock plan stops counting it as reaching them (lock-plan.ts), so it is
 	// retired with every guard in retire.ts. --retire needs --only: exactly the named repositories.
 	const writing = reports.map((report) =>
 		options.retire.has(report.group) ? { ...report, findings: [] } : report,
