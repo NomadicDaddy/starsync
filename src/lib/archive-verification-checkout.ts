@@ -264,13 +264,13 @@ export const verifyCheckout = async (
 		return failEntry(entry, 'unrelated-archive-entry', 'Archive entry is not a Git checkout.');
 	}
 	// Inspection asked Git where this checkout lives before any other Git read. When Git couldn't
-	// answer, nothing more runs here: the checkout is reported as failing its integrity check, which
-	// forced repair replaces from a fresh clone without touching it with Git again.
+	// answer, nothing more runs here, and the code is outside forced repair's replaceable set: its
+	// integrity and local work were never established, so the folder is left for a person to recover.
 	if (entry.boundaryUnverified !== null) {
 		return failEntry(
 			entry,
-			'git-integrity-failed',
-			`Git cannot open this checkout to confirm it stays inside the archive: ${entry.boundaryUnverified}`,
+			'checkout-boundary-unverified',
+			`Git cannot open this checkout to confirm it stays inside the archive, so it was left as it is: ${entry.boundaryUnverified}. Recover or remove it by hand.`,
 		);
 	}
 	const state: VerificationState = {

@@ -221,7 +221,7 @@ describe('Git effective-path boundary', () => {
 		]);
 	});
 
-	test('a checkout Git cannot open is read no further and reported replaceable', async () => {
+	test('a checkout Git cannot open is read no further and kept from forced repair', async () => {
 		const { archive } = fixture();
 		writeFileSync(path.join(archive, 'real', '.git', 'HEAD'), 'not a ref\n');
 		const entry = inspectArchive(archive).entries.find(
@@ -232,7 +232,7 @@ describe('Git effective-path boundary', () => {
 		if (entry === undefined) return;
 		const verified = await verifyCheckout(entry);
 		expect(verified.report.findings.map((finding) => finding.code)).toEqual([
-			'git-integrity-failed',
+			'checkout-boundary-unverified',
 		]);
 	});
 });
