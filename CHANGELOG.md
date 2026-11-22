@@ -13,10 +13,13 @@ All notable changes to this project will be documented in this file. Format foll
   worked this way.
 - Error and report sanitizing now redacts the values of secret fields in JSON, including JSON
   nested inside a JSON string. A field counts when its decoded name ends in authorization, auth,
-  api key, private key, secret, token, password, passwd, pwd or cookie, so `"access_token"`,
-  `"accessToken"`, `"Set-Cookie"` and a name written with `\u` escapes all match. The redacted
-  JSON stays valid, and other keys and values are left as they were. Before, an opaque credential
-  in a quoted Authorization field reached reports, progress and JSON output unchanged.
+  api key, access key, private key, secret, token, password, passwd, pwd or cookie, so
+  `"access_token"`, `"accessToken"`, `"Set-Cookie"` and a name written with `\u` escapes all match.
+  The redacted JSON stays valid, and other keys and values are left as they were. That holds too
+  when a plain-text Authorization header, Bearer value or `password=` pair sits inside a JSON
+  string.
+  Before, an opaque credential in a quoted Authorization field reached reports, progress and JSON
+  output unchanged.
 - The repository now ignores every dotenv file Bun loads, including the `.env.development`,
   `.env.production` and `.env.test` overlays, so a token placed in one can't be committed by
   accident. `.env.example` stays trackable, and a test checks each file against the ignore rules.

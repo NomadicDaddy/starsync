@@ -49,21 +49,38 @@ const SECRET_PATTERNS = [
 	/\bAIza[A-Za-z0-9_-]{35}\b/g,
 ];
 
-const AUTHORIZATION_HEADER_RE = /(\bauthorization\s*:\s*)[^\r\n]+/gi;
-const AUTHORIZATION_VALUE_RE = /(\bauthorization\s*=\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&#,;]+)/gi;
-const BEARER_TOKEN_RE = /(\bbearer\s+)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi;
+// A quoted value, including one whose quotes are escaped because the text sits inside a JSON
+// string. The bare forms below stop at a quote or backslash: credential values never contain
+// either, and stopping there keeps a match from running past the end of the JSON string it sits
+// in, which would swallow its closing quote and the fields after it.
+const QUOTED_TEXT_VALUE = String.raw`"[^"\r\n]*"|'[^'\r\n]*'|\\+"[^"\\\r\n]*\\+"`;
+
+const AUTHORIZATION_HEADER_RE = new RegExp(
+	String.raw`(\bauthorization\s*:\s*)(?:${QUOTED_TEXT_VALUE}|[^\r\n"\\]+)`,
+	'gi',
+);
+const AUTHORIZATION_VALUE_RE = new RegExp(
+	String.raw`(\bauthorization\s*=\s*)(?:${QUOTED_TEXT_VALUE}|[^\s&#,;"\\]+)`,
+	'gi',
+);
+const BEARER_TOKEN_RE = new RegExp(
+	String.raw`(\bbearer\s+)(?:${QUOTED_TEXT_VALUE}|[^\s,;"\\]+)`,
+	'gi',
+);
 // The lookahead leaves a JSON value the quoted-field pass already redacted as it is, so the JSON
 // stays valid instead of losing the value's quotes.
-const GENERIC_SECRET_VALUE_RE =
-	/((?:["']?)(?:(?:[A-Za-z0-9]+[-_])*(?:api[-_]?key|secret|token|password|passwd|pwd))["']?\s*(?:=|:)\s*)(?!"\[REDACTED\]")(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&#,;]+)/gi;
+const GENERIC_SECRET_VALUE_RE = new RegExp(
+	String.raw`((?:["']?)(?:(?:[A-Za-z0-9]+[-_])*(?:api[-_]?key|secret|token|password|passwd|pwd))["']?\s*(?:=|:)\s*)(?!"\[REDACTED\]")(?:${QUOTED_TEXT_VALUE}|[^\s&#,;"\\]+)`,
+	'gi',
+);
 
 /**
  * A decoded JSON property name that holds a credential: it ends in one of these words after any
- * prefix, with or without a separator, so access_token, accessToken, x-api-key and Set-Cookie all
- * match while tokenType and author do not.
+ * prefix, with or without a separator, so access_token, accessToken, x-api-key, secret_access_key
+ * and Set-Cookie all match while tokenType and author do not.
  */
 const SECRET_PROPERTY_RE =
-	/(?:authorization|auth|api[-_]?key|private[-_]?key|secret|token|password|passwd|pwd|cookie)$/i;
+	/(?:authorization|auth|(?:api|access|private)[-_]?key|secret|token|password|passwd|pwd|cookie)$/i;
 
 /**
  * A double quote and the whole run of backslashes before it. JSON carried inside a JSON string

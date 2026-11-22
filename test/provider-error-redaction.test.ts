@@ -157,6 +157,7 @@ describe('quoted secret field redaction', () => {
 			cookie: ECHOED,
 			private_key: ECHOED,
 			refreshToken: ECHOED,
+			secret_access_key: ECHOED,
 			'Set-Cookie': ECHOED,
 			userPassword: ECHOED,
 		};
@@ -170,8 +171,36 @@ describe('quoted secret field redaction', () => {
 		expect(JSON.parse((JSON.parse(nested) as { body: string }).body)).toEqual(redacted);
 	});
 
+	test('keeps JSON valid when plain-text credentials sit inside a JSON string', () => {
+		const cases = [
+			[`request had authorization: token ${ECHOED}`, 'request had authorization: [REDACTED]'],
+			[`Bearer ${ECHOED}`, 'Bearer [REDACTED]'],
+			[
+				`password="${ECHOED}" and token=${ECHOED}`,
+				'password=[REDACTED] and token=[REDACTED]',
+			],
+		] as const;
+		for (const [msg, expected] of cases) {
+			const top = sanitizeMessage(JSON.stringify({ keep: 'yes', msg, n: 1 }));
+			expect(top).not.toContain(ECHOED);
+			expect(JSON.parse(top)).toEqual({ keep: 'yes', msg: expected, n: 1 });
+			const nested = sanitizeMessage(
+				JSON.stringify({ body: JSON.stringify({ keep: 'yes', msg }) }),
+			);
+			expect(nested).not.toContain(ECHOED);
+			expect(JSON.parse((JSON.parse(nested) as { body: string }).body)).toEqual({
+				keep: 'yes',
+				msg: expected,
+			});
+		}
+	});
+
 	test('matches a property by its decoded name when the name is written with escapes', () => {
-		const escaped = String.raw`{"authorization":"token ${ECHOED}","login":"some_user"}`;
+		// The backslash is built rather than typed, so the fixture holds a real JSON escape: the
+		// names below read as authorization and login only once decoded.
+		const backslash = String.fromCharCode(92);
+		const escaped = `{"${backslash}u0061uthorization":"token ${ECHOED}","log${backslash}u0069n":"some_user"}`;
+		expect(escaped).not.toContain('authorization');
 		const top = sanitizeMessage(escaped);
 		expect(top).not.toContain(ECHOED);
 		expect(JSON.parse(top)).toEqual({ authorization: '[REDACTED]', login: 'some_user' });
