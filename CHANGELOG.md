@@ -19,8 +19,8 @@ All notable changes to this project will be documented in this file. Format foll
   StarSync no longer runs any further Git in it. Verification reports it as
   `checkout-boundary-unverified`, and `verify --force` leaves the folder and its local work as
   they are for you to recover or remove. Before, forced repair could replace it and discard
-  uncommitted files. A checkout Git can open but whose objects are damaged is still replaced as
-  before.
+  uncommitted files. A checkout Git can open but whose objects are damaged stays eligible for
+  forced repair as before, under the same conditions as any other repair.
 
 ### Known limitations
 
