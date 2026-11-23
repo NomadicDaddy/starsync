@@ -1,6 +1,6 @@
-import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { execFile as actualExecFile, execFileSync as actualExecFileSync } from 'node:child_process';
-import {
+import fs, {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -1278,13 +1278,19 @@ describe('sync free space floor', () => {
 describe('free-space measurement', () => {
 	test('measures an absent nested path exactly as its nearest existing ancestor', () => {
 		const parent = mkdtempSync(path.join(tmpdir(), 'starsync-measure-'));
+		// One live reading, replayed for every measurement, so other writes to the disk between
+		// two readings can't change the answer. The spy also records which path is measured.
+		const reading = fs.statfsSync(parent);
+		const statfs = spyOn(fs, 'statfsSync').mockReturnValue(reading);
 		try {
 			const absent = path.join(parent, 'no', 'such', 'child');
 
 			expect(existsSync(absent)).toBe(false);
 			expect(measureAvailableSpace(absent)).toBe(measureAvailableSpace(parent));
 			expect(measureAvailableSpace(parent)).toBeGreaterThan(0);
+			expect(statfs.mock.calls.map((call) => call[0])).toEqual([parent, parent, parent]);
 		} finally {
+			statfs.mockRestore();
 			rmSync(parent, { force: true, recursive: true });
 		}
 	});
