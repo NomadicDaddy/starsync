@@ -31,6 +31,14 @@ const emptyInspection = (): ManagedCheckoutInspection => ({ checkout: null, repo
 const sameFilesystemPath = (left: string, right: string): boolean =>
 	process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
 
+/**
+ * The operating system's canonical form of an existing path. The native call expands a Windows
+ * 8.3 short name (such as RUNNER~1) to its long form, which is the form Git reports. Node's
+ * JavaScript realpath keeps the short name, so an archive named by its short path would refuse its
+ * own checkouts.
+ */
+const canonicalPath = (target: string): string => fs.realpathSync.native(target);
+
 const lstatIfPresent = (entryPath: string): fs.Stats | undefined =>
 	fs.lstatSync(entryPath, { throwIfNoEntry: false });
 
@@ -63,8 +71,8 @@ export const checkoutBoundaryProblem = (targetPath: string, name: string): null 
 			return 'The entry is a link or junction. StarSync manages only real directories inside the archive.';
 		}
 		if (!entry.isDirectory()) return null;
-		const canonical = path.join(fs.realpathSync(targetPath), name);
-		if (!sameFilesystemPath(fs.realpathSync(checkoutPath), canonical)) {
+		const canonical = path.join(canonicalPath(targetPath), name);
+		if (!sameFilesystemPath(canonicalPath(checkoutPath), canonical)) {
 			return 'The entry resolves outside the archive root.';
 		}
 		return gitMetadataProblem(checkoutPath);
@@ -91,7 +99,7 @@ export const GIT_OUTSIDE_CHECKOUT =
 // then compared as written, so it still counts as outside the checkout.
 const canonicalOrResolved = (target: string): string => {
 	try {
-		return fs.realpathSync(target);
+		return canonicalPath(target);
 	} catch {
 		return path.resolve(target);
 	}
@@ -101,7 +109,7 @@ const canonicalOrResolved = (target: string): string => {
 export const gitPathsInside = (answer: string, checkoutPath: string): boolean => {
 	const [topLevel, gitDir, commonDir, extra] = answer.split(/\r?\n/);
 	if (!topLevel || !gitDir || !commonDir || extra !== undefined) return false;
-	const checkout = fs.realpathSync(checkoutPath);
+	const checkout = canonicalPath(checkoutPath);
 	const metadata = path.join(checkout, '.git');
 	return (
 		sameFilesystemPath(canonicalOrResolved(topLevel), checkout) &&

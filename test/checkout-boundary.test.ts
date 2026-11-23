@@ -1,3 +1,4 @@
+import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
 	existsSync,
@@ -66,6 +67,45 @@ const fixture = (): { archive: string; outside: string; outsideConfig: string } 
 const link = (archive: string, outside: string): void => {
 	symlinkSync(outside, path.join(archive, 'linked'), 'junction');
 };
+
+const MAX_WINDOWS_PATH = 32_768;
+
+/**
+ * The Windows 8.3 short form of an existing path, from the system's own GetShortPathNameW with the
+ * path passed as data, or null off Windows or when no component of the path has a short alias.
+ */
+const shortPathOf = (target: string): null | string => {
+	if (process.platform !== 'win32') return null;
+	const kernel32 = dlopen('kernel32.dll', {
+		GetShortPathNameW: { args: [FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.u32 },
+	});
+	try {
+		const input = Buffer.from(`${target}\0`, 'utf16le');
+		const output = Buffer.alloc(MAX_WINDOWS_PATH * 2);
+		const length = kernel32.symbols.GetShortPathNameW(
+			ptr(input),
+			ptr(output),
+			MAX_WINDOWS_PATH,
+		);
+		if (length === 0 || length >= MAX_WINDOWS_PATH) return null;
+		const short = output.toString('utf16le', 0, length * 2);
+		return short === target ? null : short;
+	} finally {
+		kernel32.close();
+	}
+};
+
+// Volumes can have short-name generation turned off, so the short-path test runs only where a
+// long folder name actually has a short alias.
+const shortNamesAvailable = ((): boolean => {
+	if (process.platform !== 'win32') return false;
+	const probe = mkdtempSync(path.join(tmpdir(), 'starsync-shortname-probe-'));
+	try {
+		return shortPathOf(probe) !== null;
+	} finally {
+		rmSync(probe, { force: true, recursive: true });
+	}
+})();
 
 describe('checkout boundary', () => {
 	test('accepts a real checkout with its own .git directory, and non-checkouts', () => {
@@ -270,4 +310,42 @@ describe('Git effective-path boundary', () => {
 			'checkout-boundary-unverified',
 		]);
 	});
+
+	test.skipIf(!shortNamesAvailable)(
+		'accepts an archive named by its Windows short path',
+		async () => {
+			const { archive } = fixture();
+			const real = path.join(archive, 'real');
+			git(real, ['remote', 'add', 'origin', 'https://github.com/owner/repository.git']);
+			git(real, ['config', 'starsync.repository-id', '42']);
+			git(real, ['config', 'starsync.repository-slug', 'owner/repository']);
+			writeFileSync(path.join(real, 'notes.txt'), 'one\n');
+			git(real, ['add', 'notes.txt']);
+			git(real, ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init']);
+			const short = shortPathOf(archive);
+			if (short === null) throw new Error('The fixture archive has no short path.');
+			expect(short).toContain('~');
+			expect(checkoutBoundaryProblem(short, 'real')).toBeNull();
+			expect(await checkoutGitBoundaryProblem(short, 'real')).toBeNull();
+
+			const verifyThrough = async (archivePath: string): Promise<CheckoutReport> => {
+				const entry = inspectArchive(archivePath).entries.find(
+					(candidate) => candidate.name === 'real',
+				);
+				if (entry === undefined) throw new Error('The fixture checkout is missing.');
+				expect(entry.boundaryError).toBeNull();
+				expect(entry.boundaryUnverified).toBeNull();
+				return (await verifyCheckout(entry)).report;
+			};
+			// Through the short path, verify reaches the ordinary checkout checks and reports
+			// exactly what it reports through the long path.
+			const viaShort = await verifyThrough(short);
+			expect(viaShort.outcome).toBe('current');
+			expect(viaShort.findings.map((finding) => finding.code)).toEqual([
+				'git-integrity-valid',
+				'pending-rename',
+			]);
+			expect(viaShort).toEqual(await verifyThrough(archive));
+		},
+	);
 });

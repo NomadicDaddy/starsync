@@ -11,6 +11,15 @@ All notable changes to this project will be documented in this file. Format foll
   accident. `.env.example` stays trackable, and a test checks each file against the ignore rules.
   This affects contributors to this repository only, not installed copies of StarSync.
 
+## [2.5.6] - 2026-11-22
+
+### Fixed
+
+- On Windows, an archive opened through its 8.3 short path (a path with `~1`-style names, such
+  as the short form of a folder name with spaces) no longer refuses its own checkouts as outside
+  the archive. The checkout boundary from 2.5.2 compared the short path with the long one Git reports.
+  It now compares the canonical long form of both. Every refusal it made before still stands.
+
 ## [2.5.5] - 2026-11-22
 
 ### Security
