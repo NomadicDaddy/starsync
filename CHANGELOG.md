@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file. Format foll
   `.env.production` and `.env.test` overlays, so a token placed in one can't be committed by
   accident. `.env.example` stays trackable, and a test checks each file against the ignore rules.
   This affects contributors to this repository only, not installed copies of StarSync.
+- The commit-time leak guard is updated to smokestack 1.0.7. It now runs under bash 3.2, the
+  version macOS ships, where it used to stop with an "unbound variable" error, and it adds
+  smokestack 1.0.6's private pattern tier. This affects contributors to this repository only, not
+  installed copies of StarSync.
 
 ## [2.5.6] - 2026-11-22
 

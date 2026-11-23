@@ -40,8 +40,9 @@ for encoding in le-bom be-bom le; do
 done
 grep -q 'text.utf16: 1 line(s), secret format' "$tmp/stderr" || fail 'a UTF-16 refusal did not name the file and the class'
 if grep -q "$aws_key" "$tmp/stderr"; then fail 'a UTF-16 refusal printed the secret it refused'; fi
-# 23. A private name and a home path in UTF-16 are refused too; clean UTF-16 text passes.
-[ "$(run_guard_utf16 le 'mentions zzz-synthetic-app somewhere')" = 1 ] || fail 'a UTF-16 private name was not refused'
+# 23. A private name in UTF-16 is warned on at its decoded line, a home path is refused, and clean
+# UTF-16 text passes.
+passed_warning "$(run_guard_utf16 le 'mentions zzz-synthetic-app somewhere')" text.utf16:1 || fail 'a UTF-16 private name was not warned on at its decoded line'
 [ "$(run_guard_utf16 le-bom "path=$win_path")" = 1 ] || fail 'a UTF-16 home path was not refused'
 [ "$(run_guard_utf16 le-bom 'plain harmless content')" = 0 ] || fail 'clean UTF-16 text was refused'
 # 24. A PEM key body in UTF-16 is refused by the same rule as in UTF-8, and a bare header is not.

@@ -25,6 +25,7 @@
 				},
 				{ "disposition": "synced", "source": "leak-guard.sh" },
 				{ "disposition": "synced", "source": "leak-guard-decode.sh" },
+				{ "disposition": "synced", "source": "leak-guard-private.sh" },
 				{ "disposition": "synced", "source": "leak-guard-setup.sh" },
 				{ "disposition": "synced", "source": "post-checkout" },
 				{ "disposition": "synced", "source": "post-merge" },

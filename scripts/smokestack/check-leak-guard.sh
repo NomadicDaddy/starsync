@@ -83,8 +83,8 @@ set +m
 # shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
 [ "$(run_guard "$synthetic" "path=$win_path")" = 1 ] || fail 'home-directory path was not blocked'
 
-# 5. Private literal from the pattern file is blocked.
-[ "$(run_guard "$synthetic" 'mentions zzz-synthetic-app somewhere')" = 1 ] || fail 'local pattern was not blocked'
+# 5. A private literal from the pattern file is warned on at its line, not refused (tier 2 warns).
+passed_warning "$(run_guard "$synthetic" 'mentions zzz-synthetic-app somewhere')" staged.txt:1 || fail 'local pattern was not warned on'
 
 # 6. Lowercase route-style path is NOT blocked (path tier is case-sensitive).
 [ "$(run_guard "$synthetic" 'GET /users/42/profile')" = 0 ] || fail 'route-style /users/ path was wrongly blocked'
@@ -124,7 +124,7 @@ run_guard_registry() {
 	) 2>"$tmp/stderr" || code=$?
 	echo "$code"
 }
-[ "$(run_guard_registry "$synthetic" 'mentions zzz-synthetic-app somewhere')" = 1 ] || fail 'registry-resolved pattern file was not used'
+passed_warning "$(run_guard_registry "$synthetic" 'mentions zzz-synthetic-app somewhere')" staged.txt:1 || fail 'registry-resolved pattern file was not used'
 [ "$(run_guard_registry "$synthetic" 'plain harmless content')" = 0 ] || fail 'registry-resolved pattern file blocked clean content'
 printf '%s\n' '\bzzz-other-app\b' >"$tmp/patterns-other"
 code=0
@@ -172,12 +172,12 @@ chmod 600 "$tmp/patterns-locked"
 # sibling, so in the repo that IS zzz-synthetic-app the pattern for it must be dropped - otherwise
 # the guard blocks ordinary prose and the only workable answer is not installing it at all.
 guard_repo="$tmp/zzz-synthetic-app"
-[ "$(run_guard "$synthetic" 'mentions zzz-synthetic-app somewhere')" = 0 ] || fail 'repo was blocked by a pattern matching its own name'
+passed_quietly "$(run_guard "$synthetic" 'mentions zzz-synthetic-app somewhere')" || fail 'repo was warned on by a pattern matching its own name'
 
-# 10. Dropping the self-pattern must not disarm the rest: a sibling's name is still blocked in the
+# 10. Dropping the self-pattern must not disarm the rest: a sibling's name is still warned on in the
 # same repo, which is the whole reason tier 2 exists.
-[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 1 ] || fail 'sibling pattern was dropped along with the self pattern'
-[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-synthetic-app somewhere')" = 0 ] || fail 'self pattern survived alongside a sibling pattern'
+passed_warning "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" staged.txt:1 || fail 'sibling pattern was dropped along with the self pattern'
+passed_quietly "$(run_guard "$tmp/patterns-pair" 'mentions zzz-synthetic-app somewhere')" || fail 'self pattern survived alongside a sibling pattern'
 guard_repo="$tmp/repo"
 
 # The lanes started above, in case order: their output, then their failures and exit status

@@ -1,5 +1,5 @@
-# Self-test for leak-guard.sh, cases 11 to 21. Sourced by check-leak-guard.sh in a lane of its own,
-# never run alone: it uses the setup's scratch repositories, fixtures (synthetic, aws_key,
+# Self-test for leak-guard.sh, cases 11 to 21 and 42 to 51. Sourced by check-leak-guard.sh in a lane
+# of its own, never run alone: it uses the setup's scratch repositories, fixtures (synthetic, aws_key,
 # pem_header, b64_run), helpers (run_guard, fail) and failure count, and check-leak-guard.sh prints
 # the summary and sets the exit code.
 # Split from check-leak-guard.sh so each stays under the 300-line ceiling.
@@ -21,9 +21,9 @@
 [ "$(run_guard "$synthetic" "key=$aws_key")" = 1 ] || fail 'synthetic AWS key was not blocked (case 13)'
 grep -q 'staged.txt: 1 line(s), secret format' "$tmp/stderr" || fail 'a refusal did not name the file and the class'
 if grep -q "$aws_key" "$tmp/stderr"; then fail 'a refusal printed the secret it refused'; fi
-[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 1 ] || fail 'sibling name was not blocked (case 13)'
-grep -q 'staged.txt: 1 line(s), private name' "$tmp/stderr" || fail 'a private-name refusal did not name the file and the class'
-if grep -q 'zzz-sibling-app' "$tmp/stderr"; then fail 'a refusal printed the private name it refused'; fi
+passed_warning "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" staged.txt:1 || fail 'sibling name was not warned on with its file and line (case 13)'
+grep -q '^leak-guard warning: 1 internal reference(s)$' "$tmp/stderr" || fail 'a tier-2 warning did not give its count'
+if grep -q 'zzz-sibling-app' "$tmp/stderr"; then fail 'a warning printed the private name it found'; fi
 
 # 14. A private pattern that is not a valid expression stops the commit. It is kept in the list on
 # purpose so that it fails closed; when the error was swallowed the whole private tier reported no
@@ -51,13 +51,13 @@ rm -f "$guard_repo/shape.txt"
 publishes_path=scripts/smokestack/leak-guard-publishes
 publishes="$guard_repo/$publishes_path"
 printf '%s\n' '# names this repo may publish' 'zzz-sibling-app' >"$publishes"
-[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 1 ] || fail 'an unstaged publishes file cleared a pattern'
+passed_warning "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" staged.txt:1 || fail 'an unstaged publishes file cleared a pattern'
 git -C "$guard_repo" add "$publishes_path"
-[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 0 ] || fail 'a staged publishes entry did not clear its pattern'
+passed_quietly "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" || fail 'a staged publishes entry did not clear its pattern'
 grep -q 'cleared for this repo' "$tmp/stderr" || fail 'a cleared pattern was not announced'
 
 # 12b. Clearing one name leaves every other private pattern armed, and never touches tier 1.
-[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-synthetic-app somewhere')" = 1 ] || fail 'publishes cleared a name it does not list'
+passed_warning "$(run_guard "$tmp/patterns-pair" 'mentions zzz-synthetic-app somewhere')" staged.txt:1 || fail 'publishes cleared a name it does not list'
 [ "$(run_guard "$tmp/patterns-pair" "key=$aws_key")" = 1 ] || fail 'publishes disarmed a tier-1 secret check'
 
 # 12c. An entry must match a pattern in full, so a longer entry that merely contains a private name
@@ -66,7 +66,7 @@ grep -q 'cleared for this repo' "$tmp/stderr" || fail 'a cleared pattern was not
 printf '%s\n' 'zzz-sibling-app-and-more' >"$publishes"
 git -C "$guard_repo" add "$publishes_path"
 git -C "$guard_repo" -c user.email=t@test -c user.name=t commit -q -m 'publishes entry'
-[ "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" = 1 ] || fail 'a longer publishes entry cleared a pattern it only contains'
+passed_warning "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" staged.txt:1 || fail 'a longer publishes entry cleared a pattern it only contains'
 git -C "$guard_repo" rm -q "$publishes_path"
 git -C "$guard_repo" -c user.email=t@test -c user.name=t commit -q -m 'drop publishes entry'
 
@@ -162,3 +162,111 @@ guard_repo="$tmp/zzz-synthetic-app"
 [ "$(run_guard "$synthetic" 'plain harmless content')" = 0 ] || fail 'a repository whose own name clears every pattern was refused'
 grep -q 'every private pattern is cleared for this repository' "$tmp/stderr" || fail 'clearing every pattern was not announced'
 guard_repo="$tmp/repo"
+
+# 42-46. Tier 2 warns at new-file line numbers (leak-guard-private-tier-warns, Morticia D-2, Roger
+# #63182). lines.txt is committed, then an edit is staged, so the hunk headers are real ones.
+stage_edit() {
+	printf '%b' "$1" >"$guard_repo/lines.txt"
+	git -C "$guard_repo" add lines.txt
+	git -C "$guard_repo" -c user.email=t@test -c user.name=t commit -q -m 'lines base'
+	printf '%b' "$2" >"$guard_repo/lines.txt"
+	git -C "$guard_repo" add lines.txt
+	local code=0
+	(cd "$guard_repo" && LEAK_GUARD_PATTERNS="$tmp/patterns-pair" bash "$guard") 2>"$tmp/stderr" || code=$?
+	echo "$code"
+}
+# 42. A removed line before the hit moves no number: line 2 goes, line 8 becomes private, new line 7.
+passed_warning "$(stage_edit 'a\nb\nc\nd\ne\nf\ng\nh\n' 'a\nc\nd\ne\nf\ng\nmentions zzz-sibling-app\n')" lines.txt:7 ||
+	fail 'a warning after a removed line gave the wrong line number'
+# 43. Two hunks: only the second holds a private name, and only it is warned on, once.
+passed_warning "$(stage_edit 'a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n' 'a\nx\nc\nd\ne\nf\ng\nh\nmentions zzz-sibling-app\nj\n')" lines.txt:9 ||
+	fail 'a warning in a second hunk gave the wrong line number'
+grep -q '^leak-guard warning: 1 internal reference(s)$' "$tmp/stderr" || fail 'a two-hunk edit counted a warning more than once'
+# 44. No final newline: the "\ No newline" marker is not a line.
+passed_warning "$(stage_edit 'a\nb' 'a\nmentions zzz-sibling-app')" lines.txt:2 ||
+	fail 'a warning beside a no-newline marker gave the wrong line number'
+# 45. One line matching two patterns is one warning.
+passed_warning "$(stage_edit 'a\n' 'a\nzzz-sibling-app beside zzz-synthetic-app\n')" lines.txt:2 ||
+	fail 'a line matching two patterns was not warned on'
+grep -q '^leak-guard warning: 1 internal reference(s)$' "$tmp/stderr" || fail 'a line matching two patterns was counted twice'
+# 46. Tier 1 still refuses beside a tier-2 hit, and the tier-2 line is still warned on.
+[ "$(run_guard "$tmp/patterns-pair" "$(printf 'key=%s\nmentions zzz-sibling-app' "$aws_key")")" = 1 ] ||
+	fail 'a tier-1 secret beside a private name was not refused'
+grep -q 'staged.txt: 1 line(s), secret format' "$tmp/stderr" || fail 'a mixed refusal did not name the secret'
+warned_at staged.txt:2 || fail 'a mixed refusal did not warn at the private line'
+if grep -q "$aws_key" "$tmp/stderr"; then fail 'a mixed refusal printed the secret it refused'; fi
+
+# 47. A line-anchored pattern is matched against the staged text without its diff marker, the text
+# the warning is placed from, so it fires at all (Roger #63408).
+printf '%s\n' '^zzz-sibling-app' >"$tmp/patterns-anchored"
+passed_warning "$(run_guard "$tmp/patterns-anchored" 'zzz-sibling-app at the start')" staged.txt:1 ||
+	fail 'a line-anchored private pattern was not warned on'
+# 48-49. Names git holds but this disk may not: staged straight into the index, which is all the guard
+# reads. A newline stays inside one name (shown as ?), and a glob-shaped name is read literally, so
+# [x].txt never claims x.txt's line. protectNTFS is off for this repository only, as git refuses a
+# newline path on Windows otherwise.
+printf '%s\n' 'plain harmless content' >"$guard_repo/staged.txt"
+git -C "$guard_repo" add staged.txt
+git -C "$guard_repo" config core.protectNTFS false
+stage_named() {
+	local blob code=0
+	blob="$(printf '%s\n' "$2" | git -C "$guard_repo" hash-object -w --stdin)"
+	git -C "$guard_repo" update-index --add --cacheinfo "100644,$blob,$1"
+	(cd "$guard_repo" && LEAK_GUARD_PATTERNS="$tmp/patterns-pair" bash "$guard") 2>"$tmp/stderr" || code=$?
+	echo "$code"
+}
+odd_name="$(printf 'odd\nname.txt')"
+passed_warning "$(stage_named "$odd_name" 'mentions zzz-sibling-app')" 'odd?name.txt:1' ||
+	fail 'a name holding a newline was not warned on as its own file'
+git -C "$guard_repo" update-index --force-remove -- "$odd_name"
+stage_named '[x].txt' 'clean text' >/dev/null
+passed_warning "$(stage_named x.txt 'mentions zzz-sibling-app')" x.txt:1 || fail 'a private line in x.txt was not warned on'
+if grep -qF 'warning: [x].txt:' "$tmp/stderr"; then fail 'a glob-shaped name claimed the line of another file'; fi
+git -C "$guard_repo" update-index --force-remove -- '[x].txt' x.txt
+git -C "$guard_repo" config --unset core.protectNTFS
+
+# 50. A type change is judged: a committed symlink restaged as a file holding a private line is
+# warned on (Morticia M-1). Index-only, so it needs no symlink support on this disk.
+link_blob="$(printf 'target' | git -C "$guard_repo" hash-object -w --stdin)"
+git -C "$guard_repo" update-index --add --cacheinfo "120000,$link_blob,link"
+git -C "$guard_repo" -c user.email=t@test -c user.name=t commit -q -m 'a symlink'
+passed_warning "$(stage_named link 'mentions zzz-sibling-app')" link:1 || fail 'a type-changed file was not warned on'
+git -C "$guard_repo" reset -q -- link
+# 51. A rename is judged by what it changed: the private line it adds is warned on, and the one it
+# carries from the committed file is not (Morticia L-1).
+printf '%s\n' 'keep zzz-sibling-app old' plain 'more plain' >"$guard_repo/old.txt"
+git -C "$guard_repo" add old.txt
+git -C "$guard_repo" -c user.email=t@test -c user.name=t commit -q -m 'old'
+git -C "$guard_repo" mv old.txt new.txt
+printf '%s\n' 'mentions zzz-sibling-app' >>"$guard_repo/new.txt"
+git -C "$guard_repo" add new.txt
+code=0
+(cd "$guard_repo" && LEAK_GUARD_PATTERNS="$tmp/patterns-pair" bash "$guard") 2>"$tmp/stderr" || code=$?
+passed_warning "$code" new.txt:4 || fail 'a renamed file was not warned on at the line it added'
+grep -q '^leak-guard warning: 1 internal reference(s)$' "$tmp/stderr" || fail 'a rename was warned on for a line it did not change'
+git -C "$guard_repo" -c user.email=t@test -c user.name=t commit -q -m 'rename'
+
+# 52. bash 3.2, which macOS ships, stops on an empty array expanded bare under set -u, where bash 4.4
+# and later expand it to nothing, so no run on this machine can show it. Every "${name[@]}" in the
+# guard's hooks and in these self-test scripts is either written ${name[@]+"${name[@]}"} or carries
+# a `nonempty:` reason on its line or the line above, and this reads the files and refuses any other
+# one (leak-guard-bash-3-2-empty-pattern-array). Comment lines are not code and are skipped.
+bare_expansions() {
+	awk '{ line = $0; gsub(/\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\+"\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\}"\}/, "", line) }
+		$0 !~ /^[[:space:]]*#/ && line ~ /"\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\}"/ && $0 !~ /nonempty:/ && prev !~ /nonempty:/ { print NR }
+		{ prev = $0 }' "$1"
+}
+# The control: the scan finds a bare expansion, and passes the marked and the +-form ones.
+# shellcheck disable=SC2016 # the fixture lines are written literally, unexpanded
+# nonempty: the fixture below is single-quoted text written to a file, never expanded here.
+printf '%s\n' 'x=()' 'grep "${x[@]}"' '# nonempty: set above' 'grep "${x[@]}"' 'grep ${x[@]+"${x[@]}"}' >"$tmp/expansions"
+[ "$(bare_expansions "$tmp/expansions")" = 2 ] || fail 'the bare-expansion scan did not find exactly the one unmarked expansion'
+# The guard's hooks, and the four self-test scripts beside this one (Roger #65488, Morticia #65482).
+# shellcheck disable=SC2154 # hook and self_dir are set by check-leak-guard-setup.sh
+for scanned_file in "${hook%/*}/leak-guard.sh" "${hook%/*}/leak-guard-private.sh" "${hook%/*}/leak-guard-decode.sh" \
+	"${hook%/*}/leak-guard-setup.sh" "$self_dir/check-leak-guard.sh" "$self_dir/check-leak-guard-setup.sh" \
+	"$self_dir/check-leak-guard-cases.sh" "$self_dir/check-leak-guard-binary-cases.sh"; do
+	[ -f "$scanned_file" ] || { fail "${scanned_file##*/} is missing, so it was not scanned for bare array expansions"; continue; }
+	unmarked="$(bare_expansions "$scanned_file")" || fail "${scanned_file##*/} could not be scanned for bare array expansions"
+	[ -z "$unmarked" ] || fail "${scanned_file##*/} expands an array bare with no nonempty: reason, at line(s) ${unmarked//$'\n'/ }"
+done

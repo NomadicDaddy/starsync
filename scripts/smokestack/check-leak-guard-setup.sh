@@ -90,6 +90,18 @@ fail() {
 	failures=$((failures + 1))
 }
 
+# Tier 2 warns instead of refusing (leak-guard-private-tier-warns): true when the last guard run
+# warned at $1 (<file>:<new-file line>) and printed no synthetic private name anywhere.
+warned_at() {
+	grep -qF "leak-guard warning: $1: internal reference: make it generic, or confirm the use is appropriate" "$tmp/stderr" &&
+		! grep -qE 'zzz-(synthetic|sibling)-app' "$tmp/stderr"
+}
+# True when the last guard run gave no tier-2 warning at all.
+not_warned() { ! grep -q '^leak-guard warning: .*internal reference: ' "$tmp/stderr"; }
+# True when a guard run passed (its exit code is $1) and warned at $2, or passed and warned nowhere.
+passed_warning() { [ "$1" = 0 ] && warned_at "$2"; }
+passed_quietly() { [ "$1" = 0 ] && not_warned; }
+
 # Fixtures every case file reads, built at runtime so no file here holds what the guard refuses.
 aws_key="AKIA$(printf 'A%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)"
 pem_header="-----BEGIN RSA $(printf 'PRIVATE') KEY-----"
@@ -108,8 +120,10 @@ make_repo() {
 	git -C "$tmp/$1" config core.hooksPath "$tmp/no-hooks"
 	git -C "$tmp/$1" -c user.email=t@test -c user.name=t commit -q --allow-empty -m init
 	cp "$hook" "$tmp/$1/$guard"
-	# The guard sources its UTF-16 decoder from its own folder when a binary file is staged.
+	# The guard sources its UTF-16 decoder from its own folder when a binary file is staged, and its
+	# private tier (leak-guard-private.sh) on every run.
 	cp "$(dirname "$hook")/leak-guard-decode.sh" "$tmp/$1/$(dirname "$guard")/"
+	cp "$(dirname "$hook")/leak-guard-private.sh" "$tmp/$1/$(dirname "$guard")/"
 }
 
 # A scratch folder, its pattern files and both scratch repositories. Run once here, and once more

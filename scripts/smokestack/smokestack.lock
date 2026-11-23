@@ -1,11 +1,15 @@
 {
-	"commit": "5592ac1bfc0bd42a6c95e1ecee237e2724ab70b6",
+	"commit": "406cf933b2e398bd30028b0ab0bec71543edc7aa",
 	"groups": {
 		"leak-guard-hooks": {
 			"files": {
 				"scripts/smokestack/hooks/leak-guard-decode.sh": {
 					"mode": "100644",
-					"sha256": "6b28d8fe5355f03c9b551051ed01ae75ed8e9819c68911b58963765c4c208467"
+					"sha256": "f1e2478de867c811a6275b8ba6a57095d8a75bef12981e4cfa7b56cafd067d18"
+				},
+				"scripts/smokestack/hooks/leak-guard-private.sh": {
+					"mode": "100644",
+					"sha256": "7b5ca3abbb226963e6098e4f94ad19237c3221a8d9d05c9fee080c215734ce16"
 				},
 				"scripts/smokestack/hooks/leak-guard-setup.sh": {
 					"mode": "100644",
@@ -13,7 +17,7 @@
 				},
 				"scripts/smokestack/hooks/leak-guard.sh": {
 					"mode": "100644",
-					"sha256": "eb1433785f7e653f9ed0b79d92bb1272120f97af7dd7562f610428b98fa31581"
+					"sha256": "e434c3b46a590823b91f4e0de2f1b37cede23441a2af9df7edec217b7673c324"
 				},
 				"scripts/smokestack/hooks/post-checkout": {
 					"mode": "100755",
@@ -37,19 +41,19 @@
 			"files": {
 				"scripts/smokestack/check-leak-guard-binary-cases.sh": {
 					"mode": "100644",
-					"sha256": "c225f49b4a6aefa5fa02cabe01ad4bcbcf5a23aaa2b8da92ddf7d7160cf397e1"
+					"sha256": "73f2b97d903d9b6543781684548e926b09ab4687f52f0f32b80d2362f03dfb37"
 				},
 				"scripts/smokestack/check-leak-guard-cases.sh": {
 					"mode": "100644",
-					"sha256": "0ddb1dc41a2643712c211c36532365eca68a8a3f7b22bb55dd131388167a6b15"
+					"sha256": "e288c4a5c02cbb148b07ee5e26e0deda2cc765e585e7e7a110270d082cbed0ab"
 				},
 				"scripts/smokestack/check-leak-guard-setup.sh": {
 					"mode": "100644",
-					"sha256": "def28b8cd8ccaecb21e0c4cf8d61f02526bae6728e8b9a1b6d2e97267f0696f4"
+					"sha256": "8530f5c6c44f17c06c6390c90a3a63cfcafe0be21db389a052f15eaa839f3f00"
 				},
 				"scripts/smokestack/check-leak-guard.sh": {
 					"mode": "100644",
-					"sha256": "878481d6b9f283ab1301f6ad36a2a215a79aee92f79922a25abfded0cf4e8423"
+					"sha256": "7bcd4e33059b427f96742aee0c3ef5ccad9be421ecd8754a1fa2e1b902ac834c"
 				}
 			}
 		},
@@ -397,7 +401,7 @@
 				},
 				"scripts/smokestack/shared-core-manifest.json": {
 					"mode": "100644",
-					"sha256": "67d2fee57bf1f3e0f0f7fb8a5eb125591d87f1e67aca652d2b539e2a3c079689"
+					"sha256": "28c5c7f94424895d1d860470a5dcac1d1d1fbec19b03b9784b3ecddd70e180c8"
 				},
 				"scripts/smokestack/sync-shared-core.ts": {
 					"mode": "100644",
@@ -407,5 +411,5 @@
 		}
 	},
 	"owner": "smokestack",
-	"version": "1.0.5"
+	"version": "1.0.7"
 }
