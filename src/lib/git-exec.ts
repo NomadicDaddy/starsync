@@ -77,7 +77,7 @@ export const buildGitEnvironment = (
  * false, and Git before 2.36, where the setting is a hook path, treats an empty path as no
  * monitor.
  */
-export const NO_CHECKOUT_FSMONITOR = ['-c', 'core.fsmonitor='];
+const NO_CHECKOUT_FSMONITOR = ['-c', 'core.fsmonitor='];
 
 /**
  * A checkout's own hooks (.git/hooks, or a core.hooksPath in its config) run for fetch, switch,
@@ -85,7 +85,7 @@ export const NO_CHECKOUT_FSMONITOR = ['-c', 'core.fsmonitor='];
  * command line outranks every config level, so no hook runs for StarSync's commands, including
  * hooks a user set globally. Nothing else in the Git environment changes.
  */
-export const NO_CHECKOUT_HOOKS = ['-c', `core.hooksPath=${devNull}`];
+const NO_CHECKOUT_HOOKS = ['-c', `core.hooksPath=${devNull}`];
 
 /** The overrides every Git command StarSync runs leads with. */
 export const GIT_COMMAND_GUARDS = [...NO_CHECKOUT_FSMONITOR, ...NO_CHECKOUT_HOOKS];
