@@ -21,6 +21,19 @@ All notable changes to this project will be documented in this file. Format foll
   choosing during sync. Hooks you configured globally also don't run for StarSync's own commands;
   nothing else about your Git setup changes.
 
+### Known limitations
+
+The limitations listed under 2.5.2 still apply. A second security review on 2026-11-22 found
+three more, all present in 2.4.1, each recorded for a later 2.5.x release:
+
+- During sync, StarSync can still execute Git filter commands configured by a managed checkout.
+  Sync only checkouts you trust.
+- A checkout that borrows Git objects from another store through Git's alternates file passes the
+  integrity check, although its history depends on that other store.
+- When a checkout's origin URL is rejected, the finding keeps any query values from that URL. The
+  programmatic API report includes all of them, and CLI output still includes a value whose
+  parameter name StarSync doesn't recognize as a credential.
+
 ## [2.5.4] - 2026-11-22
 
 ### Security
