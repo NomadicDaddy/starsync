@@ -11,6 +11,16 @@ All notable changes to this project will be documented in this file. Format foll
   accident. `.env.example` stays trackable, and a test checks each file against the ignore rules.
   This affects contributors to this repository only, not installed copies of StarSync.
 
+## [2.5.5] - 2026-11-22
+
+### Security
+
+- Git hooks no longer run for any Git command StarSync runs. Sync's refresh fetches, switches
+  branches and fast-forwards inside each checkout, and Git ran that checkout's own hooks for
+  those commands, so a checkout whose `.git` someone had edited could start a command of their
+  choosing during sync. Hooks you configured globally also don't run for StarSync's own commands;
+  nothing else about your Git setup changes.
+
 ## [2.5.4] - 2026-11-22
 
 ### Security

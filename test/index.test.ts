@@ -9,7 +9,7 @@ import {
 	rmSync,
 	writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { devNull, tmpdir } from 'node:os';
 import path from 'node:path';
 
 import type { ParsedArgs } from '../src/lib/cli-utils.ts';
@@ -31,7 +31,7 @@ import {
 	stripQuotes,
 } from '../src/lib/cli-utils.ts';
 import { checkFreeSpace, measureAvailableSpace } from '../src/lib/free-space.ts';
-import { NO_CHECKOUT_FSMONITOR } from '../src/lib/git-exec.ts';
+import { GIT_COMMAND_GUARDS } from '../src/lib/git-exec.ts';
 import { SYNC_HELP_TEXT } from '../src/lib/help-text.ts';
 import { createCommandReport, createCommandReporter, createFinding } from '../src/lib/reporting.ts';
 import {
@@ -74,10 +74,10 @@ const boundaryAnswer = (args: string[], options: unknown): null | string => {
 	return `${cwd}\n${metadata}\n${metadata}\n`;
 };
 
-/** The Git command a call names, after the fsmonitor override every StarSync Git call leads with. */
+/** The Git command a call names, after the overrides every StarSync Git call leads with. */
 const gitArgs = (args: string[]): string[] =>
-	NO_CHECKOUT_FSMONITOR.every((arg, index) => args[index] === arg)
-		? args.slice(NO_CHECKOUT_FSMONITOR.length)
+	GIT_COMMAND_GUARDS.every((arg, index) => args[index] === arg)
+		? args.slice(GIT_COMMAND_GUARDS.length)
 		: args;
 
 const mockExecFile = mock(
@@ -452,7 +452,7 @@ describe('programmatic archive API', () => {
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
 				[
-					...NO_CHECKOUT_FSMONITOR,
+					...GIT_COMMAND_GUARDS,
 					'rev-parse',
 					'--verify',
 					'refs/remotes/origin/trunk^{commit}',
@@ -463,7 +463,7 @@ describe('programmatic archive API', () => {
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
 				[
-					...NO_CHECKOUT_FSMONITOR,
+					...GIT_COMMAND_GUARDS,
 					'switch',
 					'--create',
 					'trunk',
@@ -473,6 +473,20 @@ describe('programmatic archive API', () => {
 				expect.objectContaining({ cwd: path.join(target, 'repo-a--example') }),
 				expect.any(Function),
 			);
+			// Every Git subprocess the refresh starts, async and sync, leads with both overrides.
+			const gitCalls = [...mockExecFile.mock.calls, ...mockExecFileSync.mock.calls].filter(
+				(call) => call[0] === 'git',
+			);
+			expect(gitCalls.length).toBeGreaterThan(0);
+			for (const call of gitCalls) {
+				expect(call[1].slice(0, GIT_COMMAND_GUARDS.length)).toEqual(GIT_COMMAND_GUARDS);
+			}
+			expect(GIT_COMMAND_GUARDS).toEqual([
+				'-c',
+				'core.fsmonitor=',
+				'-c',
+				`core.hooksPath=${devNull}`,
+			]);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
 		}
@@ -2171,7 +2185,7 @@ describe('refresh pipeline', () => {
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
 				[
-					...NO_CHECKOUT_FSMONITOR,
+					...GIT_COMMAND_GUARDS,
 					'clone',
 					'https://github.com/example/new-repo.git',
 					expect.stringMatching(/^\.starsync-checkout-/),
@@ -2181,7 +2195,7 @@ describe('refresh pipeline', () => {
 			);
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
-				[...NO_CHECKOUT_FSMONITOR, 'fsck', '--full'],
+				[...GIT_COMMAND_GUARDS, 'fsck', '--full'],
 				expect.objectContaining({
 					cwd: expect.stringContaining('.starsync-checkout-'),
 				}),
@@ -2189,7 +2203,7 @@ describe('refresh pipeline', () => {
 			);
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
-				[...NO_CHECKOUT_FSMONITOR, 'config', '--local', 'starsync.repository-id', '321'],
+				[...GIT_COMMAND_GUARDS, 'config', '--local', 'starsync.repository-id', '321'],
 				expect.objectContaining({
 					cwd: expect.stringContaining('.starsync-checkout-'),
 				}),
@@ -2198,7 +2212,7 @@ describe('refresh pipeline', () => {
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
 				[
-					...NO_CHECKOUT_FSMONITOR,
+					...GIT_COMMAND_GUARDS,
 					'config',
 					'--local',
 					'starsync.repository-slug',
@@ -2328,7 +2342,7 @@ describe('refresh pipeline', () => {
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
 				[
-					...NO_CHECKOUT_FSMONITOR,
+					...GIT_COMMAND_GUARDS,
 					'remote',
 					'set-url',
 					'origin',
@@ -2340,7 +2354,7 @@ describe('refresh pipeline', () => {
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
 				[
-					...NO_CHECKOUT_FSMONITOR,
+					...GIT_COMMAND_GUARDS,
 					'config',
 					'--local',
 					'starsync.repository-slug',
