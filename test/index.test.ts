@@ -14,6 +14,7 @@ import path from 'node:path';
 
 import type { ParsedArgs } from '../src/lib/cli-utils.ts';
 import type { CommandReport } from '../src/lib/reporting.ts';
+import type { RepositoryResolver } from '../src/lib/repository-resolution.ts';
 
 import {
 	initArchive,
@@ -24,6 +25,8 @@ import {
 } from '../src/index.ts';
 import { getArchiveModificationFinding, inspectArchive } from '../src/lib/archive-inspection.ts';
 import { applyArchiveRenames } from '../src/lib/archive-rename-apply.ts';
+import { verifyCheckout } from '../src/lib/archive-verification-checkout.ts';
+import { resolveRenameEntry } from '../src/lib/checkout-rename-resolution.ts';
 import {
 	parseArgs,
 	parseSubcommandArgs,
@@ -31,7 +34,7 @@ import {
 	stripQuotes,
 } from '../src/lib/cli-utils.ts';
 import { checkFreeSpace, measureAvailableSpace } from '../src/lib/free-space.ts';
-import { GIT_COMMAND_GUARDS } from '../src/lib/git-exec.ts';
+import { GIT_COMMAND_GUARDS, readStatusPaths } from '../src/lib/git-exec.ts';
 import { SYNC_HELP_TEXT } from '../src/lib/help-text.ts';
 import { createCommandReport, createCommandReporter, createFinding } from '../src/lib/reporting.ts';
 import {
@@ -489,6 +492,70 @@ describe('programmatic archive API', () => {
 			]);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('status, verify and rename preview lead every Git call with both guards', async () => {
+		const archive = mkdtempSync(path.join(tmpdir(), 'starsync-api-guards-'));
+		const real = path.join(archive, 'real');
+		// Setup runs real Git directly, so only StarSync's own calls are recorded below.
+		const git = (args: string[]): string =>
+			callActualExecFileSync('git', args, {
+				cwd: real,
+				encoding: 'utf-8',
+				windowsHide: true,
+			});
+		try {
+			writeManagedArchiveConfig(archive);
+			mkdirSync(real);
+			git(['init', '--quiet']);
+			git(['remote', 'add', 'origin', 'https://github.com/owner/repository.git']);
+			git(['config', 'starsync.repository-id', '42']);
+			git(['config', 'starsync.repository-slug', 'owner/repository']);
+			writeFileSync(path.join(real, 'notes.txt'), 'one\n');
+			git(['add', 'notes.txt']);
+			git(['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init']);
+			// An inert monitor value: nothing exists at this path, so nothing could run even if a
+			// call left the checkout's setting in force.
+			git(['config', 'core.fsmonitor', path.join(archive, 'no-such-monitor')]);
+			writeFileSync(path.join(real, 'notes.txt'), 'two\n');
+
+			// The instrumented adapter: every call is recorded and passed through to real Git.
+			mockExecFile.mockImplementation(callActualExecFile);
+			mockExecFileSync.mockImplementation(callActualExecFileSync);
+			expect(await readStatusPaths([], { cwd: real })).toEqual(['notes.txt']);
+			const entry = inspectArchive(archive).entries.find(
+				(candidate) => candidate.name === 'real',
+			);
+			if (entry === undefined) throw new Error('The fixture checkout is missing.');
+			const verified = await verifyCheckout(entry);
+			expect(verified.report.findings.map((finding) => finding.code)).toContain(
+				'checkout-blocked',
+			);
+			const resolver: RepositoryResolver = () =>
+				Promise.resolve({
+					id: 42,
+					name: 'repository',
+					owner: 'owner',
+					slug: 'owner/repository',
+				});
+			expect(await resolveRenameEntry(entry, resolver)).toHaveProperty(
+				'blockedReason',
+				'Local changes prevent a safe folder rename.',
+			);
+
+			const gitCalls = [...mockExecFile.mock.calls, ...mockExecFileSync.mock.calls].filter(
+				(call) => call[0] === 'git',
+			);
+			expect(gitCalls.some((call) => gitArgs(call[1]).includes('status'))).toBe(true);
+			for (const call of gitCalls) {
+				expect(call[1].slice(0, GIT_COMMAND_GUARDS.length)).toEqual(GIT_COMMAND_GUARDS);
+			}
+		} finally {
+			mockExecFile.mockImplementation((_cmd, args, options, callback) => {
+				callback(null, boundaryAnswer(args, options) ?? '', '');
+			});
+			rmSync(archive, { force: true, recursive: true });
 		}
 	});
 
