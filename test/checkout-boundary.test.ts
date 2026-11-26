@@ -20,10 +20,12 @@ import { inspectArchive } from '../src/lib/archive-inspection.ts';
 import { verifyCheckout } from '../src/lib/archive-verification-checkout.ts';
 import { applyCheckoutRename } from '../src/lib/checkout-rename-apply.ts';
 import { resolveRenameEntry } from '../src/lib/checkout-rename-resolution.ts';
+import { sameFilesystemEntry } from '../src/lib/filesystem-identity.ts';
 import { readStatusPaths } from '../src/lib/git-exec.ts';
 import {
 	checkoutBoundaryProblem,
 	checkoutGitBoundaryProblem,
+	gitPathsInside,
 } from '../src/lib/managed-checkout-inspection.ts';
 import { scanManagedCheckouts } from '../src/lib/managed-checkout-planning.ts';
 import { processRepository } from '../src/lib/refresh-existing.ts';
@@ -67,6 +69,48 @@ const fixture = (): { archive: string; outside: string; outsideConfig: string } 
 const link = (archive: string, outside: string): void => {
 	symlinkSync(outside, path.join(archive, 'linked'), 'junction');
 };
+
+/**
+ * Makes an empty directory hold names that differ only in letter case, as two distinct entries.
+ * Windows needs its per-directory case-sensitivity attribute, which `fsutil` sets without
+ * elevation; Linux filesystems are case-sensitive already. Returns false where neither holds, such
+ * as macOS's default case-insensitive volume.
+ */
+const makeCaseSensitive = (directory: string): boolean => {
+	if (process.platform === 'win32') {
+		const result = Bun.spawnSync({
+			cmd: ['fsutil', 'file', 'setCaseSensitiveInfo', directory, 'enable'],
+			stderr: 'pipe',
+			stdout: 'pipe',
+			windowsHide: true,
+		});
+		if (result.exitCode !== 0) return false;
+	}
+	mkdirSync(path.join(directory, 'case-probe'));
+	const distinct = !existsSync(path.join(directory, 'CASE-PROBE'));
+	rmSync(path.join(directory, 'case-probe'), { force: true, recursive: true });
+	return distinct;
+};
+
+const caseVariantsAvailable = ((): boolean => {
+	const probe = mkdtempSync(path.join(tmpdir(), 'starsync-case-probe-'));
+	try {
+		return makeCaseSensitive(probe);
+	} finally {
+		rmSync(probe, { force: true, recursive: true });
+	}
+})();
+
+// Whether a fresh temporary directory treats names that differ only in case as one entry.
+const caseInsensitiveByDefault = ((): boolean => {
+	const probe = mkdtempSync(path.join(tmpdir(), 'starsync-case-default-'));
+	try {
+		mkdirSync(path.join(probe, 'name'));
+		return existsSync(path.join(probe, 'NAME'));
+	} finally {
+		rmSync(probe, { force: true, recursive: true });
+	}
+})();
 
 const MAX_WINDOWS_PATH = 32_768;
 
@@ -195,6 +239,53 @@ describe('Git effective-path boundary', () => {
 		git(real, ['config', 'core.worktree', outside]);
 		expect(checkoutBoundaryProblem(archive, 'real')).toBeNull();
 		expect(await checkoutGitBoundaryProblem(archive, 'real')).toContain(outsideMessage);
+	});
+
+	test.skipIf(!caseVariantsAvailable)(
+		'refuses a work tree redirected to a sibling whose name differs only in case',
+		async () => {
+			const root = mkdtempSync(path.join(tmpdir(), 'starsync-case-boundary-'));
+			roots.push(root);
+			const archive = path.join(root, 'archive');
+			mkdirSync(archive);
+			if (!makeCaseSensitive(archive)) throw new Error('Case sensitivity was not applied.');
+			writeArchiveConfig(archive, { id: 7, login: 'some-user' });
+			const real = path.join(archive, 'real');
+			const sibling = path.join(archive, 'REAL');
+			mkdirSync(real);
+			mkdirSync(sibling);
+			git(real, ['init', '--quiet']);
+			git(sibling, ['init', '--quiet']);
+			expect(existsSync(path.join(sibling, '.git'))).toBe(true);
+			expect(await checkoutGitBoundaryProblem(archive, 'real')).toBeNull();
+
+			git(real, ['config', 'core.worktree', sibling]);
+			expect(checkoutBoundaryProblem(archive, 'real')).toBeNull();
+			expect(await checkoutGitBoundaryProblem(archive, 'real')).toContain(outsideMessage);
+			const metadata = path.join(sibling, '.git');
+			expect(gitPathsInside([sibling, metadata, metadata].join('\n'), real)).toBe(false);
+		},
+	);
+
+	test.skipIf(!caseInsensitiveByDefault)(
+		'accepts Git naming the checkout in another letter case on a case-insensitive volume',
+		() => {
+			const { archive } = fixture();
+			const real = path.join(archive, 'real');
+			const respelled = path.join(archive, 'REAL');
+			const metadata = path.join(respelled, '.GIT');
+			expect(gitPathsInside([respelled, metadata, metadata].join('\n'), real)).toBe(true);
+		},
+	);
+
+	test('never treats a missing path as the checkout', () => {
+		const { archive } = fixture();
+		const real = path.join(archive, 'real');
+		const missing = path.join(archive, 'missing');
+		expect(sameFilesystemEntry(real, real)).toBe(true);
+		expect(sameFilesystemEntry(missing, missing)).toBe(false);
+		const metadata = path.join(real, '.git');
+		expect(gitPathsInside([missing, metadata, metadata].join('\n'), real)).toBe(false);
 	});
 
 	test('sync blocks and skips a checkout whose work tree Git resolves elsewhere', async () => {

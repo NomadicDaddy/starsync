@@ -6,6 +6,7 @@ import type { ManagedCheckout } from './managed-checkout-planning.ts';
 import type { CheckoutReport } from './reporting.ts';
 
 import { readCheckoutIdentity } from './checkout-identity.ts';
+import { sameFilesystemEntry } from './filesystem-identity.ts';
 import { runGit } from './git-exec.ts';
 import { blockedCheckoutReport } from './managed-checkout-classification.ts';
 import { parseGitHubRepositorySlug } from './repository-resolution.ts';
@@ -28,14 +29,12 @@ export interface ManagedCheckoutScan {
 
 const emptyInspection = (): ManagedCheckoutInspection => ({ checkout: null, report: null });
 
-const sameFilesystemPath = (left: string, right: string): boolean =>
-	process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
-
 /**
  * The operating system's canonical form of an existing path. The native call expands a Windows
- * 8.3 short name (such as RUNNER~1) to its long form, which is the form Git reports. Node's
- * JavaScript realpath keeps the short name, so an archive named by its short path would refuse its
- * own checkouts.
+ * 8.3 short name (such as RUNNER~1) to its long form, which is the form Git reports, and gives each
+ * name in the letter case it has on disk. Node's JavaScript realpath keeps the short name, so an
+ * archive named by its short path would refuse its own checkouts. Canonical forms are compared
+ * exactly: folding case would treat two directories that differ only in case as one.
  */
 const canonicalPath = (target: string): string => fs.realpathSync.native(target);
 
@@ -72,7 +71,7 @@ export const checkoutBoundaryProblem = (targetPath: string, name: string): null 
 		}
 		if (!entry.isDirectory()) return null;
 		const canonical = path.join(canonicalPath(targetPath), name);
-		if (!sameFilesystemPath(canonicalPath(checkoutPath), canonical)) {
+		if (canonicalPath(checkoutPath) !== canonical) {
 			return 'The entry resolves outside the archive root.';
 		}
 		return gitMetadataProblem(checkoutPath);
@@ -95,26 +94,21 @@ export const GIT_BOUNDARY_QUERY = [
 export const GIT_OUTSIDE_CHECKOUT =
 	'Git resolves its work tree, Git directory or common directory outside the checkout.';
 
-// A path Git names may not exist, for example a work tree redirected to a missing folder. It is
-// then compared as written, so it still counts as outside the checkout.
-const canonicalOrResolved = (target: string): string => {
-	try {
-		return canonicalPath(target);
-	} catch {
-		return path.resolve(target);
-	}
-};
-
-/** Whether Git's answer to GIT_BOUNDARY_QUERY names the checkout and its own .git directory. */
+/**
+ * Whether Git's answer to GIT_BOUNDARY_QUERY names the checkout and its own .git directory. Each
+ * path must be the same filesystem entry, so an alias of the checkout (a short path, another
+ * spelling of a case-insensitive name) passes, while a sibling whose name differs only in case is
+ * refused. A path Git names that doesn't exist, such as a work tree redirected to a missing
+ * folder, can't be identified, so it still counts as outside the checkout.
+ */
 export const gitPathsInside = (answer: string, checkoutPath: string): boolean => {
 	const [topLevel, gitDir, commonDir, extra] = answer.split(/\r?\n/);
 	if (!topLevel || !gitDir || !commonDir || extra !== undefined) return false;
-	const checkout = canonicalPath(checkoutPath);
-	const metadata = path.join(checkout, '.git');
+	const metadata = path.join(checkoutPath, '.git');
 	return (
-		sameFilesystemPath(canonicalOrResolved(topLevel), checkout) &&
-		sameFilesystemPath(canonicalOrResolved(gitDir), metadata) &&
-		sameFilesystemPath(canonicalOrResolved(commonDir), metadata)
+		sameFilesystemEntry(topLevel, checkoutPath) &&
+		sameFilesystemEntry(gitDir, metadata) &&
+		sameFilesystemEntry(commonDir, metadata)
 	);
 };
 

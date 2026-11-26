@@ -16,6 +16,17 @@ All notable changes to this project will be documented in this file. Format foll
   1.0.6). Secret formats, private keys and home-directory paths still refuse. This affects
   contributors to this repository only, not installed copies of StarSync.
 
+## [2.5.8] - 2026-11-26
+
+### Security
+
+- On Windows, the checkout boundary no longer treats two folders whose names differ only in
+  letter case as the same folder. Windows can make a folder case-sensitive, and there a checkout's
+  Git settings could point its work tree or Git directory at a sibling such as `REPO` beside
+  `repo`, which the boundary accepted, so verify and sync could read or change files outside that
+  checkout. The boundary now compares the folders themselves rather than their names. Short paths
+  and other spellings of the same folder still pass. A path that can't be identified is refused.
+
 ## [2.5.7] - 2026-11-26
 
 ### Security

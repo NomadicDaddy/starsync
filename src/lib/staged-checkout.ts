@@ -12,6 +12,7 @@ import {
 	writeCheckoutIdentity,
 } from './checkout-identity.ts';
 import { publishReplacement } from './checkout-replacement.ts';
+import { sameFilesystemEntry } from './filesystem-identity.ts';
 import { isTransientGitError, runGit } from './git-exec.ts';
 import {
 	DAMAGED_CHECKOUT_PREFIX,
@@ -107,14 +108,6 @@ const assertDestinationAvailable = (destinationPath: string, folderName: string)
 	}
 };
 
-const pathsReferToSameEntry = (leftPath: string, rightPath: string): boolean => {
-	if (!fs.existsSync(leftPath) || !fs.existsSync(rightPath)) return false;
-	const left = fs.realpathSync.native(leftPath);
-	const right = fs.realpathSync.native(rightPath);
-	return process.platform === 'win32'
-		? left.toLowerCase() === right.toLowerCase()
-		: left === right;
-};
 const assertReplacementSource = (sourcePath: string, sourceFolderName: string): void => {
 	if (
 		!sourceFolderName ||
@@ -129,7 +122,9 @@ const assertReplacementDestinationAvailable = (
 	destinationPath: string,
 	folderName: string,
 ): void => {
-	if (fs.existsSync(destinationPath) && !pathsReferToSameEntry(sourcePath, destinationPath)) {
+	// A case-only rename on a case-insensitive directory finds its own source at the destination;
+	// a distinct directory there, even one differing only in case, is a different checkout.
+	if (fs.existsSync(destinationPath) && !sameFilesystemEntry(sourcePath, destinationPath)) {
 		throw new Error(`Canonical checkout folder ${folderName} is already occupied.`);
 	}
 };
