@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+	chmodSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -47,6 +48,19 @@ const runCommand = (
 };
 
 const runGit = (args: string[], cwd: string): string => runCommand('git', args, cwd);
+
+// Damages a checkout the way its object check rejects while Git can still open it: every object
+// file is overwritten, and HEAD, refs and config stay readable. A checkout Git can't open at all
+// is a different case, which forced verification leaves in place.
+const damageObjects = (checkout: string): void => {
+	const objects = path.join(checkout, '.git', 'objects');
+	for (const entry of readdirSync(objects, { recursive: true, withFileTypes: true })) {
+		if (!entry.isFile() || path.basename(entry.parentPath) === 'info') continue;
+		const file = path.join(entry.parentPath, entry.name);
+		chmodSync(file, 0o644);
+		writeFileSync(file, 'corrupt');
+	}
+};
 
 const writeManagedArchiveConfig = (target: string, ownerId = 7): void => {
 	mkdirSync(path.join(target, '.starsync'), { recursive: true });
@@ -257,7 +271,7 @@ describe('staged checkout creation process boundary', () => {
 			);
 			expect(added.outcome).toBe('added');
 			writeFileSync(path.join(destination, 'damaged-only.txt'), 'discard me');
-			writeFileSync(path.join(destination, '.git', 'config'), '\0'.repeat(256));
+			damageObjects(destination);
 
 			const result = runForcedVerification(
 				target,
@@ -314,7 +328,9 @@ describe('staged checkout creation process boundary', () => {
 		} finally {
 			rmSync(root, { force: true, recursive: true });
 		}
-	});
+		// Two forced verifications, each a separate process cloning and checking a fresh copy, take
+		// about 4.5 to 5.5 s on Windows under load, against Bun's 5 s default.
+	}, 30_000);
 
 	// Each rename reaches the same current identity from a different previous one, so the current
 	// folder and slug are fixed and only the old pair varies per case.
@@ -586,7 +602,7 @@ describe('staged checkout creation process boundary', () => {
 					gitEnv,
 				),
 			).toEqual(expect.objectContaining({ outcome: 'added' }));
-			writeFileSync(path.join(destination, '.git', 'config'), '\0'.repeat(256));
+			damageObjects(destination);
 
 			const failedCleanup = runForcedVerification(
 				target,
@@ -706,9 +722,23 @@ describe('staged checkout creation process boundary', () => {
 		const target = path.join(root, 'archive');
 		const destination = path.join(target, 'repository--example');
 		const marker = path.join(destination, 'keep.txt');
-		mkdirSync(path.join(destination, '.git'), { recursive: true });
+		mkdirSync(destination, { recursive: true });
+		runGit(['init', '--quiet'], destination);
 		writeFileSync(marker, 'keep');
-		writeFileSync(path.join(destination, '.git', 'config'), '\0'.repeat(256));
+		runGit(['add', 'keep.txt'], destination);
+		runGit(
+			[
+				'-c',
+				'user.name=StarSync Test',
+				'-c',
+				'user.email=starsync@example.test',
+				'commit',
+				'-m',
+				'keep',
+			],
+			destination,
+		);
+		damageObjects(destination);
 		writeManagedArchiveConfig(target);
 
 		try {
@@ -733,6 +763,58 @@ describe('staged checkout creation process boundary', () => {
 				checkout?.findings.some((finding) => finding.code === 'checkout-reclone-failed'),
 			).toBe(true);
 			expect(readFileSync(marker, 'utf8')).toBe('keep');
+			expect(
+				readdirSync(target).filter(
+					(name) =>
+						name.startsWith(STAGED_CHECKOUT_PREFIX) ||
+						name.startsWith(DAMAGED_CHECKOUT_PREFIX),
+				),
+			).toEqual([]);
+		} finally {
+			rmSync(root, { force: true, recursive: true });
+		}
+	});
+
+	test('leaves a checkout Git cannot open in place under forced verification', () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'starsync-staged-unverified-'));
+		const target = path.join(root, 'archive');
+		const cloneUrl = 'https://github.com/example/repository.git';
+		const destination = path.join(target, 'repository--example');
+		mkdirSync(target);
+		writeManagedArchiveConfig(target);
+		const gitEnv = createLocalCloneEnvironment(root, cloneUrl, createLocalOrigin(root));
+
+		try {
+			expect(
+				runStagedCheckout(
+					{
+						clone_url: cloneUrl,
+						defaultBranch: 'main',
+						folderName: 'repository--example',
+						id: 321,
+						name: 'repository',
+						slug: 'example/repository',
+					},
+					target,
+					7,
+					gitEnv,
+				),
+			).toEqual(expect.objectContaining({ outcome: 'added' }));
+			const localWork = path.join(destination, 'local-work.txt');
+			writeFileSync(localWork, 'keep me');
+			writeFileSync(path.join(destination, '.git', 'config'), '\0'.repeat(256));
+
+			const result = runForcedVerification(
+				target,
+				{ id: 321, name: 'repository', owner: 'example', slug: 'example/repository' },
+				gitEnv,
+			);
+
+			expect(result.exitCode).toBe(1);
+			expect(result.checkouts[0]?.findings.map((finding) => finding.code)).toEqual([
+				'checkout-boundary-unverified',
+			]);
+			expect(readFileSync(localWork, 'utf8')).toBe('keep me');
 			expect(
 				readdirSync(target).filter(
 					(name) =>
@@ -868,7 +950,7 @@ describe('staged checkout creation process boundary', () => {
 				7,
 			);
 			expect(originMismatch.outcome).toBe('failed');
-			expect(originMismatch.message).toContain('matching GitHub.com origin');
+			expect(originMismatch.message).toContain('matching host origin');
 
 			const ownerMismatch = runStagedCheckout(repository, target, 7);
 			expect(ownerMismatch.outcome).toBe('failed');

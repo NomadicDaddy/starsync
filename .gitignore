@@ -24,18 +24,24 @@ nul/
 # build/cache
 *.tsbuildinfo
 
-# Environment
+# Environment. Bun auto-loads .env, .env.local and the NODE_ENV overlays (.env.development,
+# .env.production, .env.test), and any of them can hold a token. Ignore every form and allow only
+# the documented example back in.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Shared-core rosters. This repository owns no group and so writes none today, but a roster names
-# every private sibling it syncs to, and this repository is public. Ignoring them here costs three
-# lines and removes the only way one could ever be committed by accident.
-/shared-core-targets.json
-/shared-core-sync-targets.json
-/gate-conventions-targets.json
+# Shared-core rosters. This repository owns no group and holds no roster: they live with the one
+# owner. But a roster names every private sibling a group syncs to, and this repository is public.
+# Ignoring the whole name shape costs one line and removes the only way one could ever be committed
+# by accident.
+/*-targets.json
+
+# The gate runner's step cache and the temporary file it writes while saving (smokestack
+# runner-step-cache, clause 8). Local to this machine; never committed or delivered.
+/.smokestack-cache.json
+/.smokestack-cache.json.*.tmp

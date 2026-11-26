@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 
+import type { ArchiveHost } from './archive-host.ts';
 import type { RepoRecord } from './refresh.ts';
 import type { CheckoutReport } from './reporting.ts';
 
@@ -35,13 +36,15 @@ export interface ManagedSyncPlan {
 	retainedReports: CheckoutReport[];
 }
 
+// A link or junction occupies its name as surely as a directory does, so it is listed too, and
+// inspection reports it blocked instead of letting sync clone or refresh through it.
 const archiveEntryNames = (targetPath: string): string[] =>
 	fs
 		.readdirSync(targetPath, { withFileTypes: true })
 		.filter(
 			(entry) =>
 				entry.name !== '.starsync' &&
-				entry.isDirectory() &&
+				(entry.isDirectory() || entry.isSymbolicLink()) &&
 				!isOwnedCheckoutArtifactName(entry.name),
 		)
 		.map((entry) => entry.name)
@@ -49,12 +52,13 @@ const archiveEntryNames = (targetPath: string): string[] =>
 
 export const scanManagedCheckouts = async (
 	targetPath: string,
+	host: ArchiveHost = 'github.com',
 ): Promise<{ checkouts: ManagedCheckout[]; names: string[]; reports: CheckoutReport[] }> => {
 	const checkouts: ManagedCheckout[] = [];
 	const reports: CheckoutReport[] = [];
 	const names = archiveEntryNames(targetPath);
 	for (const name of names) {
-		const inspection = await inspectManagedCheckoutEntry(targetPath, name);
+		const inspection = await inspectManagedCheckoutEntry(targetPath, name, host);
 		if (inspection.checkout !== null) checkouts.push(inspection.checkout);
 		if (inspection.report !== null) reports.push(inspection.report);
 	}
@@ -76,8 +80,9 @@ const collectRetainedReports = (
 export const planManagedSync = async (
 	targetPath: string,
 	repositories: StarredRepositoryRecord[],
+	host: ArchiveHost = 'github.com',
 ): Promise<ManagedSyncPlan> => {
-	const scan = await scanManagedCheckouts(targetPath);
+	const scan = await scanManagedCheckouts(targetPath, host);
 	const context = {
 		collisions: buildStarredRepositoryCollisionIndexes(repositories),
 		existingById: new Map(scan.checkouts.map((checkout) => [checkout.repositoryId, checkout])),

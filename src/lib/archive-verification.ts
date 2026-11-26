@@ -1,9 +1,11 @@
 import path from 'node:path';
 
+import type { ArchiveHost } from './archive-host.ts';
 import type { ArchiveInspection } from './archive-inspection.ts';
 import type { VerifiedCheckout } from './archive-verification-checkout.ts';
 import type { CheckoutReport, Finding } from './reporting.ts';
 
+import { readArchiveConfig } from './archive-config.ts';
 import { inspectArchive } from './archive-inspection.ts';
 import { verifyCheckout } from './archive-verification-checkout.ts';
 import { applyDuplicateIdentityFindings } from './archive-verification-duplicates.ts';
@@ -58,10 +60,15 @@ const repairEntry = async (
 			finding.code === 'checkout-blocked' ||
 			finding.code === 'missing-identity-metadata',
 	);
-	const duplicated = verified.report.findings.some(
-		(finding) => finding.code === 'duplicate-identity',
+	const unsafeIdentity = verified.report.findings.some((finding) =>
+		[
+			'credential-bearing-origin',
+			'duplicate-identity',
+			'identity-origin-mismatch',
+			'invalid-origin',
+		].includes(finding.code),
 	);
-	if (options.repair === undefined || !replaceable || duplicated) return verified;
+	if (options.repair === undefined || !replaceable || unsafeIdentity) return verified;
 	options.onProgress?.(
 		`Recloning anomalous checkout ${index + 1}/${inspection.entries.length} — ${entry.name}`,
 	);
@@ -78,13 +85,18 @@ const repairEntry = async (
 		return verified;
 	}
 	const replacementName = canonicalCheckoutName(repaired.repository.slug)!;
-	const replacement = await verifyCheckout({
-		...entry,
-		gitError: null,
-		name: replacementName,
-		origin: `https://github.com/${repaired.repository.slug}.git`,
-		path: path.join(options.repair.targetPath, replacementName),
-	});
+	const replacement = await verifyCheckout(
+		{
+			...entry,
+			boundaryError: null,
+			boundaryUnverified: null,
+			gitError: null,
+			name: replacementName,
+			origin: `https://${readArchiveConfig(options.repair.targetPath).host ?? 'github.com'}/${repaired.repository.slug}.git`,
+			path: path.join(options.repair.targetPath, replacementName),
+		},
+		readArchiveConfig(options.repair.targetPath).host ?? 'github.com',
+	);
 	replacement.report.findings.unshift(
 		createFinding(
 			'info',
@@ -104,6 +116,7 @@ const repairEntry = async (
 const verifyEntries = async (
 	inspection: ArchiveInspection,
 	options: ArchiveVerificationOptions,
+	host: ArchiveHost,
 ): Promise<(undefined | VerifiedCheckout)[]> => {
 	const results: (undefined | VerifiedCheckout)[] = new Array(inspection.entries.length);
 	let nextIndex = 0;
@@ -115,7 +128,7 @@ const verifyEntries = async (
 			options.onProgress?.(
 				`Verifying ${index + 1}/${inspection.entries.length} — ${entry.name}`,
 			);
-			results[index] = await verifyCheckout(entry);
+			results[index] = await verifyCheckout(entry, host);
 		}
 	};
 	const count = Math.min(VERIFICATION_CONCURRENCY, inspection.entries.length);
@@ -164,7 +177,11 @@ export const verifyArchive = async (
 	if (inspection.kind !== 'current') {
 		return { checkouts: [], exitCode: 1, findings, interrupted: false };
 	}
-	const results = await verifyEntries(inspection, options);
+	const results = await verifyEntries(
+		inspection,
+		options,
+		readArchiveConfig(targetPath).host ?? 'github.com',
+	);
 	applyDuplicateIdentityFindings(
 		results.filter((result): result is VerifiedCheckout => result !== undefined),
 	);

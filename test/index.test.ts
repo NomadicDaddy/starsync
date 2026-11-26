@@ -1,6 +1,6 @@
-import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { execFile as actualExecFile, execFileSync as actualExecFileSync } from 'node:child_process';
-import {
+import fs, {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -9,11 +9,12 @@ import {
 	rmSync,
 	writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { devNull, tmpdir } from 'node:os';
 import path from 'node:path';
 
 import type { ParsedArgs } from '../src/lib/cli-utils.ts';
 import type { CommandReport } from '../src/lib/reporting.ts';
+import type { RepositoryResolver } from '../src/lib/repository-resolution.ts';
 
 import {
 	initArchive,
@@ -24,6 +25,8 @@ import {
 } from '../src/index.ts';
 import { getArchiveModificationFinding, inspectArchive } from '../src/lib/archive-inspection.ts';
 import { applyArchiveRenames } from '../src/lib/archive-rename-apply.ts';
+import { verifyCheckout } from '../src/lib/archive-verification-checkout.ts';
+import { resolveRenameEntry } from '../src/lib/checkout-rename-resolution.ts';
 import {
 	parseArgs,
 	parseSubcommandArgs,
@@ -31,6 +34,7 @@ import {
 	stripQuotes,
 } from '../src/lib/cli-utils.ts';
 import { checkFreeSpace, measureAvailableSpace } from '../src/lib/free-space.ts';
+import { GIT_COMMAND_GUARDS, readStatusPaths } from '../src/lib/git-exec.ts';
 import { SYNC_HELP_TEXT } from '../src/lib/help-text.ts';
 import { createCommandReport, createCommandReporter, createFinding } from '../src/lib/reporting.ts';
 import {
@@ -62,15 +66,32 @@ const mockExecFileSync = mock(
 	(_cmd: string, _args: string[], _options?: unknown): string | undefined => undefined,
 );
 
+/**
+ * Git's answer to the checkout boundary query (rev-parse of the work tree, Git directory and
+ * common directory) for a self-contained checkout at `cwd`, or null for any other command.
+ */
+const boundaryAnswer = (args: string[], options: unknown): null | string => {
+	const cwd = (options as { cwd?: string } | undefined)?.cwd;
+	if (!args.includes('rev-parse') || cwd === undefined) return null;
+	const metadata = path.join(cwd, '.git');
+	return `${cwd}\n${metadata}\n${metadata}\n`;
+};
+
+/** The Git command a call names, after the overrides every StarSync Git call leads with. */
+const gitArgs = (args: string[]): string[] =>
+	GIT_COMMAND_GUARDS.every((arg, index) => args[index] === arg)
+		? args.slice(GIT_COMMAND_GUARDS.length)
+		: args;
+
 const mockExecFile = mock(
 	(
 		_cmd: string,
-		_args: string[],
-		_options: unknown,
+		args: string[],
+		options: unknown,
 		callback: (err: Error | null, stdout: string, stderr: string) => void,
 	): void => {
 		// Simulate success by default
-		callback(null, '', '');
+		callback(null, boundaryAnswer(args, options) ?? '', '');
 	},
 );
 
@@ -207,7 +228,13 @@ const mockManagedCheckoutIdentity = (
 	let currentOrigin = `https://github.com/${repositorySlug}.git`;
 	let currentRepositoryId = String(repositoryId);
 	let currentRepositorySlug = repositorySlug;
-	mockExecFile.mockImplementation((_cmd, args, options, callback) => {
+	mockExecFile.mockImplementation((_cmd, rawArgs, options, callback) => {
+		const args = gitArgs(rawArgs);
+		const boundary = boundaryAnswer(args, options);
+		if (boundary !== null) {
+			callback(null, boundary, '');
+			return;
+		}
 		const cwd = (options as { cwd?: string } | undefined)?.cwd ?? '';
 		if (path.basename(cwd) === folderName && args[0] === 'remote' && args[1] === 'set-url') {
 			currentOrigin = args.at(-1) ?? currentOrigin;
@@ -262,7 +289,13 @@ const mockSuccessfulCloneAndDateOperations = (
 	const origins = new Map<string, string>();
 	const repositoryIds = new Map<string, string>();
 	const repositorySlugs = new Map<string, string>();
-	mockExecFile.mockImplementation((_cmd, args, options, callback) => {
+	mockExecFile.mockImplementation((_cmd, rawArgs, options, callback) => {
+		const args = gitArgs(rawArgs);
+		const boundary = boundaryAnswer(args, options);
+		if (boundary !== null) {
+			callback(null, boundary, '');
+			return;
+		}
 		const cwd = (options as { cwd?: string } | undefined)?.cwd;
 		if (
 			failingRepository !== undefined &&
@@ -342,6 +375,7 @@ describe('argument parsing', () => {
 			concurrency: 4,
 			dryRun: false,
 			help: false,
+			host: null,
 			json: false,
 			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: null,
@@ -350,6 +384,7 @@ describe('argument parsing', () => {
 			concurrency: 4,
 			dryRun: false,
 			help: true,
+			host: null,
 			json: false,
 			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: null,
@@ -358,6 +393,7 @@ describe('argument parsing', () => {
 			concurrency: 4,
 			dryRun: false,
 			help: true,
+			host: null,
 			json: false,
 			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: null,
@@ -366,6 +402,7 @@ describe('argument parsing', () => {
 			concurrency: 4,
 			dryRun: false,
 			help: false,
+			host: null,
 			json: false,
 			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: 'repos',
@@ -417,18 +454,108 @@ describe('programmatic archive API', () => {
 			expect(report.exitCode).toBe(0);
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
-				['rev-parse', '--verify', 'refs/remotes/origin/trunk^{commit}'],
+				[
+					...GIT_COMMAND_GUARDS,
+					'rev-parse',
+					'--verify',
+					'refs/remotes/origin/trunk^{commit}',
+				],
 				expect.objectContaining({ cwd: path.join(target, 'repo-a--example') }),
 				expect.any(Function),
 			);
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
-				['switch', '--create', 'trunk', '--track', 'refs/remotes/origin/trunk'],
+				[
+					...GIT_COMMAND_GUARDS,
+					'switch',
+					'--create',
+					'trunk',
+					'--track',
+					'refs/remotes/origin/trunk',
+				],
 				expect.objectContaining({ cwd: path.join(target, 'repo-a--example') }),
 				expect.any(Function),
 			);
+			// Every Git subprocess the refresh starts, async and sync, leads with both overrides.
+			const gitCalls = [...mockExecFile.mock.calls, ...mockExecFileSync.mock.calls].filter(
+				(call) => call[0] === 'git',
+			);
+			expect(gitCalls.length).toBeGreaterThan(0);
+			for (const call of gitCalls) {
+				expect(call[1].slice(0, GIT_COMMAND_GUARDS.length)).toEqual(GIT_COMMAND_GUARDS);
+			}
+			expect(GIT_COMMAND_GUARDS).toEqual([
+				'-c',
+				'core.fsmonitor=',
+				'-c',
+				`core.hooksPath=${devNull}`,
+			]);
 		} finally {
 			rmSync(target, { force: true, recursive: true });
+		}
+	});
+
+	test('status, verify and rename preview lead every Git call with both guards', async () => {
+		const archive = mkdtempSync(path.join(tmpdir(), 'starsync-api-guards-'));
+		const real = path.join(archive, 'real');
+		// Setup runs real Git directly, so only StarSync's own calls are recorded below.
+		const git = (args: string[]): string =>
+			callActualExecFileSync('git', args, {
+				cwd: real,
+				encoding: 'utf-8',
+				windowsHide: true,
+			});
+		try {
+			writeManagedArchiveConfig(archive);
+			mkdirSync(real);
+			git(['init', '--quiet']);
+			git(['remote', 'add', 'origin', 'https://github.com/owner/repository.git']);
+			git(['config', 'starsync.repository-id', '42']);
+			git(['config', 'starsync.repository-slug', 'owner/repository']);
+			writeFileSync(path.join(real, 'notes.txt'), 'one\n');
+			git(['add', 'notes.txt']);
+			git(['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init']);
+			// An inert monitor value: nothing exists at this path, so nothing could run even if a
+			// call left the checkout's setting in force.
+			git(['config', 'core.fsmonitor', path.join(archive, 'no-such-monitor')]);
+			writeFileSync(path.join(real, 'notes.txt'), 'two\n');
+
+			// The instrumented adapter: every call is recorded and passed through to real Git.
+			mockExecFile.mockImplementation(callActualExecFile);
+			mockExecFileSync.mockImplementation(callActualExecFileSync);
+			expect(await readStatusPaths([], { cwd: real })).toEqual(['notes.txt']);
+			const entry = inspectArchive(archive).entries.find(
+				(candidate) => candidate.name === 'real',
+			);
+			if (entry === undefined) throw new Error('The fixture checkout is missing.');
+			const verified = await verifyCheckout(entry);
+			expect(verified.report.findings.map((finding) => finding.code)).toContain(
+				'checkout-blocked',
+			);
+			const resolver: RepositoryResolver = () =>
+				Promise.resolve({
+					id: 42,
+					name: 'repository',
+					owner: 'owner',
+					slug: 'owner/repository',
+				});
+			expect(await resolveRenameEntry(entry, resolver)).toHaveProperty(
+				'blockedReason',
+				'Local changes prevent a safe folder rename.',
+			);
+
+			const gitCalls = [...mockExecFile.mock.calls, ...mockExecFileSync.mock.calls].filter(
+				(call) => call[0] === 'git',
+			);
+			expect(gitCalls.some((call) => gitArgs(call[1]).includes('status'))).toBe(true);
+			for (const call of gitCalls) {
+				expect(call[1].slice(0, GIT_COMMAND_GUARDS.length)).toEqual(GIT_COMMAND_GUARDS);
+			}
+		} finally {
+			mockExecFile.mockImplementation((_cmd, args, options, callback) => {
+				callback(null, boundaryAnswer(args, options) ?? '', '');
+			});
+			rmSync(archive, { force: true, recursive: true });
 		}
 	});
 
@@ -654,10 +781,12 @@ describe('managed archive initialization', () => {
 			);
 			expect(JSON.parse(configText)).toEqual({
 				archiveFormat: 2,
+				host: 'github.com',
 				owner: { id: 42, login: 'octocat' },
 			});
 			expect(Object.keys(JSON.parse(configText) as Record<string, unknown>).sort()).toEqual([
 				'archiveFormat',
+				'host',
 				'owner',
 			]);
 			expect(configText).not.toContain('secret-test-token');
@@ -744,7 +873,10 @@ describe('managed archive initialization', () => {
 			writeManagedArchiveConfig(target);
 			createCheckout(target, 'repository--example');
 			mockManagedCheckoutIdentity('repository--example', 101, 'example/repository');
-			mockExecFileSync.mockReturnValue('https://github.com/example/repository.git\n');
+			mockExecFileSync.mockImplementation(
+				(_cmd, args, options) =>
+					boundaryAnswer(args, options) ?? 'https://github.com/example/repository.git\n',
+			);
 
 			const report = await applyArchiveRenames(target, () =>
 				Promise.resolve({
@@ -1146,13 +1278,19 @@ describe('sync free space floor', () => {
 describe('free-space measurement', () => {
 	test('measures an absent nested path exactly as its nearest existing ancestor', () => {
 		const parent = mkdtempSync(path.join(tmpdir(), 'starsync-measure-'));
+		// One live reading, replayed for every measurement, so other writes to the disk between
+		// two readings can't change the answer. The spy also records which path is measured.
+		const reading = fs.statfsSync(parent);
+		const statfs = spyOn(fs, 'statfsSync').mockReturnValue(reading);
 		try {
 			const absent = path.join(parent, 'no', 'such', 'child');
 
 			expect(existsSync(absent)).toBe(false);
 			expect(measureAvailableSpace(absent)).toBe(measureAvailableSpace(parent));
 			expect(measureAvailableSpace(parent)).toBeGreaterThan(0);
+			expect(statfs.mock.calls.map((call) => call[0])).toEqual([parent, parent, parent]);
 		} finally {
+			statfs.mockRestore();
 			rmSync(parent, { force: true, recursive: true });
 		}
 	});
@@ -1302,6 +1440,7 @@ describe('parseSubcommandArgs', () => {
 			dryRun: false,
 			force: false,
 			help: false,
+			host: null,
 			json: false,
 			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: null,
@@ -1395,6 +1534,7 @@ describe('parseArgs --dry-run', () => {
 			concurrency: 4,
 			dryRun: true,
 			help: false,
+			host: null,
 			json: false,
 			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: null,
@@ -1403,6 +1543,7 @@ describe('parseArgs --dry-run', () => {
 			concurrency: 4,
 			dryRun: true,
 			help: false,
+			host: null,
 			json: false,
 			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: 'repos',
@@ -2117,6 +2258,7 @@ describe('refresh pipeline', () => {
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
 				[
+					...GIT_COMMAND_GUARDS,
 					'clone',
 					'https://github.com/example/new-repo.git',
 					expect.stringMatching(/^\.starsync-checkout-/),
@@ -2126,7 +2268,7 @@ describe('refresh pipeline', () => {
 			);
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
-				['fsck', '--full'],
+				[...GIT_COMMAND_GUARDS, 'fsck', '--full'],
 				expect.objectContaining({
 					cwd: expect.stringContaining('.starsync-checkout-'),
 				}),
@@ -2134,7 +2276,7 @@ describe('refresh pipeline', () => {
 			);
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
-				['config', '--local', 'starsync.repository-id', '321'],
+				[...GIT_COMMAND_GUARDS, 'config', '--local', 'starsync.repository-id', '321'],
 				expect.objectContaining({
 					cwd: expect.stringContaining('.starsync-checkout-'),
 				}),
@@ -2142,7 +2284,13 @@ describe('refresh pipeline', () => {
 			);
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
-				['config', '--local', 'starsync.repository-slug', 'example/new-repo'],
+				[
+					...GIT_COMMAND_GUARDS,
+					'config',
+					'--local',
+					'starsync.repository-slug',
+					'example/new-repo',
+				],
 				expect.any(Object),
 				expect.any(Function),
 			);
@@ -2266,13 +2414,25 @@ describe('refresh pipeline', () => {
 			);
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
-				['remote', 'set-url', 'origin', 'https://github.com/new-owner/renamed-repo.git'],
+				[
+					...GIT_COMMAND_GUARDS,
+					'remote',
+					'set-url',
+					'origin',
+					'https://github.com/new-owner/renamed-repo.git',
+				],
 				expect.objectContaining({ cwd: checkout }),
 				expect.any(Function),
 			);
 			expect(mockExecFile).toHaveBeenCalledWith(
 				'git',
-				['config', '--local', 'starsync.repository-slug', 'new-owner/renamed-repo'],
+				[
+					...GIT_COMMAND_GUARDS,
+					'config',
+					'--local',
+					'starsync.repository-slug',
+					'new-owner/renamed-repo',
+				],
 				expect.objectContaining({ cwd: checkout }),
 				expect.any(Function),
 			);
@@ -2592,6 +2752,7 @@ describe('structured command reporting', () => {
 			concurrency: 4,
 			dryRun: false,
 			help: false,
+			host: null,
 			json: true,
 			minFreeSpace: DEFAULT_MIN_FREE_SPACE,
 			targetPath: null,

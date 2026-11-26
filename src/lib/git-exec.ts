@@ -1,4 +1,5 @@
 import { execFile, type ExecFileException } from 'node:child_process';
+import { devNull } from 'node:os';
 
 import { isGitAuthError } from './secret-safety.ts';
 
@@ -69,6 +70,27 @@ export const buildGitEnvironment = (
 };
 
 /**
+ * Leads every Git command StarSync runs. A checkout's own config can name a filesystem-monitor
+ * command, which Git runs whenever it reads the index (status, fsck, merge and others). A
+ * command-line setting outranks the checkout's config, so this turns the monitor off for every
+ * call. The empty value works across Git versions: Git documents an empty string as boolean
+ * false, and Git before 2.36, where the setting is a hook path, treats an empty path as no
+ * monitor.
+ */
+const NO_CHECKOUT_FSMONITOR = ['-c', 'core.fsmonitor='];
+
+/**
+ * A checkout's own hooks (.git/hooks, or a core.hooksPath in its config) run for fetch, switch,
+ * merge and other commands StarSync uses. Pointing core.hooksPath at the null device on the
+ * command line outranks every config level, so no hook runs for StarSync's commands, including
+ * hooks a user set globally. Nothing else in the Git environment changes.
+ */
+const NO_CHECKOUT_HOOKS = ['-c', `core.hooksPath=${devNull}`];
+
+/** The overrides every Git command StarSync runs leads with. */
+export const GIT_COMMAND_GUARDS = [...NO_CHECKOUT_FSMONITOR, ...NO_CHECKOUT_HOOKS];
+
+/**
  * Runs a Git command asynchronously and returns stdout exactly as Git wrote it.
  *
  * Uses execFile (no shell) to prevent injection. Sets GIT_TERMINAL_PROMPT=0
@@ -78,7 +100,7 @@ const runGitRaw = (args: string[], options: GitExecOptions): Promise<string> =>
 	new Promise((resolve, reject) => {
 		execFile(
 			'git',
-			args,
+			[...GIT_COMMAND_GUARDS, ...args],
 			{
 				cwd: options.cwd,
 				encoding: 'utf-8',

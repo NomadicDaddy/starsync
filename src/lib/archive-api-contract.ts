@@ -36,7 +36,8 @@ export interface VerifyArchiveOptions extends ArchiveOperationOptions {
 	force?: boolean;
 	/**
 	 * Bytes that must stay free at the target before forced repair re-clones; zero
-	 * disables the check. Read-only verification writes nothing and never measures.
+	 * disables the check. Read-only verification never repairs or measures free space;
+	 * the public operation still creates and removes transient lock metadata.
 	 */
 	minFreeSpace?: number;
 	token?: string;

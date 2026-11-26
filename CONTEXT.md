@@ -1,15 +1,15 @@
 # StarSync
 
-StarSync maintains a local archive of repositories selected through one user's GitHub stars. The
+StarSync maintains a local archive of repositories selected through one user's GitHub or Codeberg stars. The
 archive is intended for preservation and browsing, not active development.
 
 ## Language
 
 **Starred Repository**:
-A public or private GitHub.com repository selected by the archive owner and eligible for inclusion.
+A public or private repository on the archive's host selected by its owner and eligible for inclusion.
 
 **Repository Identity**:
-The stable numeric ID assigned by GitHub.com. It remains unchanged when the repository name or
+The stable numeric ID assigned by the archive's host. IDs are scoped to that host. It remains unchanged when the repository name or
 owner changes.
 _Avoid_: Repository slug, repository name, folder name
 
@@ -19,15 +19,15 @@ _Avoid_: Repository identity
 
 **Managed Archive**:
 A format-2 collection of primary Git histories and usable checkouts that StarSync preserves and
-refreshes, excluding externally stored content and GitHub-hosted metadata.
+refreshes, excluding externally stored content and forge-hosted metadata.
 _Avoid_: Mirror, backup, arbitrary directory
 
 **Archive Owner**:
-The GitHub.com account whose current stars determine active checkouts.
+The account on the archive's host whose current stars determine active checkouts.
 _Avoid_: Token owner, filesystem owner
 
 **Initialized Archive**:
-A **Managed Archive** with an exact `.starsync/config.json` recording format 2 and a valid
+A **Managed Archive** with `.starsync/config.json` recording format 2, a host and a valid
 **Archive Owner**. A configless directory is uninitialized, regardless of its contents.
 _Avoid_: Target directory, repository folder
 
@@ -86,6 +86,8 @@ _Avoid_: Mirror
 
 - A **Managed Archive** contains zero or more **Managed Checkouts**.
 - A **Managed Archive** belongs to exactly one **Archive Owner**.
+- A **Managed Archive** belongs to one host: `github.com` or `codeberg.org`. Omitted host means
+  GitHub; new archives record the host explicitly. Hosts cannot be mixed within an archive.
 - Format 2 is the only accepted archive format; every other format is unsupported.
 - A configless or malformed directory is not a **Managed Archive** and its contents are not
   inspected for conversion.
@@ -96,7 +98,7 @@ _Avoid_: Mirror
 - A rename or ownership transfer changes the **Repository Slug** without changing the
   **Repository Identity**.
 - A changed slug produces a **Pending Rename** without blocking refresh.
-- **Rename** requires the stored ID to match GitHub's resolved ID; it never creates identity.
+- **Rename** resolves the stored ID on the archive's host and requires an exact match; it never creates identity.
 - Rename preview is read-only. Rename application authenticates the **Archive Owner**.
 - A dirty, unverifiable, duplicated, mismatched, or colliding checkout is not renamed.
 - Successful rename updates remain when another checkout fails or processing is interrupted.
@@ -105,7 +107,8 @@ _Avoid_: Mirror
   shortfall without refusing. The minimum is a starting reserve, not a guarantee that the run has
   room to finish.
 - Forced verification takes the same reserve, since it clones replacements; read-only verification
-  writes nothing and never measures.
+  preserves checkout content and never measures free space. Read-only operations and previews still
+  create and remove transient operation-lock metadata.
 - A currently starred repository has an **Active Checkout** after addition.
 - An unstarred repository becomes a **Retained Checkout** and becomes active again if re-starred.
 - A **Refresh** preserves available branches, tags, and previously retained history.
@@ -137,7 +140,7 @@ _Avoid_: Mirror
 - "Local copy" may mean a managed checkout or an active development workspace; StarSync manages
   only the former.
 - Slug, short name, and folder name are labels, not identity.
-- The owner is identified by stable GitHub account ID, not a token or mutable login.
+- The owner is identified by stable host account ID, not a token or mutable login.
 - A repository directory is not initialized until exact format-2 owner configuration exists.
 - A blocked action means StarSync found state it will not overwrite; it does not prove corruption.
 - Pending rename is a label mismatch, not a refresh failure or new repository.
@@ -145,4 +148,4 @@ _Avoid_: Mirror
 - Archive Date is repository history time, not the time StarSync last ran.
 - The archive covers primary Git data and a usable checkout, not all LFS objects, submodules,
   issues, discussions, release assets, wikis, or workflow artifacts.
-- StarSync manages GitHub.com only; other Git hosts are outside its context.
+- StarSync manages GitHub.com and Codeberg.org, one host per archive. Other hosts remain out of scope.

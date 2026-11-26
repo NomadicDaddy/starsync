@@ -8,12 +8,12 @@ import {
 	unlockArchive,
 	verifyArchive,
 } from './archive-api.ts';
+import { tokenForArchive, tokenForHost } from './cli-host.ts';
+import { resolveArchiveTarget } from './cli-target.ts';
 import {
 	parseArgs,
 	type ParsedSubcommandArgs,
 	parseSubcommandArgs,
-	resolveTargetPath,
-	stripQuotes,
 	type Subcommand,
 } from './cli-utils.ts';
 import {
@@ -58,22 +58,14 @@ const resolveRequiredTarget = (
 	command: Subcommand,
 	argv: string[],
 	helpText: string,
-	positional: null | string,
+	args: Pick<ParsedSubcommandArgs, 'host' | 'targetPath'>,
 ): null | string => {
-	// An explicitly supplied but empty or quoted-empty positional is invalid input, not an
-	// omitted one: it must never fall back to TARGET_PATH or an implicit archive path.
-	const positionalValue = positional === null ? null : stripQuotes(positional);
-	const envValue = process.env.TARGET_PATH ? stripQuotes(process.env.TARGET_PATH) : '';
-	if (positionalValue === '' || (positionalValue === null && !envValue)) {
-		emitUsageError(
-			command,
-			argv,
-			helpText,
-			new Error('A target path or TARGET_PATH is required.'),
-		);
+	try {
+		return resolveArchiveTarget(args);
+	} catch (err) {
+		emitUsageError(command, argv, helpText, err);
 		return null;
 	}
-	return resolveTargetPath(positionalValue, process.env.TARGET_PATH);
 };
 
 export const dispatchSync = async (argv: string[]): Promise<number> => {
@@ -86,7 +78,7 @@ export const dispatchSync = async (argv: string[]): Promise<number> => {
 	}
 	if (args.help) return emitHelp('sync', args.json, SYNC_HELP_TEXT);
 
-	const targetPath = resolveRequiredTarget('sync', argv, SYNC_HELP_TEXT, args.targetPath);
+	const targetPath = resolveRequiredTarget('sync', argv, SYNC_HELP_TEXT, args);
 	if (targetPath === null) return 2;
 	const interrupt = createInterruptControl(
 		reporter,
@@ -101,7 +93,7 @@ export const dispatchSync = async (argv: string[]): Promise<number> => {
 			onProgress: reporter.progress,
 			signal: interrupt.signal,
 			targetPath,
-			token: process.env.GITHUB_TOKEN ?? '',
+			token: tokenForArchive(targetPath),
 		});
 	} finally {
 		interrupt.dispose();
@@ -119,7 +111,7 @@ export const dispatchVerify = async (argv: string[]): Promise<number> => {
 	}
 	if (args.help) return emitHelp('verify', args.json, VERIFY_HELP_TEXT);
 
-	const targetPath = resolveRequiredTarget('verify', argv, VERIFY_HELP_TEXT, args.targetPath);
+	const targetPath = resolveRequiredTarget('verify', argv, VERIFY_HELP_TEXT, args);
 	if (targetPath === null) return 2;
 	const reporter = createCommandReporter(args.json);
 	const interrupt = createInterruptControl(
@@ -134,7 +126,7 @@ export const dispatchVerify = async (argv: string[]): Promise<number> => {
 			onProgress: reporter.progress,
 			signal: interrupt.signal,
 			targetPath,
-			token: process.env.GITHUB_TOKEN ?? '',
+			token: tokenForArchive(targetPath),
 		});
 	} finally {
 		interrupt.dispose();
@@ -151,7 +143,7 @@ export const dispatchRename = async (argv: string[]): Promise<number> => {
 		return emitUsageError('rename', argv, RENAME_HELP_TEXT, err);
 	}
 	if (args.help) return emitHelp('rename', args.json, RENAME_HELP_TEXT);
-	const targetPath = resolveRequiredTarget('rename', argv, RENAME_HELP_TEXT, args.targetPath);
+	const targetPath = resolveRequiredTarget('rename', argv, RENAME_HELP_TEXT, args);
 	if (targetPath === null) return 2;
 	const reporter = createCommandReporter(args.json);
 	const interrupt = createInterruptControl(
@@ -165,7 +157,7 @@ export const dispatchRename = async (argv: string[]): Promise<number> => {
 			onProgress: reporter.progress,
 			signal: interrupt.signal,
 			targetPath,
-			token: process.env.GITHUB_TOKEN ?? '',
+			token: tokenForArchive(targetPath),
 		});
 	} finally {
 		interrupt.dispose();
@@ -183,7 +175,7 @@ export const dispatchDates = async (argv: string[]): Promise<number> => {
 	}
 	if (args.help) return emitHelp('dates', args.json, DATES_HELP_TEXT);
 
-	const targetPath = resolveRequiredTarget('dates', argv, DATES_HELP_TEXT, args.targetPath);
+	const targetPath = resolveRequiredTarget('dates', argv, DATES_HELP_TEXT, args);
 	if (targetPath === null) return 2;
 	const reporter = createCommandReporter(args.json);
 	const interrupt = createInterruptControl(
@@ -213,8 +205,9 @@ export const dispatchInit = async (argv: string[]): Promise<number> => {
 		return emitUsageError('init', argv, INIT_HELP_TEXT, err);
 	}
 	if (args.help) return emitHelp('init', args.json, INIT_HELP_TEXT);
-	const targetPath = resolveRequiredTarget('init', argv, INIT_HELP_TEXT, args.targetPath);
+	const targetPath = resolveRequiredTarget('init', argv, INIT_HELP_TEXT, args);
 	if (targetPath === null) return 2;
+	const host = args.host ?? 'github.com';
 	const reporter = createCommandReporter(args.json);
 	const interrupt = createInterruptControl(
 		reporter,
@@ -223,10 +216,11 @@ export const dispatchInit = async (argv: string[]): Promise<number> => {
 	let report: CommandReport;
 	try {
 		report = await initArchive({
+			host,
 			onProgress: reporter.progress,
 			signal: interrupt.signal,
 			targetPath,
-			token: process.env.GITHUB_TOKEN ?? '',
+			token: tokenForHost(host),
 		});
 	} finally {
 		interrupt.dispose();
@@ -243,7 +237,7 @@ export const dispatchUnlock = (argv: string[]): number => {
 		return emitUsageError('unlock', argv, UNLOCK_HELP_TEXT, err);
 	}
 	if (args.help) return emitHelp('unlock', args.json, UNLOCK_HELP_TEXT);
-	const targetPath = resolveRequiredTarget('unlock', argv, UNLOCK_HELP_TEXT, args.targetPath);
+	const targetPath = resolveRequiredTarget('unlock', argv, UNLOCK_HELP_TEXT, args);
 	if (targetPath === null) return 2;
 	const reporter = createCommandReporter(args.json);
 	const report = unlockArchive({

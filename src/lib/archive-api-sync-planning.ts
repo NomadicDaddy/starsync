@@ -9,9 +9,15 @@ import {
 	createInterruptedCheckout,
 	getErrorMessage,
 } from './archive-api-reporting.ts';
+import { readArchiveConfig } from './archive-config.ts';
 import { inspectArchiveDate } from './archive-dates.ts';
 import { createCommandReport, createFinding } from './reporting.ts';
-import { isGitHubDotComUrl, sanitizeMessage, sanitizeUrl } from './secret-safety.ts';
+import {
+	hasEmbeddedCredentials,
+	isArchiveHostUrl,
+	sanitizeMessage,
+	sanitizeUrl,
+} from './secret-safety.ts';
 
 const plannedDateFinding = async (
 	targetPath: string,
@@ -86,8 +92,12 @@ export const partitionValidRepositories = (
 ): { invalid: CheckoutReport[]; valid: StarredRepository[] } => {
 	const invalid: CheckoutReport[] = [];
 	const valid: StarredRepository[] = [];
+	const host = readArchiveConfig(targetPath).host ?? 'github.com';
 	for (const repository of repositories) {
-		if (isGitHubDotComUrl(repository.clone_url)) {
+		if (
+			!hasEmbeddedCredentials(repository.clone_url) &&
+			isArchiveHostUrl(repository.clone_url, host)
+		) {
 			valid.push(repository);
 			continue;
 		}
@@ -96,7 +106,7 @@ export const partitionValidRepositories = (
 				createFinding(
 					'error',
 					'invalid-origin',
-					`Repository origin is not GitHub.com: ${sanitizeUrl(repository.clone_url)}`,
+					`Repository origin does not match the archive host: ${sanitizeUrl(repository.clone_url)}`,
 				),
 			],
 			lifecycle: checkoutExists(targetPath, repository.folderName) ? 'active' : null,
@@ -114,28 +124,32 @@ export const previewSync = async (
 	options: SyncArchiveOptions,
 ): Promise<CommandReport> => {
 	options.onProgress?.('Dry run: querying stars and inspecting the archive without changes.');
+	const { invalid, valid: repositories } = partitionValidRepositories(
+		context.targetPath,
+		plan.repositories,
+	);
 	const planned: CheckoutReport[] = [];
-	for (const [index, repository] of plan.repositories.entries()) {
+	for (const [index, repository] of repositories.entries()) {
 		if (options.signal?.aborted) {
 			planned.push(
-				...createUninspectedReports(context.targetPath, plan.repositories.slice(index)),
+				...createUninspectedReports(context.targetPath, repositories.slice(index)),
 			);
 			break;
 		}
 		const isCloned = checkoutExists(context.targetPath, repository.folderName);
 		options.onProgress?.(
-			`Syncing ${index + 1}/${plan.repositories.length} — ${repository.folderName} — would ${isCloned ? 'refresh' : 'clone'}`,
+			`Syncing ${index + 1}/${repositories.length} — ${repository.folderName} — would ${isCloned ? 'refresh' : 'clone'}`,
 		);
 		if (options.signal?.aborted) {
 			planned.push(
-				...createUninspectedReports(context.targetPath, plan.repositories.slice(index)),
+				...createUninspectedReports(context.targetPath, repositories.slice(index)),
 			);
 			break;
 		}
 		planned.push(await createPlannedReport(context.targetPath, repository));
 	}
 	const interrupted = options.signal?.aborted ?? false;
-	const checkouts = [...planned, ...plan.blockedReports, ...plan.retainedReports];
+	const checkouts = [...planned, ...invalid, ...plan.blockedReports, ...plan.retainedReports];
 	const hasErrors = checkouts.some((checkout) =>
 		checkout.findings.some((finding) => finding.severity === 'error'),
 	);

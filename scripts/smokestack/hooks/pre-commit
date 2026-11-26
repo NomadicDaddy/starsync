@@ -1,0 +1,112 @@
+#!/bin/sh
+# Fast pre-commit gate: leak-guard + `bun run smoke:qc:fast`.
+#
+# leak-guard scans the staged index diff, so it is uncacheable-by-design and runs first as a
+# security gate. The static checks that follow are delegated to `smoke:qc:fast`, each repository's
+# own no-tests subset of smoke:qc — content-hash cached and ordered by ascending cost/failure rate
+# where the repository implements it that way, so a doomed commit fails on the cheapest failing
+# check first. The full smoke:qc (tests, builds, and the remaining static checks) still runs in CI.
+#
+# This hook depends on a script-name contract, not on any repository's internals: every repo that
+# installs it defines `smoke:qc:fast` and `check:licenses` in package.json (the manifest's
+# requiresScripts for this hook; the leak guard itself runs from leak-guard.sh beside it) and
+# is free to implement them differently. That is what lets this file stay byte-identical while the
+# repositories diverge — a repo with no third-party inventory to verify may legitimately define
+# `check:licenses` as the license core alone.
+#
+# Bypass with `git commit --no-verify` only for WIP/experimental commits
+# or confirmed false positives.
+#
+# smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+# smokestack; every repository that takes it holds a byte-identical copy.
+
+# Find bash by absolute path and put its directory first, then start over under it. Looking bash up
+# on PATH is what broke this hook: on Windows System32 holds the WSL launcher under the same name,
+# and a session whose PATH lists System32 ahead of Git's tools ran that, which fails with
+# `execvpe(/bin/bash)`. A hook that fails every commit gets bypassed, and the leak guard goes with
+# it. `/usr/bin/bash` is Git's own bash on Windows and the system's on Linux; `/bin/bash` covers
+# macOS. With that directory first, every `bash`, `grep`, and `sort` below is the right one too.
+if [ -z "${GITHOOK_BASH_RESOLVED:-}" ]; then
+	for hook_bash in /usr/bin/bash /bin/bash; do
+		if [ -x "$hook_bash" ]; then
+			GITHOOK_BASH_RESOLVED=1
+			PATH="${hook_bash%/*}:$PATH"
+			export GITHOOK_BASH_RESOLVED PATH
+			exec "$hook_bash" "$0" "$@"
+		fi
+	done
+	echo "x pre-commit: no bash at /usr/bin/bash or /bin/bash, so the guards cannot run." >&2
+	exit 1
+fi
+# Cleared so a git command run from inside this hook resolves bash for its own hooks afresh.
+unset GITHOOK_BASH_RESOLVED
+
+# From here on this runs under the bash the block above re-executed into. Plain shellcheck reads the
+# #!/bin/sh line and lints the whole file as POSIX sh, so each bash-only line below says so.
+# shellcheck disable=SC3040 # bash, after the re-exec above
+set -euo pipefail
+
+# The guards sit beside this hook: scripts/smokestack/hooks in a repository that takes it, and
+# .githooks in smokestack itself.
+hooks_dir="$(dirname "$0")"
+
+# .aidd stays untracked in every repository (Phillip #21448). A repository with no push remote never
+# runs the pre-push history guard, so this is what stops `git add -f` from tracking it again (#21477).
+# It reads the index, so ignored .aidd files on disk never count, and it refuses only additions and
+# changes: removing .aidd from the index is how a repository untracks it. Read into a variable so a
+# pipe closed early under pipefail cannot skip it.
+staged_aidd=$(git diff --cached --name-only --diff-filter=ACMRT -- ':(icase).aidd')
+if [ -n "$staged_aidd" ]; then
+	echo "x pre-commit: this commit stages .aidd metadata, which stays untracked in every repository:" >&2
+	printf '%s\n' "$staged_aidd" | sed 's/^/    /' >&2
+	echo "  Untrack it with: git rm -r --cached ':(icase).aidd'" >&2
+	exit 1
+fi
+
+echo "pre-commit: leak-guard"
+bash "$hooks_dir/leak-guard.sh"
+
+# The gates below run without git's variables for this repository (GIT_DIR, GIT_INDEX_FILE and the
+# rest `git rev-parse --local-env-vars` names). A step that makes scratch repositories would
+# otherwise write into this one: from a linked worktree, a fixture's `git init --bare` made the
+# repository itself bare (smokestack, 2026-11-05). The leak guard above and the staged-file check
+# below keep them, since both read what this commit stages.
+without_repo_env() {
+	# shellcheck disable=SC2046 # one variable name per word, which unset needs split
+	(unset $(git rev-parse --local-env-vars) && "$@")
+}
+
+echo "pre-commit: qc (cached subset of smoke:qc)"
+without_repo_env bun run smoke:qc:fast
+
+# The license checks read bun.lock and the installed tree — the third-party inventory is generated
+# FROM the lockfile — so a dependency change can break them without touching a single source file.
+# check:licenses is not in the fast subset, so nothing local catches that; it has reached main more
+# than once and surfaced only in a later full smoke:qc. Gate it here, but only when a dependency
+# manifest is actually staged, so ordinary commits pay nothing for it.
+#
+# Read into a variable rather than piping into grep: under `set -o pipefail` a matching `grep -q`
+# can still fail the pipeline when it closes the pipe early and git takes SIGPIPE, which would
+# silently skip the check on exactly the commits that need it.
+staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+# shellcheck disable=SC3011 # bash, after the re-exec above
+if grep -qE '(^|/)(bun\.lock|package\.json)$' <<<"$staged_files"; then
+	echo "pre-commit: check:licenses (dependency manifest staged)"
+	without_repo_env bun run check:licenses
+fi
+
+# The repository's own pre-commit, kept in .githooks, runs after ours. git runs hooks from one
+# folder, and in a repository that takes this file that folder is scripts/smokestack/hooks, so
+# nothing else would run it. A file there carrying smokestack's ownership line is a delivered copy
+# (in smokestack itself, this file), never the repository's own, and is not run.
+own_hook=".githooks/$(basename "$0")"
+if [ -f "$own_hook" ] && ! grep -q 'smokestack owns this file' "$own_hook"; then
+	if [ -x "$own_hook" ]; then
+		echo "pre-commit: $own_hook"
+		"$own_hook" "$@"
+	else
+		echo "pre-commit: $own_hook is not executable, so it was not run" >&2
+	fi
+fi
+
+echo "pre-commit: passed"

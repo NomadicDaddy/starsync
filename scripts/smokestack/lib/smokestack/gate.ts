@@ -1,0 +1,251 @@
+/**
+ * Runs a gate's steps in order and says what happened to each.
+ *
+ * The full gate runs every step even after one fails, then lists what failed: a gate that takes
+ * minutes and stops at its first failure makes each failure cost a whole run to find. The fast gate
+ * stops at the first, because it runs inside a commit and the commit is refused either way.
+ *
+ * An interruption is not a failure. It stops the running step and what that step started (on POSIX,
+ * not a process already orphaned to init, nor one started detached after the stop has looked; see
+ * spawn.ts), runs nothing further, and is reported as an interruption with the count of steps that
+ * did not run. It is never recorded as a failed step followed by more work.
+ *
+ * The summary counts what happened. A step is passed only when its process ended with 0, or when
+ * the step cache replays a pass recorded over the same key and inputs (cache.ts); a replay is
+ * counted with the passes and said to be one. A step whose `onlyIn` names another repository is
+ * skipped: said so with the reason, counted as skipped and never as passed, and never cached.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
+ */
+import type { CacheSession } from './cache.ts';
+
+import { skipReason, type Step } from './config.ts';
+import { HEAVY_HELD, type HeavyPolicy } from './heavy-config.ts';
+import { describeBlocking, takeSlot } from './heavy.ts';
+import { runProcess } from './spawn.ts';
+
+export type Mode = 'fast' | 'qc';
+
+interface Failure {
+	detail: string;
+	name: string;
+}
+
+export interface GateResult {
+	failures: Failure[];
+	interrupted: boolean;
+	notRun: number;
+	passed: number;
+	/** Of the passed, how many were replayed from the cache. */
+	replayed: number;
+	selected: number;
+	/** Steps whose `onlyIn` names another repository: neither passed nor failed. */
+	skipped: number;
+}
+
+/** A check made before the steps and reported as the first of them. */
+export interface Preflight {
+	/** Printed under the heading, one per line. */
+	lines: string[];
+	name: string;
+	passed: boolean;
+}
+
+export interface GateOptions {
+	/** Null when the config declares no cache: every step runs. */
+	cache: CacheSession | null;
+	/** What every step is handed; undefined for the runner's whole environment (env.ts). */
+	env: Record<string, string> | undefined;
+	/** How heavy steps wait for other gates' heavy steps (heavy.ts). */
+	heavy: HeavyPolicy;
+	mode: Mode;
+	/** package.json's name, which each step's `onlyIn` is matched against. */
+	packageName: null | string;
+	preflight: null | Preflight;
+	root: string;
+	signal: AbortSignal;
+	steps: Step[];
+}
+
+/**
+ * Set in the runner's own environment before its first step, and so handed to every step, whatever
+ * the config's `env.pass` lists (env.ts). A
+ * runner that finds it set was started by a step of another run, and refuses: a step that runs the
+ * gate starts the gate inside itself without end. The config reader refuses the spellings of that
+ * it can recognise in text; this catches the rest, however the step reached the runner.
+ */
+export const GATE_MARK = 'SMOKESTACK_GATE_RUNNING';
+
+/** Exit codes. 2 is reserved for a run that could not start, decided before this module. */
+const EXIT_PASSED = 0;
+const EXIT_FAILED = 1;
+const EXIT_INTERRUPTED = 130;
+
+function seconds(ms: number): string {
+	return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function reportPreflight(preflight: Preflight, result: GateResult): void {
+	console.info(`==> ${preflight.name}`);
+	for (const line of preflight.lines) console.info(`    ${line}`);
+	if (preflight.passed) {
+		console.info(`[PASS] ${preflight.name}`);
+		result.passed += 1;
+		return;
+	}
+	console.error(`[FAIL] ${preflight.name}`);
+	result.failures.push({ detail: 'see above', name: preflight.name });
+}
+
+/**
+ * Runs the step. A step holding a heavy slot is told which, so a gate it starts (test fixtures run
+ * the runner) does not wait on the slot its own parent holds, and the slot records the step's pid,
+ * so it stays held while the step runs even if this runner is killed.
+ */
+function runHolding(
+	step: Step,
+	options: GateOptions,
+	held: { recordChild: (pid: number) => void; slot: string } | null,
+) {
+	if (held === null) return runProcess(step.run, options.root, options.env, options.signal);
+	const { recordChild, slot } = held;
+	if (options.env !== undefined) {
+		const env = { ...options.env, [HEAVY_HELD]: slot };
+		return runProcess(step.run, options.root, env, options.signal, recordChild);
+	}
+	process.env[HEAVY_HELD] = slot;
+	return runProcess(step.run, options.root, undefined, options.signal, recordChild).finally(
+		() => {
+			delete process.env[HEAVY_HELD];
+		},
+	);
+}
+
+async function runOne(step: Step, options: GateOptions, result: GateResult): Promise<void> {
+	const { cache } = options;
+	const assessed = cache === null || step.cache === null ? null : await cache.assess(step);
+	if (assessed?.replay === true) {
+		console.info(`[CACHED] ${step.name} (${assessed.reason})`);
+		result.passed += 1;
+		result.replayed += 1;
+		return;
+	}
+	console.info(`==> ${step.name}`);
+	console.info(`    ${step.run.join(' ')}`);
+	if (assessed !== null) console.info(`    cache: runs, ${assessed.reason}`);
+	const taken = step.heavy
+		? await takeSlot(options.heavy, options.root, step.name, options.signal)
+		: null;
+	if (taken?.kind === 'aborted') {
+		result.interrupted = true;
+		console.error(`[STOPPED] ${step.name} (while waiting for a heavy slot)`);
+		return;
+	}
+	if (taken?.kind === 'timed-out') {
+		const waited = `${Math.round(taken.waitedMs / 60_000)}m`;
+		const by = describeBlocking(taken.blocking, true);
+		console.error(`[FAIL] ${step.name} (waited ${waited} for a heavy slot, held by ${by})`);
+		result.failures.push({ detail: `waited ${waited} for a heavy slot`, name: step.name });
+		return;
+	}
+	const started = Date.now();
+	const held =
+		taken?.kind === 'free' && taken.slot !== null
+			? { recordChild: taken.recordChild, slot: taken.slot }
+			: null;
+	const ended = await runHolding(step, options, held).finally(() => {
+		if (taken?.kind === 'free') taken.release();
+	});
+	const took = seconds(Date.now() - started);
+	if (ended.state === 'stopped') {
+		result.interrupted = true;
+		console.error(`[STOPPED] ${step.name} ${took}`);
+		return;
+	}
+	if (ended.state === 'could-not-start') {
+		console.error(`[FAIL] ${step.name} (could not start: ${ended.reason})`);
+		result.failures.push({ detail: 'could not start', name: step.name });
+		if (assessed !== null) cache?.forget(step);
+		return;
+	}
+	if (ended.code !== 0) {
+		console.error(`[FAIL] ${step.name} (exit ${ended.code}) ${took}`);
+		result.failures.push({ detail: `exit ${ended.code}`, name: step.name });
+		if (assessed !== null) cache?.forget(step);
+		return;
+	}
+	console.info(`[PASS] ${step.name} ${took}`);
+	result.passed += 1;
+	if (cache !== null && assessed !== null && assessed.before !== null) {
+		console.info(`    cache: ${await cache.record(step, assessed.before)}`);
+	}
+}
+
+/** Runs the gate and prints each step. The summary is printed by `summarise`. */
+export async function runGate(options: GateOptions): Promise<GateResult> {
+	const { mode, preflight, steps } = options;
+	const result: GateResult = {
+		failures: [],
+		interrupted: false,
+		notRun: 0,
+		passed: 0,
+		replayed: 0,
+		selected: steps.length + (preflight === null ? 0 : 1),
+		skipped: 0,
+	};
+	if (preflight !== null) reportPreflight(preflight, result);
+
+	for (const [index, step] of steps.entries()) {
+		const stop = options.signal.aborted || (mode === 'fast' && result.failures.length > 0);
+		if (stop) {
+			result.interrupted ||= options.signal.aborted;
+			result.notRun = steps.length - index;
+			break;
+		}
+		const skip = skipReason(step, options.packageName);
+		if (skip !== null) {
+			console.info(`[SKIPPED] ${step.name} (${skip})`);
+			result.skipped += 1;
+			continue;
+		}
+		await runOne(step, options, result);
+		if (result.interrupted) {
+			// The stopped step did not finish, so it is counted with those that did not run.
+			result.notRun = steps.length - index;
+			break;
+		}
+	}
+	return result;
+}
+
+export function exitCodeFor(result: GateResult): number {
+	if (result.interrupted) return EXIT_INTERRUPTED;
+	return result.failures.length > 0 ? EXIT_FAILED : EXIT_PASSED;
+}
+
+/**
+ * The last lines of a run. `fullCount` is the number of steps in the full gate, so a fast run says
+ * in its verdict that it was not the full gate: people and tools read this line as the result.
+ */
+export function summarise(result: GateResult, mode: Mode, fullCount: number, ms: number): void {
+	const scope =
+		mode === 'fast' ? ` (fast subset of ${fullCount} qc steps, not the full gate)` : '';
+	const replayed = result.replayed > 0 ? ` (${result.replayed} replayed from the cache)` : '';
+	const skipped = result.skipped > 0 ? `, ${result.skipped} skipped` : '';
+	const counts =
+		`${result.selected} selected, ${result.passed} passed${replayed}${skipped}, ` +
+		`${result.failures.length} failed, ${result.notRun} not run`;
+	if (result.interrupted) {
+		console.error(`smokestack: ${mode} INTERRUPTED${scope}: ${counts} (${seconds(ms)})`);
+		return;
+	}
+	if (result.failures.length === 0) {
+		console.info(`smokestack: ${mode} passed${scope}: ${counts} (${seconds(ms)})`);
+		return;
+	}
+	console.error(`smokestack: ${mode} FAILED${scope}: ${counts} (${seconds(ms)})`);
+	for (const failure of result.failures) {
+		console.error(`  [FAIL] ${failure.name} (${failure.detail})`);
+	}
+}

@@ -13,9 +13,9 @@
 
 import { join } from 'node:path';
 
-import { licenseOf, readJson, workspaceNames } from '../license-core/manifest.ts';
+import { licenseOf, readJson, workspaceNames } from '../../smokestack/lib/license-core/manifest.ts';
 
-export { licenseOf } from '../license-core/manifest.ts';
+export { licenseOf } from '../../smokestack/lib/license-core/manifest.ts';
 
 export interface DirectDependency {
 	license: string;

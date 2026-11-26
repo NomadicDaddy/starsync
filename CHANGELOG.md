@@ -2,6 +2,243 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Security
+
+- The repository now ignores every dotenv file Bun loads, including the `.env.development`,
+  `.env.production` and `.env.test` overlays, so a token placed in one can't be committed by
+  accident. `.env.example` stays trackable, and a test checks each file against the ignore rules.
+  This affects contributors to this repository only, not installed copies of StarSync.
+- The commit-time leak guard is updated to smokestack 1.0.7. It now runs under bash 3.2, the
+  version macOS ships, where it used to stop with an "unbound variable" error. A staged line that
+  matches the private pattern file now prints a warning instead of refusing the commit (smokestack
+  1.0.6). Secret formats, private keys and home-directory paths still refuse. This affects
+  contributors to this repository only, not installed copies of StarSync.
+
+## [2.5.8] - 2026-11-26
+
+### Security
+
+- On Windows, the checkout boundary no longer treats two folders whose names differ only in
+  letter case as the same folder. Windows can make a folder case-sensitive, and there a checkout's
+  Git settings could point its work tree or Git directory at a sibling such as `REPO` beside
+  `repo`, which the boundary accepted, so verify and sync could read or change files outside that
+  checkout. The boundary now compares the folders themselves rather than their names. Short paths
+  and other spellings of the same folder still pass. A path that can't be identified is refused.
+
+### Known limitations
+
+The limitations listed under 2.5.2 and 2.5.5 still apply. A third security review on 2026-11-26
+found one more, present in 2.4.1 and recorded for a later 2.5.x release:
+
+- When an archive's `.starsync/config.json` isn't valid JSON, the error StarSync reports can
+  quote part of that file. It appears in `verify` output, both as text and as JSON, and in the
+  programmatic API's reports. The output sanitizer removes values it recognizes as credentials,
+  but a value it doesn't recognize, placed in that file by mistake, can appear in the error.
+
+## [2.5.7] - 2026-11-26
+
+### Security
+
+- A forced repair no longer risks deleting the only copy of a checkout. Repair moves the damaged
+  checkout aside, publishes a fresh clone in its place, and used to rely on moving the original
+  back if publishing failed. If StarSync stopped between those two steps, or the move back failed,
+  the original was left only under its `.starsync-damaged-…` backup name, and the next sync or
+  forced verification deleted that backup along with any local changes and history. Each repair
+  now keeps a record in the archive's `.starsync` folder. Cleanup deletes a backup only when that
+  record shows the fresh checkout was published. Every other backup, including any an earlier
+  StarSync left behind, is kept and reported with its location, for you to inspect and remove.
+
+## [2.5.6] - 2026-11-22
+
+### Fixed
+
+- On Windows, an archive opened through its 8.3 short path (a path with `~1`-style names, such
+  as the short form of a folder name with spaces) no longer refuses its own checkouts as outside
+  the archive. The checkout boundary from 2.5.2 compared the short path with the long one Git reports.
+  It now compares the canonical long form of both. Every refusal it made before still stands.
+
+## [2.5.5] - 2026-11-22
+
+### Security
+
+- Git hooks no longer run for any Git command StarSync runs. Sync's refresh fetches, switches
+  branches and fast-forwards inside each checkout, and Git ran that checkout's own hooks for
+  those commands, so a checkout whose `.git` someone had edited could start a command of their
+  choosing during sync. Hooks you configured globally also don't run for StarSync's own commands;
+  nothing else about your Git setup changes.
+
+### Known limitations
+
+The limitations listed under 2.5.2 still apply. A second security review on 2026-11-22 found
+three more, all present in 2.4.1, each recorded for a later 2.5.x release:
+
+- During sync, StarSync can still execute Git filter commands configured by a managed checkout.
+  Sync only checkouts you trust.
+- A checkout that borrows Git objects from another store through Git's alternates file passes the
+  integrity check, although its history depends on that other store.
+- When a checkout's origin URL is rejected, the finding keeps any query values from that URL. The
+  programmatic API report includes all of them, and CLI output still includes a value whose
+  parameter name StarSync doesn't recognize as a credential.
+
+## [2.5.4] - 2026-11-22
+
+### Security
+
+- StarSync now turns off Git's filesystem monitor for every Git command it runs. A checkout's own
+  Git config can name a monitor command, and Git runs it whenever it reads the index, which
+  includes `verify`'s status and integrity checks, rename preview and sync's refresh. Before, a
+  checkout whose config someone had edited could start a command of their choosing during those
+  read-only checks. Git's own monitor setting in your global config is overridden for StarSync's
+  commands only.
+
+## [2.5.3] - 2026-11-22
+
+### Security
+
+- When Codeberg answers with a success status but a body that isn't valid JSON, StarSync now
+  reports only that the response wasn't valid JSON, with the HTTP status and the operation it was
+  on, such as reading the authenticated account. Before, the parser's own error was passed on,
+  and it can quote part of the body, so a credential echoed there could reach command reports and
+  both CLI output modes, as it did in init.
+
+## [2.5.2] - 2026-11-22
+
+### Security
+
+- Sync, rename and verification now refuse an archive entry that could send Git outside the
+  archive, and report it as `checkout-outside-archive`: a link or junction in place of a checkout,
+  a `.git` file or link that redirects Git, Git metadata that names a common directory, a folder
+  that resolves outside the archive root, or a checkout whose work tree, Git directory or common
+  directory Git itself resolves elsewhere, as a `core.worktree` setting can. The check runs before
+  each checkout's identity is read, and rename apply repeats it before reading identity and again
+  after moving the folder, before writing metadata. Before, sync could fetch into, and write
+  identity metadata for, a repository a planted link pointed at, and rename could act on it. A
+  link or junction now also counts as an occupied name, so sync won't clone through it.
+- When Git can't open a checkout at all, for example because its `.git/config` is damaged,
+  StarSync no longer runs any further Git in it. Verification reports it as
+  `checkout-boundary-unverified`, and `verify --force` leaves the folder and its local work as
+  they are for you to recover or remove. Before, forced repair could replace it and discard
+  uncommitted files. A checkout Git can open but whose objects are damaged stays eligible for
+  forced repair as before, under the same conditions as any other repair.
+
+### Known limitations
+
+These were present in 2.4.1 and are not fixed in this release. Each is recorded for a later
+2.5.x release.
+
+- Octokit's own request logger can write a GitHub request id to standard error when an API call
+  fails, outside StarSync's sanitized output. It doesn't carry the token.
+- `unlock` follows a `.starsync` folder that is a link, so it can read and remove the operation
+  lock of the archive the link points to. It removes only that fixed lock file.
+- For contributors only: `scripts/live-smoke.ts` prints its errors and reports without the shared
+  output sanitizer, full QC has no dependency-advisory step, and the lint toolchain still resolves
+  minimatch 10.2.6 (GHSA-g3hv-75wg-m249, a development-only resource-exhaustion advisory).
+- Release checks: of the 26 project audits that apply to StarSync, only the security and
+  secret-handling audits were run for this release. The other 24 were last run before 2.5.0, or
+  in one case never. Older review findings from the first 60 commits after 2.4.1 aren't all
+  traced to their follow-ups, and the project's priority history can't be compared with 2.4.1's
+  because it isn't kept in Git.
+
+## [2.5.1] - 2026-11-22
+
+### Security
+
+- A GitHub API failure is now reported as the operation, the HTTP status and, when the rate
+  limit is exhausted, its reset time, for example
+  `GitHub API request failed (HTTP 401) while reading the authenticated account.` Octokit's own
+  error text is no longer passed on, because a provider can echo the request's credentials in its
+  response body. Codeberg failures already worked this way.
+- Error and report sanitizing now redacts the values of secret fields in JSON, including JSON
+  nested inside a JSON string. A field counts when its decoded name ends in authorization, auth,
+  api key, access key, private key, secret, token, password, passwd, pwd or cookie, so
+  `"access_token"`, `"accessToken"`, `"Set-Cookie"` and a name written with `\u` escapes all match.
+  The redacted JSON stays valid, and other keys and values are left as they were. That holds too
+  when a plain-text Authorization header, Bearer value or `password=` pair sits inside a JSON
+  string.
+  Before, an opaque credential in a quoted Authorization field reached reports, progress and JSON
+  output unchanged.
+
+## [2.5.0] - 2026-11-22
+
+### Added
+
+- Shared StarSync project logo in the GitHub README, displayed as a contained square.
+- Separate `TARGET_PATH_GITHUB` and `TARGET_PATH_CODEBERG` archive defaults, selected by
+  `--host` on every archive command. Positional paths take priority; `TARGET_PATH` remains
+  a GitHub-only fallback. Default-path and explicit host/archive mismatches refuse before operating.
+  If `TARGET_PATH` points to a Codeberg archive, move that value to `TARGET_PATH_CODEBERG`
+  and select it with `--host codeberg.org`.
+- Codeberg archives alongside GitHub archives. `init --host codeberg.org` binds an archive
+  to one Codeberg account. Initialization, sync, rename and `verify --force` use
+  `CODEBERG_TOKEN` for Codeberg archives and keep identities scoped to that host.
+  Read-only verification, dates and unlock require no API token. Existing format-2 archives
+  keep their GitHub default without a migration, and an archive cannot mix hosts.
+  Other Forgejo hosts are not supported.
+- `bun run check:dead-code` checks project files and exports with Knip before the test suite.
+  Shared files retain their documented owner-specific exemptions.
+
+### Changed
+
+- Shared hooks and quality tooling are now delivered from tagged smokestack versions and
+  checked against `smokestack.lock`. Shared-file checks tolerate checkout line-ending
+  differences, report skipped repository roots, and verify that hook setup is an executable
+  command step rather than a comment or incidental mention.
+- The full quality gate runs through the smokestack runner, checks the delivered files first,
+  then runs every existing check and reports all failures before exiting. The fast gate keeps
+  its four static checks and stops at the first failure.
+- The README's quick start now creates an empty directory, supplies the host's API token and runs
+  `init` before the first `sync`; an existing format-2 archive runs `sync` alone.
+- Development tooling (none of it ships in the CLI or library bundles):
+    - Updated ESLint to 10.15.0 and Prettier to 3.10.1, and the development toolchain to the
+      approved November fleet targets (knip 6.45.1, typescript-eslint 8.72.2). ESLint, its
+      sorting and TypeScript plugins, Knip and the Bun type definitions follow the workspace
+      dependency targets. TypeScript remains pinned to 6.0.3.
+    - Took smokestack's shared files from v0.7.0 through v1.0.5: the history guard and
+      shared-core sync (v0.7.0), unused exports removed (v0.7.1), the leak guard's setup split
+      into its own script and its self-test isolated from global git configuration (v0.7.2,
+      v0.7.3), and unchanged files a group no longer delivers removed (v0.9.0).
+    - The v0.10.8 delivery: the leak guard scans added lines that look like diff headers, and a
+      key body after a line with no final newline. The v0.10.10 delivery: a delivery stays
+      pending until its target commits or restores it. The v0.10.11 delivery: an interrupted
+      gate on Linux or macOS also stops a step's detached grandchild processes. The v0.10.12
+      delivery: the hooks path is read and written per checkout under
+      `extensions.worktreeConfig`.
+    - The v1.0.4 delivery: shared groups reach a repository by its lock's own declaration, and
+      a step keyed on a script with a shebang is keyed on what that script imports. The v1.0.5
+      delivery: when a full-gate step runs a delivered command marked fast, a fast step must run
+      that same command (starsync's full gate runs neither marked command), and the delivered
+      lock writer's planning moved into its own file (lock-write.ts split into lock-plan.ts).
+
+### Fixed
+
+- Forced verification preserves checkouts with foreign or credential-bearing origins, duplicate
+  identities, or mismatched identity metadata instead of replacing them.
+- Rename resolution and forced recovery use the stored repository ID when available, so
+  repository renames and transfers can be resolved on the archive's host.
+- README rename-preview guidance now distinguishes preserved checkout content from transient
+  operation-lock writes; the lint reference includes unused-disable reporting.
+- Git hooks find Git's Bash by absolute path on Windows, avoiding the unrelated WSL launcher
+  when it appears first on `PATH`.
+- Knip discovers package-script entry points itself, so deleting a script can expose its
+  orphaned file. Formatting checks now cover `knip.json`, and its CLI discovery explanation
+  names the `start` and `sync` scripts that actually reach the source entry point.
+
+### Security
+
+- Updated the locked `brace-expansion` development dependency from 5.0.9 to 5.0.12,
+  fixing three denial-of-service advisories in the lint toolchain. Runtime dependencies
+  and the TypeScript 6.0.3 pin are unchanged.
+- Codeberg requests reject redirects, validate responses, and fail on repeated repository
+  identities during pagination. API tokens remain separate from Git authentication and
+  are never written to archive configuration or passed to clone and fetch commands.
+- Agent-issued pushes are blocked when they would delete a remote ref or rewrite its history.
+- Commit guards recover configured private-pattern locations from the Windows user setting,
+  refuse missing, unreadable or invalid configured patterns, and report matching files and
+  counts without printing the refused text. A tracked publication allowlist clears only
+  matching private-name patterns, never secret formats or home-directory paths.
+
 ## [2.4.1] - 2026-09-10
 
 ### Changed

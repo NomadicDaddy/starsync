@@ -5,7 +5,13 @@ import path from 'node:path';
 import type { Finding } from './reporting.ts';
 
 import { CURRENT_ARCHIVE_FORMAT, readArchiveConfig } from './archive-config.ts';
-import { buildGitEnvironment } from './git-exec.ts';
+import { buildGitEnvironment, GIT_COMMAND_GUARDS } from './git-exec.ts';
+import {
+	checkoutBoundaryProblem,
+	GIT_BOUNDARY_QUERY,
+	GIT_OUTSIDE_CHECKOUT,
+	gitPathsInside,
+} from './managed-checkout-inspection.ts';
 import { isOwnedCheckoutArtifactName } from './owned-checkout-artifacts.ts';
 import { createFinding } from './reporting.ts';
 import { sanitizeMessage } from './secret-safety.ts';
@@ -13,6 +19,14 @@ import { sanitizeMessage } from './secret-safety.ts';
 type ArchiveKind = 'current' | 'invalid' | 'uninitialized' | 'unsupported';
 
 export interface ArchiveEntry {
+	/** Why Git work in this entry could reach outside the archive; set entries are never acted on. */
+	boundaryError: null | string;
+	/**
+	 * Why Git couldn't say where this checkout's work tree and metadata are, as for a damaged
+	 * repository. No further Git runs in it: verification reports it as checkout-boundary-unverified,
+	 * which forced repair never replaces, so the folder and its local work stay for a person.
+	 */
+	boundaryUnverified: null | string;
 	gitError: null | string;
 	isGitCheckout: boolean;
 	name: string;
@@ -28,7 +42,7 @@ export interface ArchiveInspection {
 }
 
 const readGit = (checkoutPath: string, args: string[]): string =>
-	execFileSync('git', ['-c', 'core.askPass=', ...args], {
+	execFileSync('git', [...GIT_COMMAND_GUARDS, '-c', 'core.askPass=', ...args], {
 		cwd: checkoutPath,
 		encoding: 'utf-8',
 		env: buildGitEnvironment(process.env, { GIT_OPTIONAL_LOCKS: '0' }),
@@ -36,34 +50,66 @@ const readGit = (checkoutPath: string, args: string[]): string =>
 		windowsHide: true,
 	}).trim();
 
+type ArchiveEntryFields = Partial<
+	Pick<
+		ArchiveEntry,
+		'boundaryError' | 'boundaryUnverified' | 'gitError' | 'isGitCheckout' | 'origin'
+	>
+>;
+
+const archiveEntry = (
+	targetPath: string,
+	name: string,
+	fields: ArchiveEntryFields = {},
+): ArchiveEntry => ({
+	boundaryError: null,
+	boundaryUnverified: null,
+	gitError: null,
+	isGitCheckout: false,
+	origin: null,
+	...fields,
+	name,
+	path: path.join(targetPath, name),
+});
+
+// Git's own answer for where the checkout's work tree and metadata are, asked before any other Git
+// read, so a redirected checkout is never read and one Git can't open is read no further.
+const gitBoundaryFields = (entryPath: string): ArchiveEntryFields | null => {
+	let answer: string;
+	try {
+		answer = readGit(entryPath, GIT_BOUNDARY_QUERY);
+	} catch (err) {
+		const reason = sanitizeMessage(err instanceof Error ? err.message : String(err));
+		return { boundaryUnverified: reason, gitError: reason, isGitCheckout: true };
+	}
+	return gitPathsInside(answer, entryPath)
+		? null
+		: { boundaryError: GIT_OUTSIDE_CHECKOUT, isGitCheckout: true };
+};
+
 const readArchiveEntry = (targetPath: string, entry: fs.Dirent): ArchiveEntry => {
 	const entryPath = path.join(targetPath, entry.name);
-	const isGitCheckout = entry.isDirectory() && fs.existsSync(path.join(entryPath, '.git'));
-	if (!isGitCheckout) {
-		return {
-			gitError: null,
-			isGitCheckout: false,
-			name: entry.name,
-			origin: null,
-			path: entryPath,
-		};
+	const hasGitEntry = fs.existsSync(path.join(entryPath, '.git'));
+	const boundaryError =
+		entry.isDirectory() || entry.isSymbolicLink()
+			? checkoutBoundaryProblem(targetPath, entry.name)
+			: null;
+	if (boundaryError !== null) {
+		return archiveEntry(targetPath, entry.name, { boundaryError, isGitCheckout: hasGitEntry });
 	}
+	if (!entry.isDirectory() || !hasGitEntry) return archiveEntry(targetPath, entry.name);
+	const gitBoundary = gitBoundaryFields(entryPath);
+	if (gitBoundary !== null) return archiveEntry(targetPath, entry.name, gitBoundary);
 	try {
-		return {
-			gitError: null,
+		return archiveEntry(targetPath, entry.name, {
 			isGitCheckout: true,
-			name: entry.name,
 			origin: readGit(entryPath, ['config', '--get', 'remote.origin.url']),
-			path: entryPath,
-		};
+		});
 	} catch (err) {
-		return {
+		return archiveEntry(targetPath, entry.name, {
 			gitError: sanitizeMessage(err instanceof Error ? err.message : String(err)),
 			isGitCheckout: true,
-			name: entry.name,
-			origin: null,
-			path: entryPath,
-		};
+		});
 	}
 };
 

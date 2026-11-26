@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+# Self-test for leak-guard.sh.
+#
+# All leaky fixtures are assembled at RUNTIME by concatenation so this file
+# never contains a string the guard would flag. Runs against a scratch git
+# repo under a temp dir; the real user-level pattern file is never read
+# (LEAK_GUARD_PATTERNS is always set explicitly).
+#
+# smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+# smokestack; every repository that takes it holds a byte-identical copy.
+#
+# Lines below disable SC2154 for each variable this file reads from check-leak-guard-setup.sh
+# (synthetic, guard, self_dir, failures, aws_key, pem_header, b64_run, win_path), at the first line
+# that reads it, which is where ShellCheck reports it. That file is sourced with SC1091 off, so a consumer that lints
+# each file alone would otherwise fail on all four. The disables are kept to those lines, not the
+# whole file, so ShellCheck still reports any other unassigned name, a misspelling included.
+set -euo pipefail
+
+# Everything before case 1 is in check-leak-guard-setup.sh beside this file, sourced first so that
+# git's local environment is cleared before any git call: the hook-environment test runs that file
+# alone (test/leak-guard-self-test-hook-env.test.ts). Nothing above this line may call git.
+# shellcheck source-path=SCRIPTDIR source=check-leak-guard-setup.sh disable=SC1091
+. "$(cd "$(dirname "$0")" && pwd)/check-leak-guard-setup.sh"
+
+# Cases 11 to 21 (check-leak-guard-cases.sh) and 22 to 41 (check-leak-guard-binary-cases.sh, binary
+# files) run as two lanes beside cases 1 to 10, each in its own scratch folder and repositories
+# (lane_begin), so the self-test takes about as long as its slowest lane rather than all three in
+# turn. A lane's output is held in $lanes and printed after case 10, in case order, and its failure
+# count is added to this one; a lane that wrote no count or exited non-zero is a failure too.
+lanes="$(mktemp -d)"
+cases_lane() {
+	lane_out="$lanes/cases" && lane_begin
+	# shellcheck source-path=SCRIPTDIR source=check-leak-guard-cases.sh disable=SC1091,SC2154
+	. "$self_dir/check-leak-guard-cases.sh"
+	# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
+	echo "$failures" >"$lane_out.failures"
+}
+binary_lane() {
+	lane_out="$lanes/binary" && lane_begin
+	# shellcheck source-path=SCRIPTDIR source=check-leak-guard-binary-cases.sh disable=SC1091
+	. "$self_dir/check-leak-guard-binary-cases.sh"
+	echo "$failures" >"$lane_out.failures"
+}
+# Under set -m each lane starts as its own process group, which an early stop signals whole (the
+# setup's EXIT trap). Bash turns job control off inside the lane, so what it runs stays in its group.
+# Job control also stops bash giving a background job /dev/null as its stdin, so the lanes are given
+# it here: a case that read stdin would otherwise block on a gate's pipe for ever (Morticia, 0fa5a3b).
+set -m
+cases_lane </dev/null >"$lanes/cases.out" 2>"$lanes/cases.err" &
+lane_pids="$!"
+binary_lane </dev/null >"$lanes/binary.out" 2>"$lanes/binary.err" &
+lane_pids="$lane_pids $!"
+set +m
+
+# 1. Clean content passes.
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
+[ "$(run_guard "$synthetic" 'plain harmless content')" = 0 ] || fail 'clean content was blocked'
+
+# 2. Generic secret shape: runtime-built AWS access key id is blocked.
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
+[ "$(run_guard "$synthetic" "key=$aws_key")" = 1 ] || fail 'synthetic AWS key was not blocked'
+
+# 3. A PEM header carrying no key material is NOT blocked. Config validators compare an incoming
+# key against this constant and documentation shows the shape a key takes, so the header alone
+# says "a key goes here". Blocking it blocks the template that ships those files: a scaffolded
+# project stages every one of them as an addition and could not make its first commit.
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
+[ "$(run_guard "$synthetic" "expectedHeader: '$pem_header',")" = 0 ] || fail 'bare PEM header was blocked'
+
+# 3b. The same header with a pasted key body on the next line IS blocked. This is the shape the
+# rule exists for, and cases 3/3d are only safe because this one holds.
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
+[ "$(run_guard "$synthetic" "$(printf '%s\n%s' "$pem_header" "$b64_run")")" = 1 ] || fail 'pasted PEM key body was not blocked'
+
+# 3c. Key material after the header on the same line IS blocked: a one-line JSON or .env value
+# carries the whole key without ever starting a second line.
+[ "$(run_guard "$synthetic" "\"tlsKey\": \"${pem_header}\\n${b64_run}\"")" = 1 ] || fail 'one-line PEM key was not blocked'
+
+# 3d. A documentation placeholder standing in for the body is NOT blocked.
+[ "$(run_guard "$synthetic" "\"tlsKey\": \"${pem_header}\\n...\"")" = 0 ] || fail 'PEM placeholder in docs was blocked'
+
+# 4. Home-directory path (runtime-built backslashes) is blocked.
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
+[ "$(run_guard "$synthetic" "path=$win_path")" = 1 ] || fail 'home-directory path was not blocked'
+
+# 5. A private literal from the pattern file is warned on at its line, not refused (tier 2 warns).
+passed_warning "$(run_guard "$synthetic" 'mentions zzz-synthetic-app somewhere')" staged.txt:1 || fail 'local pattern was not warned on'
+
+# 6. Lowercase route-style path is NOT blocked (path tier is case-sensitive).
+[ "$(run_guard "$synthetic" 'GET /users/42/profile')" = 0 ] || fail 'route-style /users/ path was wrongly blocked'
+
+# 7. Comment lines in the pattern file are inert: stage the comment's own
+# text - it only gets blocked if the # line were treated as a pattern.
+[ "$(run_guard "$synthetic" '# synthetic private patterns for the self-test')" = 0 ] || fail 'pattern-file comment line leaked into matching'
+
+# 8. Missing pattern file: tier 2 cannot run, so even clean content is refused, and says why.
+[ "$(run_guard "$tmp/does-not-exist" 'plain harmless content')" = 1 ] || fail 'missing pattern file let a commit through'
+grep -q 'no local pattern file' "$tmp/stderr" || fail 'missing pattern file did not say why it refused'
+
+# 8b. Committing without tier 2 is allowed only when the user asks for it, and it still says so.
+code=0
+printf '%s\n' 'plain harmless content' >"$guard_repo/staged.txt"
+git -C "$guard_repo" add staged.txt
+# shellcheck disable=SC2154 # set by check-leak-guard-setup.sh
+(cd "$guard_repo" && LEAK_GUARD_PATTERNS="$tmp/does-not-exist" LEAK_GUARD_ALLOW_NO_PRIVATE=1 bash "$guard") 2>"$tmp/stderr" || code=$?
+[ "$code" = 0 ] || fail 'LEAK_GUARD_ALLOW_NO_PRIVATE=1 did not let a clean commit through'
+grep -q 'generic checks only' "$tmp/stderr" || fail 'override did not warn that tier 2 was off'
+
+# 8c-8d. With LEAK_GUARD_PATTERNS unset, the Windows user-level value is used, so a session launched
+# from a parent that predates the variable still runs tier 2. reg.exe is replaced by an exported
+# function answering in reg's own output format; functions win over PATH, so this also runs where
+# no reg.exe exists.
+run_guard_registry() {
+	printf '%s\n' "$2" >"$guard_repo/staged.txt"
+	git -C "$guard_repo" add staged.txt
+	printf '\r\nHKEY_CURRENT_USER\\Environment\r\n    LEAK_GUARD_PATTERNS    REG_SZ    %s\r\n\r\n' "$1" >"$tmp/reg-answer"
+	local code=0
+	(
+		# shellcheck disable=SC2317 # exported with export -f; the guard calls it in a child bash
+		reg.exe() { cat "$tmp/reg-answer"; }
+		export -f reg.exe
+		export tmp
+		cd "$guard_repo" && env -u LEAK_GUARD_PATTERNS bash "$guard"
+	) 2>"$tmp/stderr" || code=$?
+	echo "$code"
+}
+passed_warning "$(run_guard_registry "$synthetic" 'mentions zzz-synthetic-app somewhere')" staged.txt:1 || fail 'registry-resolved pattern file was not used'
+[ "$(run_guard_registry "$synthetic" 'plain harmless content')" = 0 ] || fail 'registry-resolved pattern file blocked clean content'
+printf '%s\n' '\bzzz-other-app\b' >"$tmp/patterns-other"
+code=0
+printf '%s\n' 'mentions zzz-synthetic-app somewhere' >"$guard_repo/staged.txt"
+git -C "$guard_repo" add staged.txt
+printf '\r\nHKEY_CURRENT_USER\\Environment\r\n    LEAK_GUARD_PATTERNS    REG_SZ    %s\r\n\r\n' "$synthetic" >"$tmp/reg-answer"
+(
+	# shellcheck disable=SC2317 # exported with export -f; the guard calls it in a child bash
+	reg.exe() { cat "$tmp/reg-answer"; }
+	export -f reg.exe
+	export tmp
+	cd "$guard_repo" && LEAK_GUARD_PATTERNS="$tmp/patterns-other" bash "$guard"
+) 2>"$tmp/stderr" || code=$?
+[ "$code" = 0 ] || fail 'the Windows value overrode an explicit LEAK_GUARD_PATTERNS'
+
+# 8f. Nothing configured anywhere (no variable, no Windows value, no seeded default), which is a
+# freshly scaffolded project on a machine that never set tier 2 up: warn and run tier 1, as before.
+# Refusing here would block every scaffolded project's first commit.
+mkdir -p "$tmp/empty-home"
+code=0
+printf '%s\n' 'plain harmless content' >"$guard_repo/staged.txt"
+git -C "$guard_repo" add staged.txt
+(
+	# shellcheck disable=SC2317 # exported with export -f; the guard calls it in a child bash
+	reg.exe() { return 1; }
+	export -f reg.exe
+	cd "$guard_repo" && env -u LEAK_GUARD_PATTERNS HOME="$tmp/empty-home" bash "$guard"
+) 2>"$tmp/stderr" || code=$?
+[ "$code" = 0 ] || fail 'an unconfigured machine refused a clean commit'
+grep -q 'generic checks only' "$tmp/stderr" || fail 'an unconfigured machine did not warn that tier 2 was off'
+
+# 8e. An unreadable pattern file is refused like a missing one. Skipped where chmod cannot revoke
+# read (NTFS under Git Bash, or root), because a run that cannot make the file unreadable proves
+# nothing about the branch.
+cp "$synthetic" "$tmp/patterns-locked"
+chmod 000 "$tmp/patterns-locked"
+if [ -r "$tmp/patterns-locked" ]; then
+	echo 'check-leak-guard: case 8e skipped, chmod cannot revoke read here' >&2
+else
+	[ "$(run_guard "$tmp/patterns-locked" 'plain harmless content')" = 1 ] || fail 'unreadable pattern file let a commit through'
+fi
+chmod 600 "$tmp/patterns-locked"
+
+# 9. A repository may write its own name. The pattern file is per-machine and names every private
+# sibling, so in the repo that IS zzz-synthetic-app the pattern for it must be dropped - otherwise
+# the guard blocks ordinary prose and the only workable answer is not installing it at all.
+guard_repo="$tmp/zzz-synthetic-app"
+passed_quietly "$(run_guard "$synthetic" 'mentions zzz-synthetic-app somewhere')" || fail 'repo was warned on by a pattern matching its own name'
+
+# 10. Dropping the self-pattern must not disarm the rest: a sibling's name is still warned on in the
+# same repo, which is the whole reason tier 2 exists.
+passed_warning "$(run_guard "$tmp/patterns-pair" 'mentions zzz-sibling-app somewhere')" staged.txt:1 || fail 'sibling pattern was dropped along with the self pattern'
+passed_quietly "$(run_guard "$tmp/patterns-pair" 'mentions zzz-synthetic-app somewhere')" || fail 'self pattern survived alongside a sibling pattern'
+guard_repo="$tmp/repo"
+
+# The lanes started above, in case order: their output, then their failures and exit status
+# (lane_collect). shellcheck -x follows the case files from any directory through SCRIPTDIR, and a
+# plain run, which follows no sourced file, skips them (SC1091).
+lane_collect cases
+lane_collect binary
+
+if [ "$failures" -gt 0 ]; then
+	# Both streams: a gate harness that captures only one of them still sees the failure. The
+	# per-case FAIL lines stay on stderr; this summary is the one line a log must not lose
+	# (Morticia I-4: full gates exited 1 with no failure line in their captured output).
+	echo "check-leak-guard: $failures failure(s)"
+	echo "check-leak-guard: $failures failure(s)" >&2
+	# The setup's EXIT trap names an early stop; this run has said why it failed.
+	# shellcheck disable=SC2034 # read by the EXIT trap in check-leak-guard-setup.sh
+	self_test_reported=1
+	exit 1
+fi
+echo 'check-leak-guard: all checks passed'

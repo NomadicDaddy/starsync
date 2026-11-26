@@ -1,7 +1,7 @@
-import { Octokit } from '@octokit/rest';
+import type { ArchiveHost } from './archive-host.ts';
 
-import { withApiRetry } from './api-retry.ts';
-import { hasEmbeddedCredentials, isGitHubDotComUrl, sanitizeUrl } from './secret-safety.ts';
+import { createRepositoryHost } from './repository-host.ts';
+import { hasEmbeddedCredentials, isArchiveHostUrl, sanitizeUrl } from './secret-safety.ts';
 
 export interface ResolvedRepository {
 	id: number;
@@ -10,14 +10,19 @@ export interface ResolvedRepository {
 	slug: string;
 }
 
-export type RepositoryResolver = (owner: string, repository: string) => Promise<ResolvedRepository>;
+export type RepositoryResolver = (
+	owner: string,
+	repository: string,
+	id?: number,
+) => Promise<ResolvedRepository>;
 
 export const parseGitHubRepositorySlug = (
 	origin: string,
+	host: ArchiveHost = 'github.com',
 ): { owner: string; repository: string } | null => {
 	if (hasEmbeddedCredentials(origin)) return null;
 	const sanitized = sanitizeUrl(origin);
-	if (!isGitHubDotComUrl(sanitized)) return null;
+	if (!isArchiveHostUrl(sanitized, host)) return null;
 	let pathname: string;
 	if (/^https?:\/\//i.test(sanitized) || /^ssh:\/\//i.test(sanitized)) {
 		try {
@@ -42,18 +47,7 @@ export const parseGitHubRepositorySlug = (
 		: null;
 };
 
-export const createGitHubRepositoryResolver = (token: string): RepositoryResolver => {
-	const octokit = new Octokit({ auth: token });
-	return async (owner, repository) => {
-		const response = await withApiRetry(
-			() => octokit.rest.repos.get({ owner, repo: repository }),
-			{ maxRetries: 2 },
-		);
-		return {
-			id: response.data.id,
-			name: response.data.name,
-			owner: response.data.owner.login,
-			slug: response.data.full_name,
-		};
-	};
-};
+export const createGitHubRepositoryResolver = (
+	token: string,
+	host: ArchiveHost = 'github.com',
+): RepositoryResolver => createRepositoryHost(host, token).resolve;

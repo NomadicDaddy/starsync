@@ -10,6 +10,10 @@
 
 // ── Embedded credential detection ──────────────────────────────────────────
 
+import type { ArchiveHost } from './archive-host.ts';
+
+import { quotedValueEnd, redactQuotedSecretFields } from './json-secret-fields.ts';
+
 /** Matches user:password@ in an HTTPS URL. */
 const EMBEDDED_USERPASS_RE = /(https?:\/\/)[^/@:]+:[^/@]+@/g;
 /** Matches bare token@ in an HTTPS URL (no colon, just credentials before @). */
@@ -47,20 +51,81 @@ const SECRET_PATTERNS = [
 	/\bAIza[A-Za-z0-9_-]{35}\b/g,
 ];
 
-const AUTHORIZATION_HEADER_RE = /(\bauthorization\s*:\s*)[^\r\n]+/gi;
-const AUTHORIZATION_VALUE_RE = /(\bauthorization\s*=\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&#,;]+)/gi;
-const BEARER_TOKEN_RE = /(\bbearer\s+)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi;
-const GENERIC_SECRET_VALUE_RE =
-	/((?:["']?)(?:(?:[A-Za-z0-9]+[-_])*(?:api[-_]?key|secret|token|password|passwd|pwd))["']?\s*(?:=|:)\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&#,;]+)/gi;
+// A quoted value, including one whose quotes are escaped because the text sits inside a JSON
+// string. The bare forms below stop at a quote or backslash: credential values never contain
+// either, and stopping there keeps a match from running past the end of the JSON string it sits
+// in, which would swallow its closing quote and the fields after it.
+const QUOTED_TEXT_VALUE = String.raw`"[^"\r\n]*"|'[^'\r\n]*'|\\+"[^"\\\r\n]*\\+"`;
+
+const AUTHORIZATION_HEADER_RE = new RegExp(
+	String.raw`(\bauthorization\s*:\s*)(?:${QUOTED_TEXT_VALUE}|[^\r\n"\\]+)`,
+	'gi',
+);
+const AUTHORIZATION_VALUE_RE = new RegExp(
+	String.raw`(\bauthorization\s*=\s*)(?:${QUOTED_TEXT_VALUE}|[^\s&#,;"\\]+)`,
+	'gi',
+);
+const BEARER_TOKEN_RE = new RegExp(
+	String.raw`(\bbearer\s+)(?:${QUOTED_TEXT_VALUE}|[^\s,;"\\]+)`,
+	'gi',
+);
+// The lookaheads leave a JSON value the quoted-field pass already redacted, and a complete JSON
+// true, false or null (one a delimiter or the end follows), as they are, so the JSON stays valid
+// instead of losing a value's quotes or gaining an unquoted word. A credential that merely begins
+// with one of those words is still redacted.
+const GENERIC_SECRET_VALUE_RE = new RegExp(
+	String.raw`((?:["']?)(?:(?:[A-Za-z0-9]+[-_])*(?:api[-_]?key|secret|token|password|passwd|pwd))["']?\s*(?:=|:)\s*)(?!"\[REDACTED\]")(?!(?:true|false|null)\s*(?:[,}\]]|$))(?:${QUOTED_TEXT_VALUE}|[^\s&#,;"\\]+)`,
+	'gi',
+);
+
+/**
+ * Sanitizes one JSON string literal by its decoded text, so escapes such as a tab or a newline
+ * read as the characters they stand for and every rule sees the text a reader would. The literal
+ * is re-encoded only when something was redacted; otherwise its original spelling is kept.
+ */
+const sanitizeStringLiteral = (raw: string): string => {
+	let decoded: unknown;
+	try {
+		decoded = JSON.parse(raw);
+	} catch {
+		return raw;
+	}
+	if (typeof decoded !== 'string') return raw;
+	const cleaned = sanitizeMessage(decoded);
+	return cleaned === decoded ? raw : JSON.stringify(cleaned);
+};
+
+/**
+ * Applies the whole sanitizer inside each top-level JSON string literal, which reaches JSON
+ * nested inside a string level by level. The quote pattern is local because this recurses.
+ */
+const sanitizeStringLiterals = (message: string): string => {
+	const quotes = /(?<!\\)"/g;
+	let result = '';
+	let copied = 0;
+	for (let quote = quotes.exec(message); quote; quote = quotes.exec(message)) {
+		const end = quotedValueEnd(message, quote.index + 1, 0);
+		if (end >= message.length) break;
+		const raw = message.slice(quote.index, end + 1);
+		const cleaned = sanitizeStringLiteral(raw);
+		if (cleaned !== raw) {
+			result += message.slice(copied, quote.index) + cleaned;
+			copied = end + 1;
+		}
+		quotes.lastIndex = end + 1;
+	}
+	return result + message.slice(copied);
+};
 
 /**
  * Sanitizes an error or log message by stripping credentials from URLs and
- * redacting authorization headers, bearer tokens, secret key-value pairs,
- * and recognizable provider credentials.
+ * redacting quoted JSON secret fields, authorization headers, bearer tokens,
+ * secret key-value pairs, and recognizable provider credentials, both in the
+ * text as written and inside each JSON string literal by its decoded text.
  */
 export const sanitizeMessage = (message: string): string => {
 	let result = message.replace(EMBEDDED_USERPASS_RE, '$1').replace(EMBEDDED_TOKEN_RE, '$1');
-	result = result
+	result = sanitizeStringLiterals(redactQuotedSecretFields(result))
 		.replace(AUTHORIZATION_HEADER_RE, '$1[REDACTED]')
 		.replace(AUTHORIZATION_VALUE_RE, '$1[REDACTED]')
 		.replace(BEARER_TOKEN_RE, '$1[REDACTED]')
@@ -100,6 +165,9 @@ export const isGitHubDotComUrl = (url: string): boolean => {
 	const host = extractHost(url);
 	return host !== null && GITHUB_COM_HOSTS.has(host);
 };
+
+export const isArchiveHostUrl = (url: string, host: ArchiveHost): boolean =>
+	host === 'github.com' ? isGitHubDotComUrl(url) : extractHost(url) === host;
 
 // ── Git auth error detection ────────────────────────────────────────────────
 

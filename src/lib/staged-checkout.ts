@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { ReplacedCheckout } from './checkout-replacement.ts';
+
 import { readArchiveConfig } from './archive-config.ts';
 import { cloneManagedCheckout } from './checkout-clone.ts';
 import {
@@ -9,6 +11,8 @@ import {
 	readCheckoutIdentity,
 	writeCheckoutIdentity,
 } from './checkout-identity.ts';
+import { publishReplacement } from './checkout-replacement.ts';
+import { sameFilesystemEntry } from './filesystem-identity.ts';
 import { isTransientGitError, runGit } from './git-exec.ts';
 import {
 	DAMAGED_CHECKOUT_PREFIX,
@@ -16,8 +20,9 @@ import {
 	STAGED_CHECKOUT_PREFIX,
 } from './owned-checkout-artifacts.ts';
 import {
+	extractHost,
 	hasEmbeddedCredentials,
-	isGitHubDotComUrl,
+	isArchiveHostUrl,
 	sanitizeMessage,
 	sanitizeUrl,
 } from './secret-safety.ts';
@@ -34,9 +39,7 @@ export interface StagedCheckoutOptions {
 	archiveOwnerId: number;
 }
 
-export interface ReplacedCheckout {
-	cleanupWarning: null | string;
-}
+export type { ReplacedCheckout } from './checkout-replacement.ts';
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => {
@@ -65,7 +68,10 @@ const repositorySlugFromCloneUrl = (url: string): null | string => {
 	}
 };
 
-const assertRepositoryRequest = (repository: StagedCheckoutRepository): void => {
+const assertRepositoryRequest = (
+	repository: StagedCheckoutRepository,
+	targetBase: string,
+): void => {
 	if (
 		!Number.isSafeInteger(repository.repositoryId) ||
 		repository.repositoryId <= 0 ||
@@ -74,14 +80,15 @@ const assertRepositoryRequest = (repository: StagedCheckoutRepository): void => 
 			repository.repositorySlug.toLowerCase()
 	) {
 		throw new Error(
-			'New managed checkout requires a positive Repository Identity, matching GitHub.com origin, and its canonical repository--owner folder.',
+			'New managed checkout requires a positive Repository Identity, matching host origin, and its canonical repository--owner folder.',
 		);
 	}
-	if (hasEmbeddedCredentials(repository.cloneUrl) || !isGitHubDotComUrl(repository.cloneUrl)) {
+	if (
+		hasEmbeddedCredentials(repository.cloneUrl) ||
+		!isArchiveHostUrl(repository.cloneUrl, readArchiveConfig(targetBase).host ?? 'github.com')
+	) {
 		throw new Error(
-			`Repository origin is not a credential-free GitHub.com URL: ${sanitizeUrl(
-				repository.cloneUrl,
-			)}`,
+			`Repository origin does not match archive host: ${sanitizeUrl(repository.cloneUrl)}`,
 		);
 	}
 };
@@ -101,14 +108,6 @@ const assertDestinationAvailable = (destinationPath: string, folderName: string)
 	}
 };
 
-const pathsReferToSameEntry = (leftPath: string, rightPath: string): boolean => {
-	if (!fs.existsSync(leftPath) || !fs.existsSync(rightPath)) return false;
-	const left = fs.realpathSync.native(leftPath);
-	const right = fs.realpathSync.native(rightPath);
-	return process.platform === 'win32'
-		? left.toLowerCase() === right.toLowerCase()
-		: left === right;
-};
 const assertReplacementSource = (sourcePath: string, sourceFolderName: string): void => {
 	if (
 		!sourceFolderName ||
@@ -123,7 +122,9 @@ const assertReplacementDestinationAvailable = (
 	destinationPath: string,
 	folderName: string,
 ): void => {
-	if (fs.existsSync(destinationPath) && !pathsReferToSameEntry(sourcePath, destinationPath)) {
+	// A case-only rename on a case-insensitive directory finds its own source at the destination;
+	// a distinct directory there, even one differing only in case, is a different checkout.
+	if (fs.existsSync(destinationPath) && !sameFilesystemEntry(sourcePath, destinationPath)) {
 		throw new Error(`Canonical checkout folder ${folderName} is already occupied.`);
 	}
 };
@@ -156,22 +157,18 @@ const validateStagedCheckout = async (
 	if (!fs.existsSync(path.join(stagingPath, '.git'))) {
 		throw new Error('Clone completed without creating a usable Git checkout.');
 	}
-
 	const origin = await runGit(['config', '--local', '--get', 'remote.origin.url'], {
 		cwd: stagingPath,
 	});
 	if (
 		hasEmbeddedCredentials(origin) ||
-		!isGitHubDotComUrl(origin) ||
+		extractHost(origin) !== extractHost(repository.cloneUrl) ||
 		normalizeRepositoryUrl(origin) !== normalizeRepositoryUrl(repository.cloneUrl)
 	) {
 		throw new Error(
-			`Staged checkout origin does not match the expected credential-free GitHub.com repository: ${sanitizeUrl(
-				origin,
-			)}`,
+			`Staged checkout origin does not match the requested repository: ${sanitizeUrl(origin)}`,
 		);
 	}
-
 	await runGit(['fsck', '--full'], { cwd: stagingPath });
 	const status = await runGit(['status', '--porcelain'], { cwd: stagingPath });
 	if (status) throw new Error('Staged checkout contains local changes after cloning.');
@@ -227,7 +224,7 @@ export const createStagedCheckout = async (
 	targetBase: string,
 	options: StagedCheckoutOptions,
 ): Promise<void> => {
-	assertRepositoryRequest(repository);
+	assertRepositoryRequest(repository, targetBase);
 	const destinationPath = path.join(targetBase, repository.folderName);
 	assertArchiveOwner(targetBase, options.archiveOwnerId);
 	assertDestinationAvailable(destinationPath, repository.folderName);
@@ -235,6 +232,7 @@ export const createStagedCheckout = async (
 	try {
 		assertArchiveOwner(targetBase, options.archiveOwnerId);
 		assertDestinationAvailable(destinationPath, repository.folderName);
+		assertRepositoryRequest(repository, targetBase);
 		fs.renameSync(stagingPath, destinationPath);
 	} catch (err) {
 		const cleanupError = tryRemoveOwnedStagingDirectory(targetBase, stagingPath);
@@ -255,7 +253,7 @@ export const replaceAnomalousCheckout = async (
 	targetBase: string,
 	options: StagedCheckoutOptions,
 ): Promise<ReplacedCheckout> => {
-	assertRepositoryRequest(repository);
+	assertRepositoryRequest(repository, targetBase);
 	const sourcePath = path.join(targetBase, repository.sourceFolderName);
 	const destinationPath = path.join(targetBase, repository.folderName);
 	assertReplacementSource(sourcePath, repository.sourceFolderName);
@@ -266,33 +264,22 @@ export const replaceAnomalousCheckout = async (
 		assertArchiveOwner(targetBase, options.archiveOwnerId);
 		assertReplacementSource(sourcePath, repository.sourceFolderName);
 		assertReplacementDestinationAvailable(sourcePath, destinationPath, repository.folderName);
-		fs.renameSync(sourcePath, backupPath);
-		try {
-			assertDestinationAvailable(destinationPath, repository.folderName);
-			fs.renameSync(stagingPath, destinationPath);
-		} catch (err) {
-			fs.renameSync(backupPath, sourcePath);
-			throw err;
-		}
+		assertRepositoryRequest(repository, targetBase);
+		return publishReplacement({
+			assertDestinationAvailable: () =>
+				assertDestinationAvailable(destinationPath, repository.folderName),
+			backupPath,
+			destinationPath,
+			sourcePath,
+			stagingPath,
+			targetBase,
+		});
 	} catch (err) {
 		const cleanupError = tryRemoveOwnedStagingDirectory(targetBase, stagingPath);
 		const cleanupMessage =
 			cleanupError === null
 				? ''
-				: ` StarSync could not remove its staging directory: ${sanitizeMessage(
-						errorMessage(cleanupError),
-					)}`;
+				: ` Staging cleanup failed: ${sanitizeMessage(errorMessage(cleanupError))}`;
 		throw new Error(`${sanitizeMessage(errorMessage(err))}${cleanupMessage}`, { cause: err });
-	}
-
-	try {
-		fs.rmSync(backupPath, { force: true, recursive: true });
-		return { cleanupWarning: null };
-	} catch (err) {
-		return {
-			cleanupWarning: `Fresh checkout was published, but the replaced directory remains at ${path.basename(
-				backupPath,
-			)}: ${sanitizeMessage(errorMessage(err))}`,
-		};
 	}
 };

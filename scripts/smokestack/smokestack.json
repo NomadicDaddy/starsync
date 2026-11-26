@@ -1,0 +1,58 @@
+{
+	"fast": {
+		"replace": {
+			"lint": { "name": "lint:fast", "run": ["bun", "run", "lint:fast"] }
+		},
+		"steps": ["check:max-lines", "typecheck", "lint", "format:check"]
+	},
+	"qc": {
+		"steps": [
+			{
+				"description": "No source file is longer than 300 lines.",
+				"name": "check:max-lines",
+				"run": ["bun", "run", "check:max-lines"]
+			},
+			{
+				"description": "The TypeScript compiler accepts the sources, scripts and tests.",
+				"name": "typecheck",
+				"run": ["bun", "run", "typecheck"]
+			},
+			{
+				"description": "ESLint reports no error and no warning.",
+				"name": "lint",
+				"run": ["bun", "run", "lint"]
+			},
+			{
+				"description": "The sources, scripts and tests are in Prettier's format.",
+				"name": "format:check",
+				"run": ["bun", "run", "format:check"]
+			},
+			{
+				"description": "No file or dependency is unused.",
+				"name": "check:dead-code",
+				"run": ["bun", "run", "check:dead-code"]
+			},
+			{
+				"description": "The leak guard's own self-test passes.",
+				"name": "check:leak-guard",
+				"run": ["bun", "run", "check:leak-guard"]
+			},
+			{
+				"description": "Every dependency has a recognized licence and the generated notices are current.",
+				"name": "check:licenses",
+				"run": ["bun", "run", "check:licenses"]
+			},
+			{
+				"description": "This repository holds what its smokestack.lock records.",
+				"name": "check:shared-core",
+				"run": ["bun", "run", "check:shared-core"]
+			},
+			{
+				"description": "The unit tests pass.",
+				"name": "test",
+				"run": ["bun", "run", "test"]
+			}
+		]
+	},
+	"version": 1
+}

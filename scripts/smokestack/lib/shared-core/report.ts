@@ -1,0 +1,292 @@
+/**
+ * The reporting half of the shared-core sync — how a run of `--check` or `--write` reads.
+ *
+ * Split out of sync-shared-core.ts at the 300-line cap. `reportCheck` and `reportWrite` consume the
+ * findings check.ts already classified and the outcomes write.ts already produced, and their only
+ * contribution beyond printing is the exit code the shape of those findings implies.
+ *
+ * Both modes stay together rather than splitting one file per mode, because they render the same
+ * `Finding` list in the same severity order and a second copy of that ordering is the drift this
+ * subsystem exists to catch.
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
+ */
+import { join } from 'node:path';
+
+import type { SharedCoreGroup } from './manifest.ts';
+
+import { type Finding, type GroupReport, isFatal } from './check.ts';
+import { type Deliveries, DELIVERIES_FILE, noRecord } from './deliveries.ts';
+import { hooksPath } from './dispatch.ts';
+import { planLocks } from './lock-plan.ts';
+import { writeLocks } from './lock-write.ts';
+import { LOCK_FILE } from './lock.ts';
+import { applyMoves, holdBack, planMoves } from './move.ts';
+import { untrackedSourcesRefusal } from './owner.ts';
+import { applyRetirements } from './retire.ts';
+import { type Delivery, tagStanding } from './tag.ts';
+import { reportClean } from './vacuity.ts';
+import { type RunRecord, settleRun } from './worktree-record.ts';
+import { applyFindings, ownershipRefusal, type WriteOutcome } from './write.ts';
+
+function order(findings: Finding[]): Finding[] {
+	// Keys are alphabetical to satisfy the sort rule; the VALUES carry the reporting order, which is
+	// severity: what fails the gate, then what needs a decision, then what the write path will fix.
+	const rank: Record<Finding['kind'], number> = {
+		behind: 5,
+		'diverged-hook': 1,
+		drift: 0,
+		'foreign-hook': 2,
+		'known-drift': 4,
+		'local-chain': 6,
+		'lost-delivery': 1,
+		'not-applicable': 8,
+		'not-run': 2,
+		'old-path': 1,
+		'own-gate': 4,
+		'stale-layout': 5,
+		'stale-lock': 2,
+		uncovered: 5,
+		'undeclared-carrier': 2,
+		unguarded: 3,
+		'unmanaged-dispatch': 7,
+		'unreadable-membership': 2,
+		unwired: 4,
+	};
+	return [...findings].sort((a, b) => rank[a.kind] - rank[b.kind]);
+}
+
+export function printReport(report: GroupReport): void {
+	const findings = order(report.findings);
+	const drift = findings.filter(isFatal).length;
+	console.info(
+		`\n${report.group} (owner: ${report.owner}) — ${report.targets} target(s), ` +
+			`${report.matched} file(s) current, ${drift} drifted.`,
+	);
+	for (const finding of findings) {
+		const label = finding.kind === 'drift' ? 'DRIFT' : finding.kind.toUpperCase();
+		console.info(`  ${label.padEnd(19)} ${finding.target}: ${finding.detail}`);
+	}
+	for (const skip of report.skipped) console.info(`  ${'SKIPPED'.padEnd(19)} ${skip}`);
+}
+
+export function reportCheck(
+	reports: GroupReport[],
+	only: Set<string> | undefined,
+	recordMissing: boolean,
+	fleetRoot: string,
+	scope: Finding[],
+): number {
+	for (const report of reports) printReport(report);
+	// What belongs to no group's comparison (lock-scope.ts), in a section of its own: a finding
+	// about a group that does not exist has no group report to sit under.
+	if (scope.length > 0) {
+		console.info(`\n${LOCK_FILE}, by repository — ${scope.length} finding(s) no group covers.`);
+		for (const finding of order(scope)) {
+			const label = finding.kind.toUpperCase().padEnd(19);
+			console.info(`  ${label} ${finding.target}: ${finding.detail}`);
+		}
+	}
+
+	const findings = [...reports.flatMap((r) => r.findings), ...scope];
+	const fatal = findings.filter(isFatal);
+	const uncovered = findings.filter((f) => f.kind === 'uncovered');
+
+	console.info('');
+	if (uncovered.length > 0) {
+		console.info(
+			`${uncovered.length} file(s) absent. Where the write path has not reached a target yet ` +
+				'that is a rollout gap, not drift, and does not fail this check. An absent file ' +
+				"that a target's lock records as delivered is listed as LOST-DELIVERY, and does.",
+		);
+	}
+	if (fatal.length > 0) {
+		const diverged = fatal.filter((f) => f.kind === 'diverged-hook').length;
+		console.error(
+			`\n[FAIL] Shared core has drifted: ${fatal.length} file(s) differ from their owner.\n` +
+				'These repositories carry a stale copy while reporting as covered, which is the ' +
+				'failure this gate exists to catch. Resync them from the owning repository.',
+		);
+		// Named separately because `--write` will not clear these and saying "resync" alone would
+		// send someone to a command that reports them as not writable and leaves the gate red.
+		if (diverged > 0) {
+			console.error(
+				`\n${diverged} of them are DIVERGED-HOOK, which --write deliberately will not touch: ` +
+					'each one is either a stale copy of ours or a hand-written local chain, and only a ' +
+					'person can tell which. Each finding names both ways out.',
+			);
+		}
+		const lost = fatal.filter((f) => f.kind === 'lost-delivery').length;
+		if (lost > 0) {
+			console.error(
+				`\n${lost} of them are LOST-DELIVERY: a file that target was delivered and no ` +
+					'longer holds. The next write from a tagged version delivers it again, once its ' +
+					'removal is committed or undone there. The same kind names a group, a lock or a ' +
+					'whole repository the record of deliveries holds and the fleet no longer does; ' +
+					'where that is meant, the finding names the command that says so.',
+			);
+		}
+		// Named separately for the opposite reason: nothing in that target needs resyncing.
+		const stale = fatal.filter((f) => f.kind === 'stale-lock').length;
+		if (stale > 0) {
+			console.error(
+				`\n${stale} of them are STALE-LOCK: the files in that target are current and its ` +
+					`${LOCK_FILE} does not record them, or the lock and the record of deliveries ` +
+					'disagree about what was last delivered there. The next write from a tagged ' +
+					'version rewrites the lock, and its reconcile the record. Where the finding is a ' +
+					'group the lock names that does not reach that repository, or a file of such a ' +
+					'group held there, it is corrected in that repository, or, where the group is ' +
+					'leaving on purpose, forgotten there and retired by a write with --only ' +
+					'<directory> --retire <group>.',
+			);
+		}
+		if (fatal.some((f) => f.kind === 'old-path')) {
+			const why = 'a script, a hook or a leftover copy still holds where a moved file was';
+			console.error(`\nOLD-PATH: ${why}. No write corrects it; that repository does.`);
+		}
+		if (recordMissing) console.error(`\n${noRecord(fleetRoot)}`);
+		return 1;
+	}
+	if (recordMissing) {
+		console.error(noRecord(fleetRoot));
+		return 1;
+	}
+	return reportClean(reports, only, findings.filter((f) => f.kind === 'known-drift').length);
+}
+
+/**
+ * Ownership is enforced per group rather than per run, so a `--write` from spernakit pushes the
+ * license core and says plainly that it left the aidd-owned hook groups alone. Refusing the whole
+ * command because the manifest also describes someone else's groups would make the common case an
+ * error and teach people to reach for `--group` reflexively, which is the opposite of the habit
+ * this wants.
+ */
+export function reportWrite(
+	reports: GroupReport[],
+	manifest: SharedCoreGroup[],
+	fleetRoot: string,
+	root: string,
+	write: { dryRun: boolean; retire: Set<string> },
+	run: RunRecord,
+): number {
+	const { dryRun, retire } = write;
+	const { deliveries } = run;
+	// A write updates the record and never creates it, so with none it stops before anything else.
+	// A rehearsal says so and goes on against an empty record, to name every other blocker too.
+	let refusedBeforeFiles = deliveries === null;
+	if (deliveries === null) {
+		console.error(`${noRecord(fleetRoot)} Nothing was written.`);
+		if (!dryRun) return 1;
+	}
+	const record: Deliveries = deliveries ?? {};
+	const byName = new Map(manifest.map((g) => [g.name, g]));
+	const verb = dryRun ? 'would write' : 'wrote';
+	const owned = reports.filter((report) => {
+		const refusal = ownershipRefusal(byName.get(report.group) as SharedCoreGroup, root);
+		if (refusal !== null) console.info(`\n${report.group} — not ours to write: ${refusal}.`);
+		return refusal === null;
+	});
+	const groups = owned.map((report) => byName.get(report.group) as SharedCoreGroup);
+
+	// Both refusals below come before the first file, so a refused write has written nothing.
+	let delivery: Delivery | null = null;
+	if (owned.length > 0) {
+		const tagged = tagStanding(root);
+		const untracked = untrackedSourcesRefusal(groups, root);
+		const standing =
+			'delivery' in tagged && untracked !== null ? { refusal: untracked } : tagged;
+		if ('delivery' in standing) delivery = standing.delivery;
+		else if (dryRun) {
+			console.warn(`[WARN] A write from here would be refused: ${standing.refusal}.`);
+			// Off the tag a write names only the tag; a rehearsal names untracked sources as well.
+			if (untracked !== null && standing.refusal !== untracked)
+				console.warn(`[WARN] A write from here would also be refused: ${untracked}.`);
+		} else {
+			console.error(
+				`[FAIL] A write is made only from a tagged version, and ${standing.refusal}. ` +
+					'Nothing was written.',
+			);
+			return 1;
+		}
+	}
+	const plan = planLocks(owned, groups, manifest, fleetRoot, delivery, retire, record, dryRun);
+	// A delivered file whose installed path changed (move.ts): planned now, applied after the locks.
+	// A rehearsal plans the targets refused above too, so their hooks path is reported as well.
+	const directories = [...plan.targets.map((target) => target.directory), ...plan.rehearsed];
+	const moves = planMoves(directories, groups, fleetRoot, root);
+	plan.refusals.push(...moves.refusals);
+	if (plan.refusals.length > 0) {
+		for (const refusal of plan.refusals) console.error(`- ${refusal}`);
+		console.error(
+			`[FAIL] ${plan.refusals.length} target(s) would be left with a ${LOCK_FILE} that does ` +
+				'not describe them. Nothing was written.',
+		);
+		if (!dryRun) return 1;
+		refusedBeforeFiles = true;
+	}
+	if (dryRun) {
+		for (const directory of [...directories].sort()) {
+			const configured = hooksPath(join(fleetRoot, directory));
+			console.info(`  HOOKS       ${directory}: core.hooksPath ${configured || 'unset'}`);
+		}
+	}
+
+	const outcomes = new Map<string, WriteOutcome>();
+	for (const report of owned) {
+		const outcome = applyFindings(report.findings, fleetRoot, dryRun, delivery, root);
+		outcomes.set(report.group, outcome);
+		// A stale lock is not the file writer's to settle and is not left alone either: the lock
+		// is rewritten below, and reported there. Nor is a lost delivery: the same absent file is
+		// also an `uncovered` finding, which is the one the writer acts on. Nor is an old layout: the
+		// moves below clear it.
+		const settledElsewhere = new Set(['lost-delivery', 'stale-layout', 'stale-lock']);
+		const skipped = outcome.skipped.filter((f) => !settledElsewhere.has(f.kind));
+
+		console.info(
+			`\n${report.group} (owner: ${report.owner}) — ${verb} ${outcome.written.length} ` +
+				`file(s), ${outcome.blocked.length} refused, ${skipped.length} not writable.`,
+		);
+		for (const f of outcome.written)
+			console.info(`  ${verb.toUpperCase()} ${f.target}: ${f.detail}`);
+		for (const f of outcome.blocked) console.info(`  REFUSED     ${f.target}: ${f.detail}`);
+		for (const f of skipped) console.info(`  LEFT ALONE  ${f.target}: ${f.kind} — ${f.detail}`);
+	}
+	const locks = writeLocks(plan, outcomes, groups, delivery, dryRun, record);
+	if (plan.targets.length > 0) console.info(`\n${LOCK_FILE}`);
+	for (const directory of locks.written) console.info(`  ${verb.toUpperCase()} ${directory}`);
+	for (const reason of locks.withheld) console.info(`  WITHHELD    ${reason}`);
+	// Old copies go only where the lock now names the new paths. A withheld lock still names the old
+	// ones, so that target keeps both until a later write settles it. Every withheld reason starts
+	// with its target's directory (lock-write.ts).
+	const held = new Set(locks.withheld.map((reason) => reason.slice(0, reason.indexOf(': '))));
+	holdBack(moves, held);
+	for (const line of applyRetirements(plan.retired, held, fleetRoot, dryRun)) console.info(line);
+	const moved = applyMoves(moves, fleetRoot, dryRun);
+	if (moved.length > 0) console.info(`\nmoved\n${moved.map((line) => `  ${line}`).join('\n')}`);
+	const recorded = dryRun ? [] : settleRun(root, fleetRoot, run, locks.settled);
+	if (recorded.length > 0) console.info(`\n${DELIVERIES_FILE}: recorded ${recorded.join(', ')}`);
+
+	const wrote = [...outcomes.values()].reduce((sum, o) => sum + o.written.length, 0);
+	const blocked = [...outcomes.values()].reduce((sum, o) => sum + o.blocked.length, 0);
+	console.info('');
+	if (blocked > 0) {
+		console.error(
+			`[FAIL] Refused to write ${blocked} file(s) with uncommitted changes in the target ` +
+				'repository. Commit or discard them there, then run this again.',
+		);
+	}
+	if (locks.withheld.length > 0) {
+		console.error(
+			`[FAIL] ${locks.withheld.length} ${LOCK_FILE} file(s) were not rewritten, so each still ` +
+				'describes the delivery before this one. Settle what is named above and run again.',
+		);
+	}
+	if (blocked > 0 || locks.withheld.length > 0 || refusedBeforeFiles) return 1;
+	console.info(
+		dryRun
+			? `[OK] Dry run: ${wrote} file(s) and ${locks.written.length} lock(s) would change.`
+			: `[OK] Wrote ${wrote} file(s) and ${locks.written.length} lock(s).`,
+	);
+	return 0;
+}

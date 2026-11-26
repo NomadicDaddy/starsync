@@ -1,0 +1,19 @@
+#!/bin/sh
+# Runs the repository's own hook of this name, kept in .githooks, and nothing else.
+#
+# git runs hooks from one folder. In a repository that takes smokestack's hooks that folder is
+# scripts/smokestack/hooks, so a post-checkout or post-merge the repository keeps in .githooks would
+# otherwise stop running. This file is delivered under both names. A file in .githooks carrying
+# smokestack's ownership line is a delivered copy (in smokestack itself, this file), never the
+# repository's own, and is not run. git ignores what this hook returns.
+#
+# smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+# smokestack; every repository that takes it holds a byte-identical copy.
+own_hook=".githooks/$(basename "$0")"
+[ -f "$own_hook" ] || exit 0
+grep -q 'smokestack owns this file' "$own_hook" && exit 0
+if [ ! -x "$own_hook" ]; then
+	echo "$(basename "$0"): $own_hook is not executable, so it was not run" >&2
+	exit 0
+fi
+exec "$own_hook" "$@"

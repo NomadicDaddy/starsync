@@ -1,0 +1,59 @@
+/**
+ * The clean-run verdict for the owner's `--check`.
+ *
+ * In the owner, `check:shared-core` reads sibling checkouts rather than this tree, so "no drift"
+ * and "nothing was compared" are different results that a single `[OK]` would conflate. A
+ * repository that owns no group never reaches this file: it checks itself against its lock, and a
+ * lock with nothing in it fails there. Both zero cases here are real:
+ *
+ * - **No peer is checked out.** The owner cloned alone has nothing beside it to compare, which
+ *   `gate-conventions.md` (docs/reference/ in smokestack, scripts/smokestack/docs/ where
+ *   delivered) covers as `[SKIP]` with the reason, exit 0.
+ * - **`--only` matched nothing.** That flag narrows the target directories a group's model already
+ *   resolved, so a name that matches none of them silences every group at once. A typo there
+ *   produced a green gate over zero targets, which is exactly the presence-over-content failure
+ *   this gate exists to catch, reproduced in the gate itself.
+ *
+ * The two are told apart by whether `--only` was passed at all, because that is the only thing that
+ * distinguishes "there was nothing to look at" from "you asked to look at nothing".
+ *
+ * smokestack owns this file and delivers it with `bun run shared-core:write`. Change it in
+ * smokestack; every repository that takes it holds a byte-identical copy.
+ */
+
+import { type GroupReport } from './check.ts';
+
+/** `known` counts the rows a known-drift entry held back (known-drift.ts), which a pass names. */
+export function reportClean(reports: GroupReport[], only?: Set<string>, known = 0): number {
+	const targets = reports.reduce((total, report) => total + report.targets, 0);
+	const files = reports.reduce((total, report) => total + report.matched, 0);
+
+	if (targets === 0 && only !== undefined) {
+		console.error(
+			`[FAIL] --only ${[...only].join(',')} matched no target in any group, so nothing was ` +
+				'compared. --only narrows the directories a group already resolved; it takes ' +
+				'repository directory names, not group names (use --group for those).',
+		);
+		return 1;
+	}
+
+	if (targets === 0) {
+		console.info(
+			'[SKIP] Shared core: no peer repository is checked out beside this one, so there is ' +
+				'nothing to compare against.',
+		);
+		return 0;
+	}
+
+	const examined = `${files} file(s) across ${targets} target(s) examined`;
+	if (known > 0) {
+		// Not "no drift": the known rows still differ, and saying so is the condition of passing them.
+		console.info(
+			`[OK] Shared core: 0 unknown drift and ${known} known (${examined}). Each KNOWN-DRIFT ` +
+				'row above is accepted only until the expiry its entry names, and still needs its fix.',
+		);
+		return 0;
+	}
+	console.info(`[OK] Shared core: no drift (${examined}).`);
+	return 0;
+}

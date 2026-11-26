@@ -5,7 +5,7 @@ import type { DatesDisplayRow } from './dates-reporting.ts';
 import type { ManagedCheckout } from './managed-checkout-planning.ts';
 import type { CheckoutReport, Finding } from './reporting.ts';
 
-import { ARCHIVE_CONFIG_DIRECTORY } from './archive-config.ts';
+import { ARCHIVE_CONFIG_DIRECTORY, readArchiveConfig } from './archive-config.ts';
 import { createDateFailure } from './dates-reporting.ts';
 import { scanManagedCheckouts } from './managed-checkout-planning.ts';
 import { createFinding } from './reporting.ts';
@@ -89,7 +89,7 @@ export const discoverDateCheckouts = async (target: string): Promise<DatesDiscov
 	const result = readNonGitEntries(target);
 	if (result.fatalFinding !== null) return result;
 	try {
-		const managed = await scanManagedCheckouts(target);
+		const managed = await scanManagedCheckouts(target, readArchiveConfig(target).host);
 		result.checkouts.push(...managed.reports);
 		result.managedCheckouts = managed.checkouts;
 	} catch (err) {

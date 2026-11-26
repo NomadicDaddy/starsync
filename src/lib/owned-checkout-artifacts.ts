@@ -4,6 +4,12 @@ import path from 'node:path';
 import type { HeldArchiveLock } from './archive-lock.ts';
 import type { Finding } from './reporting.ts';
 
+import {
+	listReplacementRecordBackups,
+	readReplacementRecord,
+	removeReplacementRecord,
+	removeTemporaryRecordFiles,
+} from './checkout-replacement-record.ts';
 import { createFinding } from './reporting.ts';
 import { sanitizeMessage } from './secret-safety.ts';
 
@@ -47,6 +53,83 @@ const assertArchiveLockHeld = (targetPath: string, held: HeldArchiveLock): void 
 	}
 };
 
+// A replaced checkout's backup is deleted only when its replacement record says the fresh
+// checkout was published. Without that, including every backup an older StarSync left, it may be
+// the only copy of the checkout, so it stays and is reported.
+const keptBackupFinding = (backup: string, original: null | string): Finding =>
+	createFinding(
+		'warning',
+		'owned-checkout-backup-kept',
+		`StarSync kept the replaced checkout at ${backup}${
+			original === null ? '' : ` (previously ${original})`
+		} because it can't confirm that replacement finished. It may be the only copy of that checkout, with its local changes and history. Inspect it, then move it back or delete it yourself.`,
+	);
+
+const removeArtifact = (
+	targetPath: string,
+	name: string,
+	kind: OwnedCheckoutArtifactKind,
+	onProgress?: (message: string) => void,
+): Finding => {
+	onProgress?.(`Removing abandoned ${kind} — ${name}`);
+	try {
+		fs.rmSync(path.join(targetPath, name), { force: true, recursive: true });
+		if (kind === 'damaged backup') removeReplacementRecord(targetPath, name);
+		return createFinding(
+			'info',
+			'owned-checkout-artifact-removed',
+			`Abandoned StarSync ${kind} ${name} was permanently removed.`,
+		);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		return createFinding(
+			'warning',
+			'owned-checkout-artifact-remove-failed',
+			`Cannot remove abandoned StarSync ${kind} ${name}: ${sanitizeMessage(message)}`,
+		);
+	}
+};
+
+const cleanupArtifact = (
+	targetPath: string,
+	name: string,
+	kind: OwnedCheckoutArtifactKind,
+	onProgress?: (message: string) => void,
+): Finding => {
+	if (kind === 'damaged backup') {
+		const record = readReplacementRecord(targetPath, name);
+		if (record?.state !== 'published') return keptBackupFinding(name, record?.original ?? null);
+	}
+	return removeArtifact(targetPath, name, kind, onProgress);
+};
+
+// A record whose backup is gone protects nothing, and nor does a temporary record a stopped write
+// left; a failure here is retried on the next pass. An unreadable records directory is reported and
+// skipped, never allowed to stop the sync.
+const dropStaleReplacementRecords = (targetPath: string): Finding | null => {
+	let backups: string[];
+	try {
+		removeTemporaryRecordFiles(targetPath);
+		backups = listReplacementRecordBackups(targetPath);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		return createFinding(
+			'warning',
+			'checkout-replacement-records-unreadable',
+			`Cannot read StarSync's checkout replacement records: ${sanitizeMessage(message)}`,
+		);
+	}
+	for (const backup of backups) {
+		if (fs.existsSync(path.join(targetPath, backup))) continue;
+		try {
+			removeReplacementRecord(targetPath, backup);
+		} catch {
+			continue;
+		}
+	}
+	return null;
+};
+
 export const cleanupOwnedCheckoutArtifacts = (
 	targetPath: string,
 	held: HeldArchiveLock | null,
@@ -57,30 +140,11 @@ export const cleanupOwnedCheckoutArtifacts = (
 	}
 	assertArchiveLockHeld(targetPath, held);
 	const findings: Finding[] = [];
-	const entries = fs.readdirSync(targetPath, { withFileTypes: true });
-	for (const entry of entries) {
+	for (const entry of fs.readdirSync(targetPath, { withFileTypes: true })) {
 		const kind = entry.isDirectory() ? ownedCheckoutArtifactKind(entry.name) : null;
-		if (kind === null) continue;
-		onProgress?.(`Removing abandoned ${kind} — ${entry.name}`);
-		try {
-			fs.rmSync(path.join(targetPath, entry.name), { force: true, recursive: true });
-			findings.push(
-				createFinding(
-					'info',
-					'owned-checkout-artifact-removed',
-					`Abandoned StarSync ${kind} ${entry.name} was permanently removed.`,
-				),
-			);
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			findings.push(
-				createFinding(
-					'warning',
-					'owned-checkout-artifact-remove-failed',
-					`Cannot remove abandoned StarSync ${kind} ${entry.name}: ${sanitizeMessage(message)}`,
-				),
-			);
-		}
+		if (kind !== null) findings.push(cleanupArtifact(targetPath, entry.name, kind, onProgress));
 	}
+	const recordsProblem = dropStaleReplacementRecords(targetPath);
+	if (recordsProblem !== null) findings.push(recordsProblem);
 	return findings;
 };

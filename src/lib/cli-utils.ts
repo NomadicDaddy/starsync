@@ -1,11 +1,15 @@
 import path from 'node:path';
 
+import type { ArchiveHost } from './archive-host.ts';
+
+import { parseHostArgs } from './cli-host.ts';
 import { DEFAULT_MIN_FREE_SPACE_BYTES, parseFreeSpaceBytes } from './free-space.ts';
 
 export interface ParsedArgs {
 	concurrency: number;
 	dryRun: boolean;
 	help: boolean;
+	host: ArchiveHost | null;
 	json: boolean;
 	minFreeSpace: number;
 	targetPath: null | string;
@@ -55,15 +59,17 @@ const applyValueFlag = (parsed: ParsedArgs, arg: string): boolean => {
 };
 
 export const parseArgs = (argv: string[] = process.argv.slice(2)): ParsedArgs => {
+	const selection = parseHostArgs(argv);
 	const parsed: ParsedArgs = {
 		concurrency: DEFAULT_CONCURRENCY,
 		dryRun: false,
 		help: false,
+		host: selection.host,
 		json: false,
 		minFreeSpace: DEFAULT_MIN_FREE_SPACE_BYTES,
 		targetPath: null,
 	};
-	for (const arg of argv) {
+	for (const arg of selection.argv) {
 		if (applyValueFlag(parsed, arg)) continue;
 		if (arg === '--help' || arg === '-h') {
 			parsed.help = true;
@@ -88,6 +94,7 @@ export interface ParsedSubcommandArgs {
 	dryRun: boolean;
 	force: boolean;
 	help: boolean;
+	host: ArchiveHost | null;
 	json: boolean;
 	minFreeSpace: number;
 	targetPath: null | string;
@@ -147,16 +154,18 @@ export const parseSubcommandArgs = (
 	argv: string[],
 	options: SubcommandArgumentOptions = {},
 ): ParsedSubcommandArgs => {
+	const selection = parseHostArgs(argv);
 	const parsed: ParsedSubcommandArgs = {
 		apply: false,
 		dryRun: false,
 		force: false,
 		help: false,
+		host: selection.host,
 		json: false,
 		minFreeSpace: DEFAULT_MIN_FREE_SPACE_BYTES,
 		targetPath: null,
 	};
-	for (const arg of argv) {
+	for (const arg of selection.argv) {
 		if (applyBooleanFlag(parsed, arg, options)) continue;
 		if (applyMinFreeSpaceFlag(parsed, arg, options)) continue;
 		if (arg.startsWith('-')) throw new Error(`Unknown argument: ${arg}`);

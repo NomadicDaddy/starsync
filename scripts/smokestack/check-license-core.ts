@@ -1,0 +1,99 @@
+/**
+ * smokestack owns this file and delivers it with `bun run shared-core:write` (license-core group).
+ *
+ * Enforces: the licence core itself works, on this repository. The expression reviewer gives the
+ * expected verdict on a fixed set of licence expressions, the parser builds an AND node, the
+ * installed tree and the lockfile closure both read as non-empty, and one installed package resolves
+ * and has its licence and notice text read. It reviews no dependency's licence and writes no notice
+ * inventory; that is each consumer's generator. No assertion ID: the licence core is shared across
+ * repositories whose assertion catalogs differ, and citing one repository's ID would not resolve in
+ * the others.
+ *
+ * Change it in smokestack, never in a repository that takes it: a copy edited anywhere else is
+ * drift, fails check:shared-core, and is overwritten by the next write. Exports with no caller in
+ * this repository are expected and must not be removed: the licence core is shared, and other
+ * adopters consume them. A dead-code report naming an export in this file is not evidence that the
+ * export is unused.
+ */
+import { cwd, exit } from 'node:process';
+
+import {
+	type LicenseExpression,
+	type LicenseReviewPolicy,
+	parseLicenseExpression,
+	reviewLicenseExpression,
+} from './lib/license-core/expression.ts';
+import { collectInstalledPackages } from './lib/license-core/installed.ts';
+import { collectLockfileClosure, type RootDependencyField } from './lib/license-core/lockfile.ts';
+import { workspaceNames } from './lib/license-core/manifest.ts';
+import {
+	readLicenseText,
+	readNoticeText,
+	resolveInstalledPackage,
+} from './lib/license-core/resolve.ts';
+
+const policy: LicenseReviewPolicy = {
+	aliases: { 'BSD-0-Clause': '0BSD' },
+	reviewed: new Set(['0BSD', 'Apache-2.0', 'MIT']),
+};
+
+const cases = [
+	{ expected: true, license: 'MIT' },
+	{ expected: true, license: 'MIT AND Apache-2.0' },
+	{ expected: true, license: '(MIT OR Apache-2.0)' },
+	{ expected: true, license: 'BSD-0-Clause' },
+	{ expected: false, license: 'MIT OR GPL-3.0-only' },
+	{ expected: false, license: 'GPL-2.0-only WITH Classpath-exception-2.0' },
+	{ expected: false, license: 'LicenseRef-Proprietary' },
+	{ expected: false, license: 'MIT OR' },
+	{ expected: false, license: 'UNKNOWN' },
+];
+
+export async function runLicenseCore(root: string = cwd()): Promise<number> {
+	const failures = cases.filter((testCase) => {
+		return reviewLicenseExpression(testCase.license, policy).ok !== testCase.expected;
+	});
+
+	const parsed: LicenseExpression = parseLicenseExpression('MIT AND Apache-2.0');
+	if (parsed.kind !== 'and') failures.push({ expected: true, license: '<parser shape>' });
+
+	const installed = await collectInstalledPackages(root, []);
+	if (installed.length === 0) failures.push({ expected: true, license: '<installed tree>' });
+
+	const internal = await workspaceNames(root, []);
+	const rootFields: RootDependencyField[] = ['dependencies', 'devDependencies'];
+	const locked = await collectLockfileClosure(root, {
+		internal,
+		rootFields,
+		workspaces: [''],
+	});
+	if (locked.packages.length === 0)
+		failures.push({ expected: true, license: '<lockfile roots>' });
+
+	const sample = installed[0];
+	if (sample !== undefined) {
+		const resolved = await resolveInstalledPackage(root, [], sample.name, sample.version);
+		if (resolved === null) failures.push({ expected: true, license: '<installed resolution>' });
+		else {
+			await readLicenseText(resolved);
+			await readNoticeText(resolved);
+		}
+	}
+
+	if (failures.length > 0) {
+		for (const failure of failures) {
+			console.error(
+				`License core fixture failed: ${failure.license} expected ${failure.expected}.`,
+			);
+		}
+		console.error(`[FAIL] check:license-core -- ${failures.length} fixture(s) failed.`);
+		return 1;
+	}
+
+	console.info(
+		`[OK] check:license-core -- ${cases.length} expression cases plus graph checks passed.`,
+	);
+	return 0;
+}
+
+if (import.meta.main) exit(await runLicenseCore());

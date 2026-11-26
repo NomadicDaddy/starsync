@@ -3,6 +3,7 @@ import type { VerifiedCheckout } from './archive-verification-checkout.ts';
 import type { RepositoryResolver, ResolvedRepository } from './repository-resolution.ts';
 import type { ReplacedCheckout, StagedCheckoutReplacement } from './staged-checkout.ts';
 
+import { readArchiveConfig } from './archive-config.ts';
 import { canonicalCheckoutName } from './checkout-identity.ts';
 import { sanitizeMessage } from './secret-safety.ts';
 import { replaceAnomalousCheckout } from './staged-checkout.ts';
@@ -54,11 +55,12 @@ const candidateSlugs = (folderName: string): string[] => {
 const resolveCandidate = async (
 	slug: string,
 	resolveRepository: RepositoryResolver,
+	id: null | number,
 ): Promise<null | ResolvedRepository> => {
 	const [owner, repository] = slug.split('/');
 	if (!owner || !repository) return null;
 	try {
-		return await resolveRepository(owner, repository);
+		return await resolveRepository(owner, repository, id ?? undefined);
 	} catch {
 		return null;
 	}
@@ -76,7 +78,7 @@ const resolveDamagedRepository = async (
 	];
 	const resolved = new Map<number, ResolvedRepository>();
 	for (const slug of new Set(slugs.map((value) => value.toLowerCase()))) {
-		const repository = await resolveCandidate(slug, resolveRepository);
+		const repository = await resolveCandidate(slug, resolveRepository, verified.repositoryId);
 		const canonicalName = repository === null ? null : canonicalCheckoutName(repository.slug);
 		if (
 			repository !== null &&
@@ -90,12 +92,12 @@ const resolveDamagedRepository = async (
 	}
 	if (resolved.size === 0) {
 		throw new Error(
-			`Cannot resolve ${entry.name} to one canonical GitHub repository; the anomalous checkout was not removed.`,
+			`Cannot resolve ${entry.name} to one canonical repository; the anomalous checkout was not removed.`,
 		);
 	}
 	if (resolved.size > 1) {
 		throw new Error(
-			`More than one GitHub repository matches ${entry.name}; the anomalous checkout was not removed.`,
+			`More than one repository matches ${entry.name}; the anomalous checkout was not removed.`,
 		);
 	}
 	const repository = [...resolved.values()][0]!;
@@ -125,10 +127,10 @@ export const repairAnomalousCheckout = async (
 		);
 		const folderName = canonicalCheckoutName(repository.slug);
 		if (folderName === null)
-			throw new Error(`GitHub returned an invalid slug: ${repository.slug}`);
+			throw new Error(`Host returned an invalid slug: ${repository.slug}`);
 		const replacement = await (options.replaceCheckout ?? replaceAnomalousCheckout)(
 			{
-				cloneUrl: `https://github.com/${repository.slug}.git`,
+				cloneUrl: `https://${readArchiveConfig(options.targetPath).host ?? 'github.com'}/${repository.slug}.git`,
 				folderName,
 				repositoryId: repository.id,
 				repositorySlug: repository.slug,

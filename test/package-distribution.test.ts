@@ -11,6 +11,29 @@ const readRepositoryJson = (relativePath: string): Record<string, unknown> =>
 const section = (relativePath: string, key: string): Record<string, unknown> =>
 	readRepositoryJson(relativePath)[key] as Record<string, unknown>;
 
+// knip.json is JSONC — Knip documents and accepts comments in its configuration, and this
+// repository uses them to record why each entry point and exemption exists. JSON.parse alone
+// cannot read it, so line comments are stripped first, tracking strings so a `//` inside a value
+// survives. Block comments are not used in the file.
+const stripLineComment = (line: string): string => {
+	let inString = false;
+	for (let index = 0; index < line.length; index++) {
+		const char = line[index] ?? '';
+		if (char === '\\') {
+			index++;
+			continue;
+		}
+		if (char === '"') inString = !inString;
+		if (!inString && char === '/' && line[index + 1] === '/') return line.slice(0, index);
+	}
+	return line;
+};
+
+const readRepositoryJsonc = (relativePath: string): Record<string, unknown> =>
+	JSON.parse(
+		readRepositoryFile(relativePath).split(/\r?\n/).map(stripLineComment).join('\n'),
+	) as Record<string, unknown>;
+
 const runInstallGuard = (userAgent: string): { exitCode: number; stderr: string } => {
 	const result = Bun.spawnSync({
 		cmd: [
@@ -75,14 +98,15 @@ describe('package distribution', () => {
 		// process whose PATH does not prepend Git's usr/bin. A bare `bash` therefore passes from
 		// Git Bash and fails from PowerShell on the same machine, which reached a release as
 		// prepublishOnly -> smoke:qc -> check:leak-guard dying on execvpe(/bin/bash). Shell
-		// scripts are invoked through scripts/run-bash.ts, which resolves Git's own bash.
+		// scripts use scripts/smokestack/run-bash.ts, which resolves Git's own bash.
 		const bareBash = Object.entries(scripts).filter(([, command]) =>
 			/(?:^|\s|\()bash\s/.test(String(command)),
 		);
 
 		expect(bareBash).toEqual([]);
-		expect(scripts['check:leak-guard']).toContain('scripts/run-bash.ts');
-		expect(scripts['prepare']).toContain('scripts/run-bash.ts');
+		expect(scripts['check:leak-guard']).toContain('scripts/smokestack/run-bash.ts');
+		expect(scripts['prepare']).toContain('scripts/smokestack/run-bash.ts');
+		expect(scripts['prepare']).toContain('git config core.hooksPath scripts/smokestack/hooks');
 	});
 
 	test('builds both entry points for node with dependencies left external', () => {
@@ -126,6 +150,61 @@ describe('package distribution', () => {
 	});
 
 	test('accepts an install driven by bun', () => {
-		expect(runInstallGuard('bun/1.3.14 npm/? node/v24.18.1 win32 x64').exitCode).toBe(0);
+		expect(runInstallGuard('bun/1.4.2 npm/? node/v24.18.1 win32 x64').exitCode).toBe(0);
+	});
+
+	test('wires dead-code detection into the release gate', () => {
+		const devDependencies = section('package.json', 'devDependencies');
+		const scripts = section('package.json', 'scripts');
+
+		// The detector is a pinned dependency rather than a session-level `bunx` fallback, so the
+		// release matrix installs the exact analyzed version from the lockfile. The assertion is
+		// that the pin is exact, not which version it is: a range would let the matrix analyze
+		// with a detector nobody ran here, and a literal version would fail on every upgrade.
+		expect(devDependencies['knip']).toMatch(/^\d+\.\d+\.\d+$/);
+
+		// `check:dead-code` is the gate's name, and `smoke:qc` runs it before the test suite. The
+		// release workflow's quality step is `smoke:qc` itself, which is the smokestack runner, and
+		// what the runner runs is the `qc` list in scripts/smokestack/smokestack.json. So
+		// the step and its position are asserted there. The runner goes on after a failed step, so
+		// the detector would now run even behind a failing test; it stays ahead of the suite so the
+		// cheap, static answer comes first and the order this repository chose is not lost by edit.
+		expect(scripts['check:dead-code']).toBe('knip --no-progress');
+		expect(scripts['smoke:qc']).toBe('bun scripts/smokestack/smokestack.ts');
+		const { steps } = section('scripts/smokestack/smokestack.json', 'qc') as {
+			steps: { name: string; run: string[] }[];
+		};
+		const names = steps.map((step) => step.name);
+		expect(steps.find((step) => step.name === 'check:dead-code')?.run).toEqual([
+			'bun',
+			'run',
+			'check:dead-code',
+		]);
+		expect(names).toContain('test');
+		expect(names.indexOf('check:dead-code')).toBeLessThan(names.indexOf('test'));
+	});
+
+	test('analyzes the process-launched test suite as knip entry points', () => {
+		const knip = readRepositoryJsonc('knip.json');
+		const entry = knip['entry'] as string[];
+
+		// scripts/test.ts discovers every test by glob and hands the list to Bun subprocesses, so
+		// Knip's Bun plugin — which reads `bun test` targets from package.json — cannot see them.
+		// Without the glob as an explicit entry, the entire suite reports as unused files.
+		expect(entry).toContain('test/**/*.test.ts');
+
+		// A script listed by hand stays an entry after its package script is deleted, so the file
+		// it names can never be reported dead. Knip resolves script entry points from package.json
+		// on its own; none may be restated here.
+		expect(entry.filter((pattern) => pattern.startsWith('scripts/'))).toEqual([]);
+	});
+
+	test('formats the dead-code configuration with the sources', () => {
+		const scripts = section('package.json', 'scripts');
+
+		// knip.json carries the comments that justify each entry and exemption, and nothing else
+		// in the gate reads its layout, so it has to be named to the formatter explicitly.
+		expect(String(scripts['format'])).toContain('knip.json');
+		expect(String(scripts['format:check'])).toContain('knip.json');
 	});
 });

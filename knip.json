@@ -1,0 +1,39 @@
+{
+	// Dead-code gate configuration (bun run check:dead-code, wired into smoke:qc before the test
+	// suite). Knip finds every file a package.json script runs, so those are deliberately NOT
+	// listed here: a script listed by hand stays an entry after its package script is deleted,
+	// which hides exactly the dead file this gate exists to report. That includes src/cli.ts,
+	// which is an entry only through the `start` and `sync` scripts — the manifest's bin field
+	// names dist/cli.js and nothing maps that back to source, so deleting both scripts makes the
+	// gate report the CLI as unused. Only the entries Knip cannot discover are named.
+	"$schema": "./node_modules/knip/schema.json",
+	"entry": [
+		// The published library root (main/module/types). The manifest points those fields at the
+		// built dist/ output, so the source file behind them has to be named.
+		"src/index.ts",
+		// The process-launched test suite. scripts/test.ts discovers every test file by glob and
+		// hands the list to Bun subprocesses, so none of these are visible as `bun test` targets
+		// to Knip's Bun plugin — they must be entries or the whole suite reads as unused files.
+		"test/**/*.test.ts",
+		// Test helpers that run as their own process rather than being imported: spawned through
+		// Bun.spawnSync/process.execPath from the suites above, so static imports never reach them.
+		// Imported helpers (test/helpers/refresh-fixture.ts) are deliberately NOT entries; they
+		// resolve naturally through the suites that import them.
+		"test/helpers/codeberg-journey.ts",
+		"test/helpers/run-forced-verification.ts",
+		"test/helpers/run-rename-apply.ts",
+		"test/helpers/run-staged-checkout.ts"
+	],
+	// Interim, documented exemptions — each tied to an open tracked finding; remove when it lands:
+	//
+	// - scripts/smokestack/lib/shared-core/** is byte-synced owner core (see
+	//   scripts/smokestack/shared-core-manifest.json,
+	//   group shared-core-sync, owner smokestack). Unused exports there can only be corrected in the
+	//   owner repository and re-synced; local edits would fail check:shared-core. Tracked by
+	//   audit-dead-code-1786640825-spernakit-owned-shared-core-helpers-expose-five-unused-exports.
+	//   Enforcement for this directory belongs to the owner's own gates.
+	"ignoreIssues": {
+		"scripts/smokestack/lib/shared-core/**": ["exports", "types"]
+	},
+	"project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
+}

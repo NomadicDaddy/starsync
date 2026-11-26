@@ -50,7 +50,12 @@ export const validateSyncOptions = (options: SyncArchiveOptions): CommandReport 
 	const dryRun = options.dryRun ?? false;
 	if (options.signal?.aborted) return interruptedReport('sync', targetPath, dryRun);
 	if (!options.token.trim()) {
-		return missingTokenReport('sync', targetPath, 'GITHUB_TOKEN is not set.', dryRun);
+		return missingTokenReport(
+			'sync',
+			targetPath,
+			'The archive host API token is not set (GITHUB_TOKEN or CODEBERG_TOKEN).',
+			dryRun,
+		);
 	}
 	const tuning = validateSyncTuning(options);
 	if ('severity' in tuning) {
@@ -66,7 +71,7 @@ export const validateSyncOptions = (options: SyncArchiveOptions): CommandReport 
 };
 
 /**
- * A dry run reports a shortfall without failing, because a preview writes nothing
+ * A dry run reports a shortfall without failing, because a preview does not clone
  * and the operator still needs to see what a real run would hit.
  */
 const checkSyncFreeSpace = (context: SyncContext): Finding | null =>

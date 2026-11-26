@@ -1,3 +1,4 @@
+import type { ArchiveHost } from './archive-host.ts';
 import type { ArchiveEntry } from './archive-inspection.ts';
 import type { RenamePreview } from './reporting.ts';
 import type { RepositoryResolver, ResolvedRepository } from './repository-resolution.ts';
@@ -8,7 +9,7 @@ import { type CheckoutReport, createFinding } from './reporting.ts';
 import { parseGitHubRepositorySlug } from './repository-resolution.ts';
 import {
 	hasEmbeddedCredentials,
-	isGitHubDotComUrl,
+	isArchiveHostUrl,
 	sanitizeMessage,
 	sanitizeUrl,
 } from './secret-safety.ts';
@@ -38,7 +39,11 @@ const failedCheckout = (entry: ArchiveEntry, code: string, message: string): Che
 
 const parseResolvableOrigin = (
 	entry: ArchiveEntry,
+	host: ArchiveHost,
 ): { owner: string; repository: string } | CheckoutReport => {
+	if (entry.boundaryError !== null) {
+		return failedCheckout(entry, 'checkout-outside-archive', entry.boundaryError);
+	}
 	if (!entry.isGitCheckout) {
 		return failedCheckout(
 			entry,
@@ -60,15 +65,17 @@ const parseResolvableOrigin = (
 			`Remote origin contains embedded credentials: ${sanitizeUrl(entry.origin)}`,
 		);
 	}
-	const slug = isGitHubDotComUrl(entry.origin) ? parseGitHubRepositorySlug(entry.origin) : null;
+	const slug = isArchiveHostUrl(entry.origin, host)
+		? parseGitHubRepositorySlug(entry.origin, host)
+		: null;
 	return (
 		slug ??
 		failedCheckout(
 			entry,
 			'invalid-origin',
-			isGitHubDotComUrl(entry.origin)
-				? `Cannot parse a GitHub repository slug from ${sanitizeUrl(entry.origin)}`
-				: `Remote origin is not GitHub.com: ${sanitizeUrl(entry.origin)}`,
+			isArchiveHostUrl(entry.origin, host)
+				? `Cannot parse a repository slug from ${sanitizeUrl(entry.origin)}`
+				: `Remote origin does not match archive host ${host}: ${sanitizeUrl(entry.origin)}`,
 		)
 	);
 };
@@ -87,9 +94,10 @@ const resolveRepository = async (
 	entry: ArchiveEntry,
 	slug: { owner: string; repository: string },
 	resolver: RepositoryResolver,
+	id: number,
 ): Promise<CheckoutReport | ResolvedRepository> => {
 	try {
-		const repository = await resolver(slug.owner, slug.repository);
+		const repository = await resolver(slug.owner, slug.repository, id);
 		return isValidRepository(repository)
 			? repository
 			: failedCheckout(
@@ -145,13 +153,14 @@ const inspectBlockedReason = async (entry: ArchiveEntry): Promise<null | string>
 export const resolveRenameEntry = async (
 	entry: ArchiveEntry,
 	resolver: RepositoryResolver,
+	host: ArchiveHost = 'github.com',
 ): Promise<CheckoutReport | ResolvedRenameEntry> => {
-	const originSlug = parseResolvableOrigin(entry);
+	const originSlug = parseResolvableOrigin(entry, host);
 	if ('outcome' in originSlug) return originSlug;
-	const repository = await resolveRepository(entry, originSlug, resolver);
-	if ('outcome' in repository) return repository;
 	const identity = await readIdentity(entry);
 	if ('outcome' in identity) return identity;
+	const repository = await resolveRepository(entry, originSlug, resolver, identity.repositoryId);
+	if ('outcome' in repository) return repository;
 	if (identity.repositoryId !== repository.id) {
 		return failedCheckout(
 			entry,

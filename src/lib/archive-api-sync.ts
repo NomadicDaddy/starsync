@@ -1,12 +1,9 @@
-import { Octokit } from '@octokit/rest';
-
 import type { SyncArchiveOptions, SyncContext } from './archive-api-contract.ts';
 import type { ArchiveOwner } from './archive-config.ts';
 import type { HeldArchiveLock } from './archive-lock.ts';
 import type { ManagedSyncPlan, StarredRepositoryRecord } from './managed-checkout-planning.ts';
 import type { CommandReport } from './reporting.ts';
 
-import { withApiRetry } from './api-retry.ts';
 import {
 	checkoutExists,
 	createInterruptedCheckout,
@@ -23,6 +20,7 @@ import { getArchiveModificationFinding } from './archive-inspection.ts';
 import { planManagedSync } from './managed-checkout-planning.ts';
 import { processRepository, runSyncPool } from './refresh.ts';
 import { createCommandReport, createFinding } from './reporting.ts';
+import { createRepositoryHost } from './repository-host.ts';
 import { sanitizeMessage } from './secret-safety.ts';
 
 type OwnerResult = { owner: ArchiveOwner } | { report: CommandReport };
@@ -54,14 +52,17 @@ const authenticateOwner = async (
 	}
 	let authenticated: ArchiveOwner;
 	try {
-		authenticated = await getAuthenticatedArchiveOwner(token);
+		authenticated = await getAuthenticatedArchiveOwner(
+			token,
+			readArchiveConfig(targetPath).host,
+		);
 	} catch (err) {
 		return {
 			report: operationFailureReport(
 				'sync',
 				targetPath,
-				'github-authentication-failed',
-				`Cannot authenticate GitHub account: ${sanitizeMessage(getErrorMessage(err))}`,
+				'host-authentication-failed',
+				`Cannot authenticate archive account: ${sanitizeMessage(getErrorMessage(err))}`,
 				dryRun,
 			),
 		};
@@ -72,7 +73,7 @@ const authenticateOwner = async (
 			'sync',
 			targetPath,
 			'archive-owner-mismatch',
-			`Archive belongs to GitHub account ${configured.login} (identity ${configured.id}), but the authenticated account is ${authenticated.login} (identity ${authenticated.id}).`,
+			`Archive belongs to account ${configured.login} (identity ${configured.id}), but the authenticated account is ${authenticated.login} (identity ${authenticated.id}).`,
 			dryRun,
 		),
 	};
@@ -82,27 +83,17 @@ const fetchStarredRepositories = async (
 	token: string,
 	context: SyncContext,
 ): Promise<CommandReport | StarredRepositoryRecord[]> => {
-	const octokit = new Octokit({ auth: token });
+	const host = createRepositoryHost(
+		readArchiveConfig(context.targetPath).host ?? 'github.com',
+		token,
+	);
 	try {
-		const response = await withApiRetry(
-			() =>
-				octokit.paginate(octokit.rest.activity.listReposStarredByAuthenticatedUser, {
-					per_page: 100,
-				}),
-			{ maxRetries: 2 },
-		);
-		return response.map((repository) => ({
-			clone_url: repository.clone_url,
-			defaultBranch: repository.default_branch,
-			id: repository.id,
-			name: repository.name,
-			slug: repository.full_name,
-		}));
+		return await host.listStars();
 	} catch (err) {
 		return operationFailureReport(
 			'sync',
 			context.targetPath,
-			'github-api-failed',
+			'host-api-failed',
 			`Error fetching repositories: ${sanitizeMessage(getErrorMessage(err))}`,
 			context.dryRun,
 		);
@@ -115,7 +106,7 @@ const loadSyncPlan = async (
 	dryRun: boolean,
 ): Promise<CommandReport | ManagedSyncPlan> => {
 	try {
-		return await planManagedSync(targetPath, records);
+		return await planManagedSync(targetPath, records, readArchiveConfig(targetPath).host);
 	} catch (err) {
 		return operationFailureReport(
 			'sync',

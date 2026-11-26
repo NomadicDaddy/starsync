@@ -8,6 +8,7 @@ import type { CheckoutReport, RenamePreview } from './reporting.ts';
 
 import { readCheckoutIdentity } from './checkout-identity.ts';
 import { transitionCheckoutState } from './checkout-state-transition.ts';
+import { checkoutGitBoundaryProblem } from './managed-checkout-inspection.ts';
 import { createFinding } from './reporting.ts';
 import { sanitizeMessage } from './secret-safety.ts';
 
@@ -155,12 +156,23 @@ const rollbackAfterMetadataFailure = (moved: MovedCheckout, original: unknown): 
 	throw original;
 };
 
+// The preview's inspection is not trusted at apply time: the checkout is checked again before its
+// identity is read, and again after the move, before any metadata is written.
+const requireInsideArchive = async (checkoutPath: string): Promise<void> => {
+	const problem = await checkoutGitBoundaryProblem(
+		path.dirname(checkoutPath),
+		path.basename(checkoutPath),
+	);
+	if (problem !== null) throw new Error(problem);
+};
+
 const applyMetadataTransition = async (
 	application: ApplicableRename,
 	moved: MovedCheckout,
 	options: CheckoutRenameApplicationOptions,
 ): Promise<void> => {
 	try {
+		await requireInsideArchive(moved.checkoutPath);
 		await transitionCheckoutState(
 			moved.checkoutPath,
 			{
@@ -202,6 +214,7 @@ export const applyCheckoutRename = async (
 	const selected = selectApplicableRename(checkout, entries);
 	if ('applied' in selected) return selected;
 	try {
+		await requireInsideArchive(selected.entry.path);
 		const identity = await readCheckoutIdentity(selected.entry.path);
 		if (identity?.repositoryId !== selected.rename.repositoryId) {
 			throw new Error('Stored repository identity changed after the rename preview.');

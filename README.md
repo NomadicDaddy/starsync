@@ -1,9 +1,11 @@
 # starsync
 
+<img src="assets/starsync-logo.svg" alt="StarSync" width="160" height="160">
+
 **SAVE YOUR STARRED REPOS BEFORE THEY DISAPPEAR!**
 
-StarSync preserves every repository starred by one GitHub account in a managed local archive. It
-matches checkouts by stable GitHub repository ID, refreshes available history, and adds new stars
+StarSync preserves repositories starred by one GitHub or Codeberg account in a managed local archive. It
+matches checkouts by stable repository ID within that host, refreshes available history, and adds new stars
 under canonical `repository--owner` folders.
 
 StarSync 2 requires Git, an initialized archive using format 2, and either Bun 1.4.2 or Node 24 or
@@ -11,15 +13,24 @@ newer. Windows, macOS, and Linux are supported.
 
 ## Install
 
-Nothing to install — run the published CLI directly under either runtime:
+Nothing to install — run the published CLI directly under either runtime. For a new archive,
+create an empty directory, supply the selected host's API token as described under
+[Authentication](#authentication), then initialize before the first sync. Choose one runtime:
 
 ```sh
+npx starsync init D:/archives/stars
 npx starsync sync D:/archives/stars
+```
+
+Or with Bun:
+
+```sh
+bunx starsync init D:/archives/stars
 bunx starsync sync D:/archives/stars
 ```
 
 Both resolve `bin` to `dist/cli.js`, a node-target bundle, so Bun isn't required to use StarSync.
-A first run on an empty directory still needs `init` and a `GITHUB_TOKEN`; see below.
+For an existing format-2 archive, run only `sync` with the same path.
 
 To install it as a command instead:
 
@@ -55,29 +66,48 @@ StarSync keeps API and Git transport authentication separate:
 
 - `GITHUB_TOKEN` is used through Octokit to authenticate the archive owner and list or resolve
   GitHub repositories. It is required by `init`, `sync`, `rename`, and `verify --force`.
+- `CODEBERG_TOKEN` serves those commands for Codeberg archives through its Forgejo API.
+  Use a token with read access to the user and repositories. API requests stay on Codeberg;
+  redirects are refused and failed response bodies are not printed.
 - Clone and fetch operations use credentials already configured for Git, such as Git Credential
   Manager or SSH keys. The API token is never passed to Git.
 
 Tokens and embedded Git credentials are excluded from command arguments and archive metadata.
-Remote URLs and errors are sanitized before reporting. Managed origins must identify GitHub.com;
-other hosts and credential-bearing URLs are rejected.
+Remote URLs and errors are sanitized before reporting. Managed origins must match the archive's
+recorded host; other hosts and credential-bearing URLs are rejected.
 
-Set `GITHUB_TOKEN` in a `.env` file, in the current shell, or for one invocation:
+Supply the selected token through the current process environment or a credential manager:
 
 ```sh
 GITHUB_TOKEN=ghp_your_token_here npx starsync sync D:/archives/stars
 ```
 
-`TARGET_PATH` may supply the archive path when no positional path is given. A positional path has
-priority.
+Set `TARGET_PATH_GITHUB` and `TARGET_PATH_CODEBERG` to keep separate default archive paths:
+
+```dotenv
+TARGET_PATH_GITHUB=D:/github
+TARGET_PATH_CODEBERG=D:/codeberg
+```
+
+Every archive command accepts `--host github.com|codeberg.org` (or `--host=HOST`) to select
+the corresponding default path. Without `--host`, default-path selection uses GitHub.
+An existing `TARGET_PATH` remains a GitHub-only fallback when `TARGET_PATH_GITHUB` is absent;
+Codeberg never falls back to either GitHub variable. A defined but empty or quoted-empty
+host-specific value is an error, even when `TARGET_PATH` is set.
+
+A positional path always takes priority. Without `--host`, its archive's recorded host is used.
+An explicit `--host` or an environment-selected default must match an initialized archive's
+recorded host or the command refuses before operating. These options select archives; they
+never move or merge their contents.
 
 ## Archive contract
 
-Every usable archive has an exact `.starsync/config.json` containing format 2 and one valid owner:
+Every usable archive has `.starsync/config.json` containing format 2 and one valid owner on one host:
 
 ```json
 {
 	"archiveFormat": 2,
+	"host": "github.com",
 	"owner": {
 		"id": 123456,
 		"login": "archive-owner"
@@ -85,21 +115,34 @@ Every usable archive has an exact `.starsync/config.json` containing format 2 an
 }
 ```
 
-The file accepts no extra fields. A configless directory is uninitialized, whether it is empty or
+`host` accepts only `github.com` or `codeberg.org`; its absence means GitHub. New archives always
+record it explicitly. Existing GitHub archives need no rewrite. All other extra fields are rejected.
+Never change an archive's host to move its contents: IDs can collide across hosts. Initialize a
+separate empty archive for the other host. A configless directory is uninitialized, whether it is empty or
 populated. Any other format is unsupported, and malformed format-2 configuration is invalid.
 StarSync does not inspect such directories for checkouts or offer conversion.
 
 Each managed checkout must store both of these local Git configuration values:
 
-- `starsync.repository-id`: the positive stable GitHub repository ID;
+- `starsync.repository-id`: the positive stable repository ID assigned by the archive's host;
 - `starsync.repository-slug`: the last known `owner/name` slug.
 
 Missing, incomplete, invalid, or duplicated identity is a current-format error. There is no
 identity backfill path.
 
-Use `init` on an existing empty directory. It authenticates the GitHub account and writes the
-format-2 owner binding. Operations that authenticate compare the stable account ID, so a login
+Use `init` on an existing empty directory. It authenticates the selected host account and writes the
+format-2 host and owner binding. Operations that authenticate compare the stable account ID, so a login
 rename is accepted while a different account is rejected.
+
+For Codeberg, provide `CODEBERG_TOKEN`, then run:
+
+```sh
+bunx starsync init --host codeberg.org D:/archives/codeberg-stars
+bunx starsync sync D:/archives/codeberg-stars
+```
+
+Later commands read the host from the archive. With `TARGET_PATH_CODEBERG` set, the same
+archive can be selected by `bunx starsync sync --host codeberg.org` without a positional path.
 
 ### Moving from StarSync 1.x
 
@@ -114,7 +157,7 @@ StarSync accepts only explicit commands. Bare invocation and unknown commands ar
 with exit code 2. Root `--help` and command-specific help remain available.
 
 ```sh
-npx starsync init [--json] [target-path]
+npx starsync init [--host github.com|codeberg.org] [--json] [target-path]
 npx starsync sync [--dry-run] [--json] [--concurrency=N] [--min-free-space=SIZE] [target-path]
 npx starsync verify [--force] [--json] [--min-free-space=SIZE] [target-path]
 npx starsync rename [--apply] [--json] [target-path]
@@ -122,8 +165,9 @@ npx starsync dates [--dry-run] [--json] [target-path]
 npx starsync unlock [--force] [--json] [target-path]
 ```
 
-Every command requires either `[target-path]` or `TARGET_PATH`. Missing, empty, or quoted-empty
-input is a usage error and never falls back to the package directory.
+All commands above accept `--host github.com|codeberg.org`. Every command requires either
+`[target-path]` or the selected host's default path. Missing, empty, or quoted-empty input is a
+usage error and never falls back to the package directory.
 
 ### sync
 
@@ -134,11 +178,11 @@ as pending while refresh continues against the existing checkout. Use `rename` t
 label.
 
 New repositories are cloned into a unique StarSync-owned sibling staging directory. StarSync
-validates the GitHub.com origin, Git objects, archive owner, cleanliness, and identity before
+validates the archive host origin, Git objects, archive owner, cleanliness, and identity before
 atomically publishing the canonical folder. Occupied destinations are never overwritten.
 
 Refresh fetches available remote branches and tags without pruning preserved references, then
-fast-forwards to the current GitHub default branch. Divergent commits and real local changes are
+fast-forwards to the host's current default branch. Divergent commits and real local changes are
 blocked. Moved upstream tags retain their archived target and produce a warning. If an unavailable
 Git LFS object breaks a clone or refresh, StarSync retries once with `GIT_LFS_SKIP_SMUDGE=1` and
 keeps the pointer file without persisting that setting.
@@ -181,16 +225,17 @@ Because forced recovery clones, it takes the same startup reserve as `sync`: aft
 before any checkout is replaced, StarSync measures the free space on the filesystem holding the
 target and refuses below the minimum. The default is 1GB, `--min-free-space=SIZE` sets another one
 with the same size grammar `sync` accepts, and `--min-free-space=0` turns the check off. Read-only
-`verify` writes nothing and never measures.
+`verify` preserves checkout content and never measures free space. It still uses the operation lock.
 
 ### rename
 
 `rename` is a read-only preview unless `--apply` is present. It resolves each checkout's current
-GitHub repository identity and reports one of `blocked`, `current`, `failed`, or `pending`.
+repository identity by numeric ID on the archive's host and reports one of `blocked`, `current`, `failed`, or `pending`.
 
-Every checkout must already contain a stable repository ID matching GitHub's resolved ID. Preview
+Every checkout must already contain a stable repository ID matching the host's resolved ID. Preview
 reports missing or mismatched identity, dirty or unverifiable state, duplicate identities,
-credential-bearing or invalid origins, and destination collisions without writing anything.
+credential-bearing or invalid origins, and destination collisions without changing checkout content.
+Preview still creates and removes the transient operation lock described below.
 
 `rename --apply` additionally authenticates the configured archive owner. For each safe pending
 checkout it updates the stored slug, normalizes `origin`, and moves the folder to
@@ -206,10 +251,12 @@ committer time reachable across all local Git references and aligns the folder t
 
 ### unlock
 
-Every archive operation except lock recovery uses `.starsync/operation-lock.json`. StarSync
-reclaims a same-host lock only after confirming its process is dead. Remote or uncertain ownership
-requires `unlock --force`, which still refuses to remove a lock owned by a confirmed live local
-process.
+Every archive operation except lock recovery uses `.starsync/operation-lock.json`, including
+read-only verification and previews. They create and remove transient coordination metadata;
+read-only describes preservation of checkout content, not an absence of filesystem writes.
+StarSync reclaims a same-host lock only after confirming its process is dead. Remote or uncertain
+ownership requires `unlock --force`, which still refuses to remove a lock owned by a confirmed live
+local process.
 
 ## Reporting and exit codes
 
@@ -254,6 +301,9 @@ const renames = await renameArchive({
 Supported operations are `initArchive`, `syncArchive`, `verifyArchive`, `renameArchive`,
 `normalizeArchiveDates`, and `unlockArchive`.
 
+`initArchive` accepts `host: 'codeberg.org'` (default `'github.com'`). Pass the corresponding token
+explicitly to each authenticated operation; the API never selects tokens from the environment.
+
 ## Release validation
 
 A release candidate requires all of the following:
@@ -274,31 +324,32 @@ bun run smoke:live -- <temporary-managed-archive>
 
 ## Scripts
 
-| Script                       | Purpose                                                                     |
-| ---------------------------- | --------------------------------------------------------------------------- |
-| `bun run sync`               | Run the explicit sync command                                               |
-| `bun run start`              | Run any subcommand from source                                              |
-| `bun run build`              | Run `build:bundle`, then `build:types`                                      |
-| `bun run build:bundle`       | Bundle `src/cli.ts` and `src/index.ts` into `dist/` for Node, deps external |
-| `bun run build:types`        | Emit declarations into `dist/types` through `tsconfig.types.json`           |
-| `bun run smoke:qc`           | Run static, leak, license, shared-core, and test gates                      |
-| `bun run smoke:qc:fast`      | Static gate only: source shape, types, lint, format. No tests               |
-| `bun run smoke:live`         | Run the opt-in read-only smoke against an explicit archive copy             |
-| `bun run check:max-lines`    | Enforce production file size and extracted-function shape limits            |
-| `bun run check:leak-guard`   | Self-test `.githooks/leak-guard.sh` against synthetic fixtures              |
-| `bun run check:licenses`     | Run both license checks: the shared core, then the attribution documents    |
-| `bun run check:license-core` | Verify the shared license core against the installed dependency graph       |
-| `bun run check:shared-core`  | Verify shared hooks, helpers, manifests, and gates against their owners     |
-| `bun run licenses:generate`  | Rewrite `THIRD_PARTY_LICENSES.md` and `THIRD_PARTY_NOTICES.md`              |
-| `bun run typecheck`          | `tsc --noEmit`                                                              |
-| `bun run lint`               | `eslint src scripts test eslint.config.js --max-warnings 0`                 |
-| `bun run lint:fix`           | The same scope with `--fix`                                                 |
-| `bun run test`               | Run the unit suite                                                          |
-| `bun run format`             | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts"`           |
-| `bun run format:check`       | The same globs with `--check`                                               |
+| Script                       | Purpose                                                                                      |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| `bun run sync`               | Run the explicit sync command                                                                |
+| `bun run start`              | Run any subcommand from source                                                               |
+| `bun run build`              | Run `build:bundle`, then `build:types`                                                       |
+| `bun run build:bundle`       | Bundle `src/cli.ts` and `src/index.ts` into `dist/` for Node, deps external                  |
+| `bun run build:types`        | Emit declarations into `dist/types` through `tsconfig.types.json`                            |
+| `bun run smoke:qc`           | Run static, dead-code, leak, license, shared-core, and test gates                            |
+| `bun run smoke:qc:fast`      | Static gate only: source shape, types, lint, format. No tests                                |
+| `bun run smoke:live`         | Run the opt-in read-only smoke against an explicit archive copy                              |
+| `bun run check:max-lines`    | Enforce production file size and extracted-function shape limits                             |
+| `bun run check:dead-code`    | Knip file and export reachability gate wired into `smoke:qc`                                 |
+| `bun run check:leak-guard`   | Self-test `scripts/smokestack/hooks/leak-guard.sh` against synthetic fixtures                |
+| `bun run check:licenses`     | Run both license checks: the shared core, then the attribution documents                     |
+| `bun run check:license-core` | Verify the shared license core against the installed dependency graph                        |
+| `bun run check:shared-core`  | Verify shared hooks, helpers, manifests, and gates against their owners                      |
+| `bun run licenses:generate`  | Rewrite `THIRD_PARTY_LICENSES.md` and `THIRD_PARTY_NOTICES.md`                               |
+| `bun run typecheck`          | `tsc --noEmit`                                                                               |
+| `bun run lint`               | ESLint on source, scripts, tests and config, with unused-disable reporting and zero warnings |
+| `bun run lint:fix`           | The same scope with `--fix`                                                                  |
+| `bun run test`               | Run the unit suite                                                                           |
+| `bun run format`             | `prettier --write "src/**/*.ts" "scripts/**/*.ts" "test/**/*.ts" knip.json`                  |
+| `bun run format:check`       | The same files with `--check`                                                                |
 
 `prepare` and `prepublishOnly` are lifecycle hooks rather than commands to run by hand. `prepare`
-runs the install guard, points `core.hooksPath` at `.githooks/`, seeds the leak-guard pattern file,
+runs the install guard, points `core.hooksPath` at `scripts/smokestack/hooks/`, seeds the leak-guard pattern file,
 and then builds; `prepublishOnly` runs `smoke:qc`.
 
 Schedule the explicit `sync` command with Task Scheduler, cron, launchd, or another periodic

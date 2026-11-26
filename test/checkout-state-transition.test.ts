@@ -93,6 +93,8 @@ const pendingRename = (
 });
 
 const archiveEntry = (checkout: string): ArchiveEntry => ({
+	boundaryError: null,
+	boundaryUnverified: null,
 	gitError: null,
 	isGitCheckout: true,
 	name: path.basename(checkout),
