@@ -57,4 +57,29 @@ describe('filesystem identity', () => {
 			stat.mockRestore();
 		}
 	});
+
+	// ReFS's 64-bit index isn't guaranteed unique, so a shared index alone can't make two distinct
+	// directories one entry: their canonical paths must agree too.
+	test('refuses two directories that report the same file index', () => {
+		const entry = directory();
+		const sibling = path.join(path.dirname(entry), 'sibling');
+		mkdirSync(sibling);
+		const realStat = fs.statSync.bind(fs);
+		const stat = spyOn(fs, 'statSync').mockImplementation(((target: fs.PathLike, options) =>
+			realStat(
+				path.resolve(String(target)) === path.resolve(sibling) ? entry : target,
+				options,
+			)) as typeof fs.statSync);
+		try {
+			expect(sameFilesystemEntry(entry, sibling)).toBe(false);
+		} finally {
+			stat.mockRestore();
+		}
+	});
+
+	test('matches a different spelling of the same directory', () => {
+		const entry = directory();
+		const respelled = path.join(path.dirname(entry), '.', 'entry');
+		expect(sameFilesystemEntry(entry, respelled)).toBe(true);
+	});
 });
