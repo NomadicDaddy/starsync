@@ -27,6 +27,16 @@ All notable changes to this project will be documented in this file. Format foll
   checkout. The boundary now compares the folders themselves rather than their names. Short paths
   and other spellings of the same folder still pass. A path that can't be identified is refused.
 
+### Known limitations
+
+The limitations listed under 2.5.2 and 2.5.5 still apply. A third security review on 2026-11-26
+found one more, present in 2.4.1 and recorded for a later 2.5.x release:
+
+- When an archive's `.starsync/config.json` isn't valid JSON, the error StarSync reports can
+  quote part of that file. It appears in `verify` output, both as text and as JSON, and in the
+  programmatic API's reports. The output sanitizer removes values it recognizes as credentials,
+  but a value it doesn't recognize, placed in that file by mistake, can appear in the error.
+
 ## [2.5.7] - 2026-11-26
 
 ### Security
