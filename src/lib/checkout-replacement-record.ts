@@ -48,6 +48,17 @@ const recordDirectoryIsReal = (targetBase: string): boolean =>
 	isRealDirectory(path.join(targetBase, ARCHIVE_CONFIG_DIRECTORY)) &&
 	isRealDirectory(recordDirectory(targetBase));
 
+// The listing form of that check. A missing directory, or one that is a link or not a directory,
+// has nothing to list. Any other failure to inspect it, such as a permission or I/O error,
+// propagates, so the caller reports the records as unreadable rather than reading them as absent.
+const recordDirectoryIsListable = (targetBase: string): boolean =>
+	[path.join(targetBase, ARCHIVE_CONFIG_DIRECTORY), recordDirectory(targetBase)].every(
+		(directory) => {
+			const stats = fs.lstatSync(directory, { throwIfNoEntry: false });
+			return stats !== undefined && stats.isDirectory() && !stats.isSymbolicLink();
+		},
+	);
+
 const ensureRecordDirectory = (targetBase: string): string => {
 	const directory = recordDirectory(targetBase);
 	if (!isRealDirectory(path.dirname(directory))) {
@@ -137,7 +148,7 @@ export const removeReplacementRecord = (targetBase: string, backup: string): voi
  */
 export const listReplacementRecordBackups = (targetBase: string): string[] => {
 	const directory = recordDirectory(targetBase);
-	if (!recordDirectoryIsReal(targetBase)) return [];
+	if (!recordDirectoryIsListable(targetBase)) return [];
 	return fs
 		.readdirSync(directory)
 		.filter((name) => name.endsWith(RECORD_SUFFIX))
@@ -155,7 +166,7 @@ const TEMPORARY_RECORD_PATTERN =
  */
 export const removeTemporaryRecordFiles = (targetBase: string): void => {
 	const directory = recordDirectory(targetBase);
-	if (!recordDirectoryIsReal(targetBase)) return;
+	if (!recordDirectoryIsListable(targetBase)) return;
 	for (const name of fs.readdirSync(directory)) {
 		if (!TEMPORARY_RECORD_PATTERN.test(name)) continue;
 		const file = path.join(directory, name);

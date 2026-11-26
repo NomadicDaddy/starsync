@@ -376,4 +376,35 @@ describe('forced checkout replacement keeps the original until publication is re
 			rmSync(archive.root, { force: true, recursive: true });
 		}
 	});
+
+	test('reports records it cannot inspect rather than treating them as absent', () => {
+		const archive = createArchive();
+		writeReplacementRecord(archive.target, {
+			backup: BACKUP,
+			destination: 'repository--example',
+			original: 'repository--example',
+			state: 'pending',
+		});
+		const realLstat = fs.lstatSync.bind(fs) as (
+			target: fs.PathLike,
+			options?: unknown,
+		) => unknown;
+		const lstat = spyOn(fs, 'lstatSync').mockImplementation(((
+			target: fs.PathLike,
+			options?: unknown,
+		) => {
+			if (path.basename(String(target)) === REPLACEMENT_RECORD_DIRECTORY) {
+				throw Object.assign(new Error('Input/output error.'), { code: 'EIO' });
+			}
+			return realLstat(target, options);
+		}) as typeof fs.lstatSync);
+		try {
+			expect(cleanup(archive.target).map((finding) => finding.code)).toContain(
+				'checkout-replacement-records-unreadable',
+			);
+		} finally {
+			lstat.mockRestore();
+			rmSync(archive.root, { force: true, recursive: true });
+		}
+	});
 });
