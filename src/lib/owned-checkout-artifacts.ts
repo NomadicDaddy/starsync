@@ -8,6 +8,7 @@ import {
 	listReplacementRecordBackups,
 	readReplacementRecord,
 	removeReplacementRecord,
+	removeTemporaryRecordFiles,
 } from './checkout-replacement-record.ts';
 import { createFinding } from './reporting.ts';
 import { sanitizeMessage } from './secret-safety.ts';
@@ -102,11 +103,13 @@ const cleanupArtifact = (
 	return removeArtifact(targetPath, name, kind, onProgress);
 };
 
-// A record whose backup is gone protects nothing; a failure here is retried on the next pass. An
-// unreadable records directory is reported and skipped, never allowed to stop the sync.
+// A record whose backup is gone protects nothing, and nor does a temporary record a stopped write
+// left; a failure here is retried on the next pass. An unreadable records directory is reported and
+// skipped, never allowed to stop the sync.
 const dropStaleReplacementRecords = (targetPath: string): Finding | null => {
 	let backups: string[];
 	try {
+		removeTemporaryRecordFiles(targetPath);
 		backups = listReplacementRecordBackups(targetPath);
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);

@@ -250,6 +250,31 @@ describe('forced checkout replacement keeps the original until publication is re
 		}
 	});
 
+	test('removes a temporary record a stopped write left, and nothing else in its folder', () => {
+		const archive = createArchive();
+		try {
+			writeReplacementRecord(archive.target, {
+				backup: BACKUP,
+				destination: 'repository--example',
+				original: 'repository--example',
+				state: 'pending',
+			});
+			nodeReplacementFilesystem.rename(archive.sourcePath, archive.backupPath);
+			const directory = path.join(archive.target, '.starsync', REPLACEMENT_RECORD_DIRECTORY);
+			const abandoned = path.join(directory, '.0f1e2d3c-4b5a-4968-8776-655443322111.tmp');
+			const unrelated = path.join(directory, '.notes.tmp');
+			writeFileSync(abandoned, '{"partial":');
+			writeFileSync(unrelated, 'keep');
+
+			cleanup(archive.target);
+			expect(existsSync(abandoned)).toBe(false);
+			expect(existsSync(unrelated)).toBe(true);
+			expect(readReplacementRecord(archive.target, BACKUP)?.state).toBe('pending');
+		} finally {
+			rmSync(archive.root, { force: true, recursive: true });
+		}
+	});
+
 	test('drops a record whose backup is gone', () => {
 		const archive = createArchive();
 		try {

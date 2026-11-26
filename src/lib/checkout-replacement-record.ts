@@ -143,3 +143,23 @@ export const listReplacementRecordBackups = (targetBase: string): string[] => {
 		.filter((name) => name.endsWith(RECORD_SUFFIX))
 		.map((name) => name.slice(0, -RECORD_SUFFIX.length));
 };
+
+const TEMPORARY_RECORD_PATTERN =
+	/^\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/i;
+
+/**
+ * Removes temporary record files a stopped write left behind. Only names writeReplacementRecord
+ * makes (`.<uuid>.tmp`), only regular files, and only in a real records directory. Under the
+ * archive lock no write is in progress, so any such file is abandoned. Throws when the directory
+ * can't be read, like listReplacementRecordBackups.
+ */
+export const removeTemporaryRecordFiles = (targetBase: string): void => {
+	const directory = recordDirectory(targetBase);
+	if (!recordDirectoryIsReal(targetBase)) return;
+	for (const name of fs.readdirSync(directory)) {
+		if (!TEMPORARY_RECORD_PATTERN.test(name)) continue;
+		const file = path.join(directory, name);
+		const stats = fs.lstatSync(file, { throwIfNoEntry: false });
+		if (stats?.isFile() === true && !stats.isSymbolicLink()) fs.rmSync(file, { force: true });
+	}
+};
