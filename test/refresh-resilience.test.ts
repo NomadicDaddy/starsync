@@ -403,24 +403,30 @@ describe('default branch refresh resilience', () => {
 		});
 	});
 
-	windowsOnly('keeps refreshing an unrepresentable-path checkout on later runs', async () => {
-		await withTemporaryRoot('starsync-invalid-path-repeat-', async (root) => {
-			const invalidPath = 'screens/localhost:5287.png';
-			const origin = createOrigin(root, invalidPath);
-			const checkout = path.join(root, 'checkout');
-			stageWithoutUnrepresentablePath(checkout, origin, root, invalidPath);
-			publishUpstreamCommit(root, 2, invalidPath);
-			const first = await refreshCheckoutOnDefaultBranch(checkout, 'checkout', 'main');
-			expect(first.outcome).toBe('updated');
-			publishUpstreamCommit(root, 3, invalidPath);
+	windowsOnly(
+		'keeps refreshing an unrepresentable-path checkout on later runs',
+		async () => {
+			await withTemporaryRoot('starsync-invalid-path-repeat-', async (root) => {
+				const invalidPath = 'screens/localhost:5287.png';
+				const origin = createOrigin(root, invalidPath);
+				const checkout = path.join(root, 'checkout');
+				stageWithoutUnrepresentablePath(checkout, origin, root, invalidPath);
+				publishUpstreamCommit(root, 2, invalidPath);
+				const first = await refreshCheckoutOnDefaultBranch(checkout, 'checkout', 'main');
+				expect(first.outcome).toBe('updated');
+				publishUpstreamCommit(root, 3, invalidPath);
 
-			const result = await refreshCheckoutOnDefaultBranch(checkout, 'checkout', 'main');
+				const result = await refreshCheckoutOnDefaultBranch(checkout, 'checkout', 'main');
 
-			expect(result.outcome).toBe('updated');
-			expect(runGit(['status', '--porcelain'], checkout)).toBe('');
-			expect(runGit(['ls-files', '-v', '--', invalidPath], checkout)).toBe(
-				`S ${invalidPath}`,
-			);
-		});
-	});
+				expect(result.outcome).toBe('updated');
+				expect(runGit(['status', '--porcelain'], checkout)).toBe('');
+				expect(runGit(['ls-files', '-v', '--', invalidPath], checkout)).toBe(
+					`S ${invalidPath}`,
+				);
+			});
+			// Two full refreshes plus three upstream commits, about 5 s on Windows under load, against
+			// Bun's 5 s default.
+		},
+		30_000,
+	);
 });

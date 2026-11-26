@@ -328,7 +328,9 @@ describe('staged checkout creation process boundary', () => {
 		} finally {
 			rmSync(root, { force: true, recursive: true });
 		}
-	});
+		// Two forced verifications, each a separate process cloning and checking a fresh copy, take
+		// about 4.5 to 5.5 s on Windows under load, against Bun's 5 s default.
+	}, 30_000);
 
 	// Each rename reaches the same current identity from a different previous one, so the current
 	// folder and slug are fixed and only the old pair varies per case.
