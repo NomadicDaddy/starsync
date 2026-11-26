@@ -33,9 +33,20 @@ const isPlainName = (value: unknown): value is string =>
 	typeof value === 'string' && value.length > 0 && path.basename(value) === value;
 
 const isRealDirectory = (entryPath: string): boolean => {
-	const stats = fs.lstatSync(entryPath, { throwIfNoEntry: false });
-	return stats !== undefined && stats.isDirectory() && !stats.isSymbolicLink();
+	try {
+		const stats = fs.lstatSync(entryPath, { throwIfNoEntry: false });
+		return stats !== undefined && stats.isDirectory() && !stats.isSymbolicLink();
+	} catch {
+		return false;
+	}
 };
+
+// Records are trusted, listed or removed only where both the archive's metadata directory and the
+// records directory are real directories. A link at either place could otherwise supply
+// publication evidence from somewhere else, or point a removal outside the archive.
+const recordDirectoryIsReal = (targetBase: string): boolean =>
+	isRealDirectory(path.join(targetBase, ARCHIVE_CONFIG_DIRECTORY)) &&
+	isRealDirectory(recordDirectory(targetBase));
 
 const ensureRecordDirectory = (targetBase: string): string => {
 	const directory = recordDirectory(targetBase);
@@ -77,9 +88,21 @@ export const writeReplacementRecord = (
 	}
 };
 
+// The parsed record when every field is well formed and it names this backup, otherwise null.
+const validRecord = (
+	value: Partial<CheckoutReplacementRecord>,
+	backup: string,
+): CheckoutReplacementRecord | null => {
+	const { destination, original, state } = value;
+	if (value.backup !== backup || !isPlainName(original) || !isPlainName(destination)) return null;
+	if (state !== 'pending' && state !== 'published') return null;
+	return { backup, destination, original, state };
+};
+
 /**
  * The record for a backup, or null when there is none or it can't be trusted: missing, a link,
- * unreadable, malformed, or naming a different backup. Null never permits deletion.
+ * in a linked records directory, unreadable, malformed, or naming a different backup. Null never
+ * permits deletion.
  */
 export const readReplacementRecord = (
 	targetBase: string,
@@ -87,38 +110,34 @@ export const readReplacementRecord = (
 ): CheckoutReplacementRecord | null => {
 	const file = recordPath(targetBase, backup);
 	try {
+		if (!recordDirectoryIsReal(targetBase)) return null;
 		const stats = fs.lstatSync(file, { throwIfNoEntry: false });
 		if (stats === undefined || !stats.isFile() || stats.isSymbolicLink()) return null;
-		const value = JSON.parse(
-			fs.readFileSync(file, 'utf-8'),
-		) as Partial<CheckoutReplacementRecord>;
-		if (
-			value.backup !== backup ||
-			!isPlainName(value.original) ||
-			!isPlainName(value.destination) ||
-			(value.state !== 'pending' && value.state !== 'published')
-		) {
-			return null;
-		}
-		return {
-			backup: value.backup,
-			destination: value.destination,
-			original: value.original,
-			state: value.state,
-		};
+		return validRecord(
+			JSON.parse(fs.readFileSync(file, 'utf-8')) as Partial<CheckoutReplacementRecord>,
+			backup,
+		);
 	} catch {
 		return null;
 	}
 };
 
 export const removeReplacementRecord = (targetBase: string, backup: string): void => {
+	if (!recordDirectoryIsReal(targetBase)) {
+		throw new Error(
+			'Refusing to remove a checkout replacement record outside a real directory.',
+		);
+	}
 	fs.rmSync(recordPath(targetBase, backup), { force: true });
 };
 
-/** The backup names that have a record file, whatever its content. Temporary files end `.tmp`. */
+/**
+ * The backup names that have a record file, whatever its content. Temporary files end `.tmp`.
+ * Throws when the records directory can't be read; the caller reports that and moves on.
+ */
 export const listReplacementRecordBackups = (targetBase: string): string[] => {
 	const directory = recordDirectory(targetBase);
-	if (!isRealDirectory(directory)) return [];
+	if (!recordDirectoryIsReal(targetBase)) return [];
 	return fs
 		.readdirSync(directory)
 		.filter((name) => name.endsWith(RECORD_SUFFIX))

@@ -1,11 +1,12 @@
-import { describe, expect, test } from 'bun:test';
-import {
+import { describe, expect, spyOn, test } from 'bun:test';
+import fs, {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -17,6 +18,7 @@ import type { Finding } from '../src/lib/reporting.ts';
 import { acquireArchiveLock, releaseArchiveLock } from '../src/lib/archive-lock.ts';
 import {
 	readReplacementRecord,
+	removeReplacementRecord,
 	REPLACEMENT_RECORD_DIRECTORY,
 	writeReplacementRecord,
 } from '../src/lib/checkout-replacement-record.ts';
@@ -274,6 +276,78 @@ describe('forced checkout replacement keeps the original until publication is re
 			expect(existsSync(path.join(archive.sourcePath, 'local-work.txt'))).toBe(true);
 			expect(existsSync(archive.backupPath)).toBe(false);
 		} finally {
+			rmSync(archive.root, { force: true, recursive: true });
+		}
+	});
+
+	test('takes no publication evidence through a linked records directory', () => {
+		const archive = createArchive();
+		try {
+			nodeReplacementFilesystem.rename(archive.sourcePath, archive.backupPath);
+			// A published record for this backup, but in a folder outside the archive that the
+			// records path links to.
+			const elsewhere = path.join(archive.root, 'elsewhere');
+			mkdirSync(elsewhere);
+			const outsideRecord = path.join(elsewhere, `${BACKUP}.json`);
+			writeFileSync(
+				outsideRecord,
+				JSON.stringify({
+					backup: BACKUP,
+					destination: 'repository--example',
+					original: 'repository--example',
+					state: 'published',
+				}),
+			);
+			symlinkSync(
+				elsewhere,
+				path.join(archive.target, '.starsync', REPLACEMENT_RECORD_DIRECTORY),
+				'junction',
+			);
+
+			expect(readReplacementRecord(archive.target, BACKUP)).toBeNull();
+			expect(cleanup(archive.target).map((finding) => finding.code)).toContain(
+				'owned-checkout-backup-kept',
+			);
+			expect(existsSync(path.join(archive.backupPath, 'local-work.txt'))).toBe(true);
+			expect(existsSync(outsideRecord)).toBe(true);
+			expect(() => removeReplacementRecord(archive.target, BACKUP)).toThrow(
+				'outside a real directory',
+			);
+			expect(existsSync(outsideRecord)).toBe(true);
+		} finally {
+			rmSync(archive.root, { force: true, recursive: true });
+		}
+	});
+
+	test('reports an unreadable records directory instead of stopping cleanup', () => {
+		const archive = createArchive();
+		writeReplacementRecord(archive.target, {
+			backup: BACKUP,
+			destination: 'repository--example',
+			original: 'repository--example',
+			state: 'pending',
+		});
+		const realReaddir = fs.readdirSync.bind(fs) as (
+			target: fs.PathLike,
+			options?: unknown,
+		) => unknown;
+		const readdir = spyOn(fs, 'readdirSync').mockImplementation(((
+			target: fs.PathLike,
+			options?: unknown,
+		) => {
+			if (path.basename(String(target)) === REPLACEMENT_RECORD_DIRECTORY) {
+				throw Object.assign(new Error('Access denied.'), { code: 'EACCES' });
+			}
+			return realReaddir(target, options);
+		}) as typeof fs.readdirSync);
+		try {
+			const findings = cleanup(archive.target);
+			expect(findings.map((finding) => finding.code)).toContain(
+				'checkout-replacement-records-unreadable',
+			);
+			expect(existsSync(archive.stagingPath)).toBe(false);
+		} finally {
+			readdir.mockRestore();
 			rmSync(archive.root, { force: true, recursive: true });
 		}
 	});

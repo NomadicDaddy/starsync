@@ -102,9 +102,21 @@ const cleanupArtifact = (
 	return removeArtifact(targetPath, name, kind, onProgress);
 };
 
-// A record whose backup is gone protects nothing; a failure here is retried on the next pass.
-const dropStaleReplacementRecords = (targetPath: string): void => {
-	for (const backup of listReplacementRecordBackups(targetPath)) {
+// A record whose backup is gone protects nothing; a failure here is retried on the next pass. An
+// unreadable records directory is reported and skipped, never allowed to stop the sync.
+const dropStaleReplacementRecords = (targetPath: string): Finding | null => {
+	let backups: string[];
+	try {
+		backups = listReplacementRecordBackups(targetPath);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		return createFinding(
+			'warning',
+			'checkout-replacement-records-unreadable',
+			`Cannot read StarSync's checkout replacement records: ${sanitizeMessage(message)}`,
+		);
+	}
+	for (const backup of backups) {
 		if (fs.existsSync(path.join(targetPath, backup))) continue;
 		try {
 			removeReplacementRecord(targetPath, backup);
@@ -112,6 +124,7 @@ const dropStaleReplacementRecords = (targetPath: string): void => {
 			continue;
 		}
 	}
+	return null;
 };
 
 export const cleanupOwnedCheckoutArtifacts = (
@@ -128,6 +141,7 @@ export const cleanupOwnedCheckoutArtifacts = (
 		const kind = entry.isDirectory() ? ownedCheckoutArtifactKind(entry.name) : null;
 		if (kind !== null) findings.push(cleanupArtifact(targetPath, entry.name, kind, onProgress));
 	}
-	dropStaleReplacementRecords(targetPath);
+	const recordsProblem = dropStaleReplacementRecords(targetPath);
+	if (recordsProblem !== null) findings.push(recordsProblem);
 	return findings;
 };
