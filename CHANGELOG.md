@@ -16,6 +16,19 @@ All notable changes to this project will be documented in this file. Format foll
   1.0.6). Secret formats, private keys and home-directory paths still refuse. This affects
   contributors to this repository only, not installed copies of StarSync.
 
+## [2.5.7] - 2026-11-26
+
+### Security
+
+- A forced repair no longer risks deleting the only copy of a checkout. Repair moves the damaged
+  checkout aside, publishes a fresh clone in its place, and used to rely on moving the original
+  back if publishing failed. If StarSync stopped between those two steps, or the move back failed,
+  the original was left only under its `.starsync-damaged-…` backup name, and the next sync or
+  forced verification deleted that backup along with any local changes and history. Each repair
+  now keeps a record in the archive's `.starsync` folder. Cleanup deletes a backup only when that
+  record shows the fresh checkout was published. Every other backup, including any an earlier
+  StarSync left behind, is kept and reported with its location, for you to inspect and remove.
+
 ## [2.5.6] - 2026-11-22
 
 ### Fixed

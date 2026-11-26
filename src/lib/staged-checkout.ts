@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { ReplacedCheckout } from './checkout-replacement.ts';
+
 import { readArchiveConfig } from './archive-config.ts';
 import { cloneManagedCheckout } from './checkout-clone.ts';
 import {
@@ -9,6 +11,7 @@ import {
 	readCheckoutIdentity,
 	writeCheckoutIdentity,
 } from './checkout-identity.ts';
+import { publishReplacement } from './checkout-replacement.ts';
 import { isTransientGitError, runGit } from './git-exec.ts';
 import {
 	DAMAGED_CHECKOUT_PREFIX,
@@ -35,9 +38,7 @@ export interface StagedCheckoutOptions {
 	archiveOwnerId: number;
 }
 
-export interface ReplacedCheckout {
-	cleanupWarning: null | string;
-}
+export type { ReplacedCheckout } from './checkout-replacement.ts';
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => {
@@ -269,14 +270,15 @@ export const replaceAnomalousCheckout = async (
 		assertReplacementSource(sourcePath, repository.sourceFolderName);
 		assertReplacementDestinationAvailable(sourcePath, destinationPath, repository.folderName);
 		assertRepositoryRequest(repository, targetBase);
-		fs.renameSync(sourcePath, backupPath);
-		try {
-			assertDestinationAvailable(destinationPath, repository.folderName);
-			fs.renameSync(stagingPath, destinationPath);
-		} catch (err) {
-			fs.renameSync(backupPath, sourcePath);
-			throw err;
-		}
+		return publishReplacement({
+			assertDestinationAvailable: () =>
+				assertDestinationAvailable(destinationPath, repository.folderName),
+			backupPath,
+			destinationPath,
+			sourcePath,
+			stagingPath,
+			targetBase,
+		});
 	} catch (err) {
 		const cleanupError = tryRemoveOwnedStagingDirectory(targetBase, stagingPath);
 		const cleanupMessage =
@@ -284,16 +286,5 @@ export const replaceAnomalousCheckout = async (
 				? ''
 				: ` Staging cleanup failed: ${sanitizeMessage(errorMessage(cleanupError))}`;
 		throw new Error(`${sanitizeMessage(errorMessage(err))}${cleanupMessage}`, { cause: err });
-	}
-
-	try {
-		fs.rmSync(backupPath, { force: true, recursive: true });
-		return { cleanupWarning: null };
-	} catch (err) {
-		return {
-			cleanupWarning: `Fresh checkout was published, but the replaced directory remains at ${path.basename(
-				backupPath,
-			)}: ${sanitizeMessage(errorMessage(err))}`,
-		};
 	}
 };
